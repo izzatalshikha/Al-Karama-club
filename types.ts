@@ -3,6 +3,7 @@ export type Category = string;
 export type Role = 'لاعب' | 'مدرب' | 'مساعد مدرب' | 'إداري' | 'طبيب';
 export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب';
 export type UserRole = 'مدير' | 'مدرب' | 'مشاهد';
+export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'تنشيطية' | 'تجريبية';
 
 export interface AppNotification {
   id: string;
@@ -23,6 +24,7 @@ export interface Person {
   address?: string;
   joinDate: string;
   federalNumber?: string;
+  internationalId?: string; // الحقل الجديد
   nationalId?: string;
   birthDate?: string;
   birthPlace?: string;
@@ -64,9 +66,23 @@ export interface GoalRecord {
   time: string;
 }
 
+export interface CardRecord {
+  player: string;
+  number: string;
+  type: 'صفراء' | 'حمراء';
+  time: string;
+}
+
+export interface SubstitutionRecord {
+  playerOut: string;
+  playerIn: string;
+  time: string;
+}
+
 export interface Match {
   id: string;
   category: Category;
+  matchType: MatchType;
   opponent: string;
   location: string;
   advancePayment: string;
@@ -76,15 +92,20 @@ export interface Match {
   ourScore?: string;
   opponentScore?: string;
   goalList: GoalRecord[];
-  cardList: any[];
-  lineupDetails?: any;
+  cardList: CardRecord[];
+  lineupDetails?: {
+    starters: { name: string; number: string }[];
+    subs: { name: string; number: string }[];
+    captain: string;
+    substitutionList: SubstitutionRecord[];
+  };
 }
 
 export interface AppUser {
   id: string;
   username: string;
   role: UserRole;
-  password?: string; // كلمة السر المخصصة
+  password?: string;
   restrictedCategory?: Category;
 }
 
@@ -97,7 +118,6 @@ export interface AppState {
   categories: Category[];
   currentUser: AppUser | null;
   notifications: AppNotification[];
-  // Cloud Sync Status
   driveFileId?: string;
   lastSyncTimestamp?: number;
   isDriveConnected?: boolean;
