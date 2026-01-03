@@ -84,6 +84,7 @@ export interface AppUser {
   id: string;
   username: string;
   role: UserRole;
+  password?: string; // كلمة السر المخصصة
   restrictedCategory?: Category;
 }
 
@@ -100,4 +101,5 @@ export interface AppState {
   driveFileId?: string;
   lastSyncTimestamp?: number;
   isDriveConnected?: boolean;
+  googleEmail?: string;
 }

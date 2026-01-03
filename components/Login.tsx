@@ -17,45 +17,38 @@ const Login: React.FC<LoginProps> = ({ onLogin, state }) => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // البحث عن المستخدم في قاعدة البيانات الحالية
+    // البحث عن المستخدم في القائمة
     const user = state.users.find(u => u.username === username);
 
     if (user) {
-      if (user.role === 'مدير') {
-        // كلمة سر المديرين الموحدة
-        if (password === 'KSC@2026') {
-          onLogin(user);
-          return;
-        }
-      } else {
-        // كلمة سر المدربين والمشاهدين الافتراضية
-        if (password === 'KSC2026') {
-          onLogin(user);
-          return;
-        }
+      // التحقق من كلمة السر المخصصة لكل مستخدم
+      if (user.password === password) {
+        onLogin(user);
+        return;
       }
     }
 
-    setError('خطأ في اسم المستخدم أو كلمة المرور.');
+    setError('خطأ في اسم المستخدم أو كلمة المرور غير صحيحة.');
   };
 
   return (
     <div className="min-h-screen bg-[#001F3F] flex flex-col items-center justify-center p-4 font-['Tajawal']" dir="rtl">
       <div className="max-w-md w-full bg-white rounded-[3.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500 border border-slate-100">
-        <div className="bg-gradient-to-br from-blue-900 to-blue-800 p-12 flex flex-col items-center relative overflow-hidden">
+        <div className="bg-gradient-to-br from-blue-900 to-blue-800 p-12 flex flex-col items-center relative overflow-hidden text-center">
           <div className="absolute -top-12 -right-12 w-48 h-48 bg-orange-500/20 rounded-full blur-3xl"></div>
-          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-blue-400/20 rounded-full blur-3xl"></div>
           
-          <div className="bg-white p-4 rounded-[3rem] shadow-2xl mb-6 border border-white/20 transform hover:scale-105 transition-transform duration-500">
+          <div className="bg-white p-4 rounded-[3rem] shadow-2xl mb-6 border border-white/20">
             <ClubLogo size={100} />
           </div>
-          <h1 className="text-3xl font-black text-white text-center tracking-tight">نادي الكرامة الرياضي</h1>
-          <p className="text-orange-400 font-black mt-1 text-sm uppercase tracking-[0.2em]">AL-KARAMAH SC</p>
+          <h1 className="text-3xl font-black text-white tracking-tight">نادي الكرامة الرياضي</h1>
+          <p className="text-orange-400 font-black mt-1 text-sm uppercase tracking-[0.1em]">مكتب كرة القدم</p>
+          {/* الجملة المطلوبة تحت اسم المكتب */}
+          <p className="text-blue-100 font-bold mt-3 text-xs opacity-90">أهلاً بك في أعظم نادي في الكون</p>
         </div>
 
         <div className="p-10 space-y-6">
           <form onSubmit={handleLogin} className="space-y-4">
-            {error && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-xs font-black text-center border border-red-100">{error}</div>}
+            {error && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-[11px] font-black text-center border border-red-100">{error}</div>}
             
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-500 mr-2">اسم المستخدم</label>
@@ -63,7 +56,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, state }) => {
                 <User className="absolute right-4 top-4 text-slate-400" size={20} />
                 <input type="text" value={username} onChange={e => setUsername(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pr-12 pl-4 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-black"
-                  placeholder="Izzat أو اسم الفئة" />
+                  placeholder="ادخل اسم المستخدم" />
               </div>
             </div>
 
@@ -73,7 +66,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, state }) => {
                 <Lock className="absolute right-4 top-4 text-slate-400" size={20} />
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pr-12 pl-4 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-black"
-                  placeholder="كلمة المرور" />
+                  placeholder="كلمة السر الخاصة بك" />
               </div>
             </div>
 
@@ -81,10 +74,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, state }) => {
           </form>
           
           <div className="pt-6 border-t border-slate-100 text-center">
-            <p className="text-[11px] text-slate-500 font-black leading-relaxed">
-              نظام إدارة مكتب كرة القدم - نادي الكرامة الرياضي
-            </p>
-            <p className="text-[10px] text-slate-400 font-bold mt-1">
+            {/* ذيل الصفحة المطلوب */}
+            <p className="text-xs font-black text-slate-700 mb-1">نادي الكرامة الرياضي - مكتب كرة القدم</p>
+            <p className="text-[10px] text-slate-400 font-bold">
               Izzat Amer Alshikha 2026
             </p>
           </div>
