@@ -44,17 +44,18 @@ import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 
 // Supabase Configuration
-const SUPABASE_URL = 'https://kfwqoigsghlgigjriyxf.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://kfwqoigsghlgigjriyxf.supabase.co';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID_HERE"; // السطر 40 كما هو مطلوب الحفاظ عليه
+const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID_HERE";
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('alkaramah_data');
     const defaultCategories: Category[] = ['رجال', 'شباب', 'ناشئين', 'أشبال'];
     
+    // مصفوفة المستخدمين الافتراضية (عدم الحذف أو التغيير)
     const defaultUsers: AppUser[] = [
       { id: 'admin-main', username: 'Izzat', role: 'مدير', password: 'KSC@2026' },
       { id: 'u-men', username: 'MEN', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'رجال' },
@@ -104,7 +105,7 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  // جلب البيانات من Supabase عند التحميل
+  // جلب البيانات من Supabase عند التحميل الأول
   useEffect(() => {
     fetchFromSupabase();
   }, []);
@@ -112,13 +113,14 @@ const App: React.FC = () => {
   const fetchFromSupabase = async () => {
     setIsSyncing(true);
     try {
+      // جلب البيانات من الجداول المختلفة
       const [
-        { data: people },
-        { data: attendance },
-        { data: sessions },
-        { data: matches },
-        { data: users },
-        { data: categories }
+        { data: people, error: pErr },
+        { data: attendance, error: aErr },
+        { data: sessions, error: sErr },
+        { data: matches, error: mErr },
+        { data: users, error: uErr },
+        { data: categories, error: cErr }
       ] = await Promise.all([
         supabase.from('people').select('*'),
         supabase.from('attendance').select('*'),
@@ -128,6 +130,10 @@ const App: React.FC = () => {
         supabase.from('categories').select('*')
       ]);
 
+      if (pErr || aErr || sErr || mErr || uErr || cErr) {
+        console.warn("بعض الجداول قد لا تكون موجودة بعد، سيتم استخدام البيانات المحلية حالياً.");
+      }
+
       const defaultUsers: AppUser[] = [
         { id: 'admin-main', username: 'Izzat', role: 'مدير', password: 'KSC@2026' },
         { id: 'u-men', username: 'MEN', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'رجال' },
@@ -136,16 +142,28 @@ const App: React.FC = () => {
         { id: 'u-14', username: 'U14', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'أشبال' },
       ];
 
-      setState(prev => ({
-        ...prev,
-        people: people || prev.people,
-        attendance: attendance || prev.attendance,
-        sessions: sessions || prev.sessions,
-        matches: matches || prev.matches,
-        categories: categories?.map(c => c.name) || prev.categories,
-        users: [...defaultUsers, ...(users || []).filter((u: any) => !defaultUsers.some(du => du.username === u.username))],
-        lastSyncTimestamp: Date.now()
-      }));
+      setState(prev => {
+        // دمج المستخدمين مع الحفاظ على الافتراضيين
+        const mergedUsers = [...defaultUsers];
+        if (users) {
+          users.forEach((u: any) => {
+            if (!mergedUsers.some(mu => mu.username === u.username)) {
+              mergedUsers.push(u);
+            }
+          });
+        }
+
+        return {
+          ...prev,
+          people: people || prev.people,
+          attendance: attendance || prev.attendance,
+          sessions: sessions || prev.sessions,
+          matches: matches || prev.matches,
+          categories: categories?.map((c: any) => c.name) || prev.categories,
+          users: mergedUsers,
+          lastSyncTimestamp: Date.now()
+        };
+      });
     } catch (error) {
       console.error('Error fetching from Supabase:', error);
     } finally {
@@ -153,31 +171,38 @@ const App: React.FC = () => {
     }
   };
 
-  // المزامنة التلقائية عند حدوث تغييرات
+  // المزامنة التلقائية عند حدوث تغييرات في الحالة
   useEffect(() => {
-    const pushChanges = async () => {
+    const syncData = async () => {
+      if (!state.currentUser) return;
       setIsSyncing(true);
       try {
-        // نستخدم upsert لضمان التحديث أو الإضافة
+        // تصفية المستخدمين الافتراضيين لعدم تكرارهم في القاعدة بشكل غير ضروري
+        const customUsers = state.users.filter(u => 
+          !['Izzat', 'MEN', 'U18', 'U16', 'U14'].includes(u.username)
+        );
+
+        // تنفيذ عملية المزامنة لكل جدول (استخدام upsert لضمان التحديث)
         await Promise.all([
           state.people.length > 0 && supabase.from('people').upsert(state.people),
           state.attendance.length > 0 && supabase.from('attendance').upsert(state.attendance),
           state.sessions.length > 0 && supabase.from('sessions').upsert(state.sessions),
           state.matches.length > 0 && supabase.from('matches').upsert(state.matches),
-          state.users.filter(u => !['Izzat', 'MEN', 'U18', 'U16', 'U14'].includes(u.username)).length > 0 && 
-            supabase.from('users').upsert(state.users.filter(u => !['Izzat', 'MEN', 'U18', 'U16', 'U14'].includes(u.username)))
+          customUsers.length > 0 && supabase.from('users').upsert(customUsers)
         ]);
+
         setState(prev => ({ ...prev, lastSyncTimestamp: Date.now() }));
       } catch (error) {
-        console.error('Sync Error:', error);
+        console.error('Sync Error to Supabase:', error);
       } finally {
         setIsSyncing(false);
       }
     };
 
+    // مزامنة مع تأخير بسيط (Debounce) لتجنب كثرة الطلبات
     const timer = setTimeout(() => {
-      pushChanges();
-    }, 2000);
+      syncData();
+    }, 3000);
 
     localStorage.setItem('alkaramah_data', JSON.stringify(state));
     return () => clearTimeout(timer);
@@ -271,11 +296,11 @@ const App: React.FC = () => {
               className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
                 isSyncing ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'
               }`}
-              title="حالة الاتصال بقاعدة البيانات السحابية"
+              title="حالة الاتصال بقاعدة البيانات السحابية (Supabase)"
             >
               <Database size={18} className={isSyncing ? 'animate-spin' : ''} />
               <span className="text-[10px] font-black hidden lg:block uppercase tracking-tighter">
-                {isSyncing ? 'جاري المزامنة...' : 'قاعدة البيانات نشطة'}
+                {isSyncing ? 'جاري المزامنة...' : 'متصل بـ Supabase'}
               </span>
             </div>
 
