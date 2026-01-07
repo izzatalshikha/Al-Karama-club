@@ -1,5 +1,5 @@
 {
-  "name": "copy-of-نادي-الكرامة-الرياضي---مكتب-كرة-القدم",
+  "name": "نادي-الكرامة-الرياضي---مكتب-كرة-القدم",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,7 @@
   "dependencies": {
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "@supabase/supabase-js": "2.39.7"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
