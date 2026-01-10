@@ -3,7 +3,8 @@ import React from 'react';
 import { 
   ChevronRight, Printer, Target, AlertTriangle, Clock, Calendar, 
   TrendingUp, Users, Shield, MapPin, Activity, Globe, Trophy, 
-  CheckCircle, Award, GraduationCap, Home, StickyNote, CreditCard 
+  CheckCircle, Award, GraduationCap, Home, StickyNote, CreditCard, BarChart3, PieChart,
+  Hash, ClipboardList
 } from 'lucide-react';
 import { AppState, Person, Match, AttendanceRecord } from '../types';
 import ClubLogo from './ClubLogo';
@@ -30,177 +31,292 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
     return age;
   };
 
-  // إحصائيات المباريات وحساب الدقائق بدقة (للاعبين فقط)
+  // إحصائيات المباريات (للاعبين فقط)
   const playerMatchesStats = !isStaff ? state.matches.filter(m => m.isCompleted).map(match => {
-    let minutesPlayed = 0;
-    const isStarter = match.lineupDetails?.starters.some(p => p.name === player.name);
+    const isStarter = match.lineup.starters.some(p => p.name === player.name);
+    const isSub = match.lineup.subs.some(p => p.name === player.name);
     
-    const subOut = match.lineupDetails?.substitutionList.find(s => s.playerOut === player.name);
-    const subIn = match.lineupDetails?.substitutionList.find(s => s.playerIn === player.name);
+    // حساب الدقائق (تقديري بناءً على المشاركة)
+    const minutesPlayed = isStarter ? 90 : (isSub ? 20 : 0);
 
-    if (isStarter) {
-      minutesPlayed = subOut ? parseInt(subOut.time) || 0 : 90;
-    } else if (subIn) {
-      minutesPlayed = 90 - (parseInt(subIn.time) || 0);
-    }
-
-    const goals = match.goalList.filter(g => g.player === player.name).length;
-    const cards = match.cardList.filter(c => c.player === player.name);
-    const yellowCards = cards.filter(c => c.type === 'صفراء').length;
-    const redCards = cards.filter(c => c.type === 'حمراء').length;
+    const goals = match.events.filter(g => g.type === 'goal' && g.player === player.name).length;
+    const assists = match.events.filter(g => g.type === 'assist' && g.player === player.name).length;
+    const cards = match.events.filter(c => (c.type === 'yellow' || c.type === 'red') && c.player === player.name);
+    const yellowCards = cards.filter(c => c.type === 'yellow').length;
+    const redCards = cards.filter(c => c.type === 'red').length;
 
     return {
       match,
       minutes: minutesPlayed,
       goals,
+      assists,
       yellowCards,
       redCards,
-      played: minutesPlayed > 0
+      played: isStarter || isSub
     };
   }).filter(s => s.played) : [];
 
+  const totalPlayed = playerMatchesStats.length;
   const totalMinutes = playerMatchesStats.reduce((sum, s) => sum + s.minutes, 0);
   const totalGoals = playerMatchesStats.reduce((sum, s) => sum + s.goals, 0);
+  const totalAssists = playerMatchesStats.reduce((sum, s) => sum + s.assists, 0);
   const totalYellows = playerMatchesStats.reduce((sum, s) => sum + s.yellowCards, 0);
   const totalReds = playerMatchesStats.reduce((sum, s) => sum + s.redCards, 0);
 
-  // إحصائيات التمارين
+  // إحصائيات الحضور
   const playerAttendance = state.attendance.filter(a => a.personId === player.id);
-  const categorySessionsCount = state.sessions.filter(s => s.category === player.category).length;
+  const totalSessions = state.sessions.filter(s => s.category === player.category).length;
   const presentCount = playerAttendance.filter(a => a.status === 'حاضر').length;
   const lateCount = playerAttendance.filter(a => a.status === 'متأخر').length;
-  const attendanceRate = categorySessionsCount ? Math.round(((presentCount + lateCount * 0.5) / categorySessionsCount) * 100) : 0;
+  const absentCount = playerAttendance.filter(a => a.status === 'غائب').length;
+  const excusedCount = playerAttendance.filter(a => a.status === 'غياب بعذر').length;
+  
+  const attendanceRate = totalSessions ? Math.round(((presentCount + lateCount * 0.5) / totalSessions) * 100) : 0;
+
+  // الرسم البياني للأهداف (آخر 5 مباريات)
+  const last5Matches = playerMatchesStats.slice(-5);
+  const maxGoals = Math.max(...last5Matches.map(m => m.goals), 1);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-16">
       <div className="flex justify-between items-center no-print">
-        <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-blue-900 font-black transition-all">
-          <ChevronRight size={20} /> العودة للقائمة
+        <button onClick={onBack} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-900 font-black transition-all text-xs">
+          <ChevronRight size={16} /> العودة
         </button>
-        <button onClick={() => window.print()} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-2 hover:bg-black shadow-lg">
-          <Printer size={18} /> طباعة التقرير الشامل
+        <button onClick={() => window.print()} className="bg-[#001F3F] text-white px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 hover:bg-black shadow-lg">
+          <Printer size={16} /> طباعة التقرير
         </button>
       </div>
 
-      {/* Profile Card */}
-      <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className="bg-gradient-to-l from-blue-900 to-blue-800 h-40 relative">
-          <div className="absolute -bottom-16 right-12 flex items-end gap-6">
-            <div className="w-40 h-40 bg-white rounded-[3rem] shadow-2xl border-8 border-white flex items-center justify-center overflow-hidden">
-               <div className="text-6xl font-black text-blue-900 uppercase">{player.name.charAt(0)}</div>
+      {/* Header Profile */}
+      <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-[#001F3F] h-24 relative">
+          <div className="absolute -bottom-10 right-8 flex items-end gap-4">
+            <div className="w-28 h-28 bg-white rounded-2xl shadow-xl border-4 border-white flex items-center justify-center overflow-hidden font-black text-4xl text-blue-900 uppercase">
+               {player.name.charAt(0)}
             </div>
-            <div className="mb-4 space-y-1">
-              <h1 className="text-4xl font-black text-white drop-shadow-md">{player.name}</h1>
-              <div className="flex gap-2">
-                <span className="bg-orange-500 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase shadow-lg shadow-orange-500/20">{player.role} - فئة {player.category}</span>
-                {player.number && <span className="bg-white/20 backdrop-blur-md text-white text-[10px] font-black px-4 py-1 rounded-full">الرقم: {player.number}</span>}
+            <div className="mb-2 space-y-0.5">
+              <h1 className="text-xl font-black text-white drop-shadow-md">{player.name}</h1>
+              <span className="bg-orange-500 text-white text-[8px] font-black px-3 py-0.5 rounded-full uppercase block w-fit">{player.role} - {player.category}</span>
+            </div>
+          </div>
+        </div>
+        <div className="h-12"></div>
+        <div className="px-8 pb-6 grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-slate-50">
+           <div className="space-y-0.5">
+             <p className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><MapPin size={10}/> المواليد</p>
+             <p className="text-xs font-black text-slate-800">{player.birthPlace || '-'} ({calculateAge(player.birthDate)} سنة)</p>
+           </div>
+           <div className="space-y-0.5">
+             <p className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><Users size={10}/> العائلة</p>
+             <p className="text-xs font-black text-slate-800">{player.fatherName} / {player.motherName}</p>
+           </div>
+           <div className="space-y-0.5">
+             <p className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><Hash size={10}/> القميص</p>
+             <p className="text-xs font-black text-blue-900">#{player.number || '--'}</p>
+           </div>
+           <div className="space-y-0.5">
+             <p className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><CreditCard size={10}/> الرقم الوطني</p>
+             <p className="text-xs font-black text-slate-800 font-mono">{player.nationalId || '-'}</p>
+           </div>
+        </div>
+      </div>
+
+      {/* Match Stats Section (Players Only) */}
+      {!isStaff && (
+        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-900 shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b-2 border-slate-100 pb-4">
+             <h3 className="text-lg font-black text-slate-900 flex items-center gap-3">
+               <ClipboardList size={22} className="text-[#001F3F]" /> إحصائيات المواجهات الرسمية
+             </h3>
+             <span className="text-[9px] font-black bg-[#001F3F] text-white px-3 py-1 rounded-lg uppercase tracking-widest">Al-Karamah SC Statistics</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+            <div className="bg-slate-50 p-6 rounded-2xl border-2 border-slate-900 text-center hover:bg-[#001F3F] hover:text-white transition-all group">
+              <p className="text-3xl font-black mb-1">{totalPlayed}</p>
+              <p className="text-[10px] font-black text-slate-500 group-hover:text-blue-200 uppercase tracking-tighter">المباريات</p>
+            </div>
+            <div className="bg-orange-50 p-6 rounded-2xl border-2 border-orange-600 text-center hover:bg-orange-500 hover:text-white transition-all group">
+              <p className="text-3xl font-black text-orange-600 group-hover:text-white mb-1">{totalGoals}</p>
+              <p className="text-[10px] font-black text-orange-400 group-hover:text-orange-100 uppercase tracking-tighter">الأهداف</p>
+            </div>
+            <div className="bg-emerald-50 p-6 rounded-2xl border-2 border-emerald-600 text-center hover:bg-emerald-600 hover:text-white transition-all group">
+              <p className="text-3xl font-black text-emerald-600 group-hover:text-white mb-1">{totalAssists}</p>
+              <p className="text-[10px] font-black text-emerald-400 group-hover:text-emerald-100 uppercase tracking-tighter">تمريرات</p>
+            </div>
+            <div className="bg-yellow-50 p-6 rounded-2xl border-2 border-yellow-600 text-center hover:bg-yellow-500 hover:text-white transition-all group">
+              <p className="text-3xl font-black text-yellow-600 group-hover:text-white mb-1">{totalYellows}</p>
+              <p className="text-[10px] font-black text-yellow-400 group-hover:text-yellow-100 uppercase tracking-tighter">صفراء</p>
+            </div>
+            <div className="bg-red-50 p-6 rounded-2xl border-2 border-red-600 text-center hover:bg-red-600 hover:text-white transition-all group">
+              <p className="text-3xl font-black text-red-600 group-hover:text-white mb-1">{totalReds}</p>
+              <p className="text-[10px] font-black text-red-400 group-hover:text-red-100 uppercase tracking-tighter">حمراء</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analytics Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Goals Progress Chart */}
+        {!isStaff && (
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col">
+            <h4 className="text-[10px] font-black text-blue-900 mb-6 flex items-center gap-2 uppercase tracking-widest"><BarChart3 size={14}/> منحنى التهديف (آخر 5 مباريات)</h4>
+            <div className="flex-1 flex items-end justify-between gap-2 h-32 px-2">
+              {last5Matches.length > 0 ? last5Matches.map((m, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
+                   <div className="relative w-full flex flex-col items-center">
+                      <div 
+                        style={{ height: `${(m.goals / maxGoals) * 100}%`, minHeight: m.goals > 0 ? '10px' : '2px' }} 
+                        className={`w-full max-w-[24px] rounded-t-lg transition-all duration-500 shadow-lg ${m.goals > 0 ? 'bg-orange-500 group-hover:bg-blue-900' : 'bg-slate-100'}`}
+                      ></div>
+                      {m.goals > 0 && <span className="absolute -top-5 text-[9px] font-black text-orange-600">{m.goals}</span>}
+                   </div>
+                   <span className="text-[7px] font-black text-slate-400 truncate w-full text-center">{m.match.opponent}</span>
+                </div>
+              )) : <div className="w-full text-center text-[10px] text-slate-300 italic mb-10">لا يوجد بيانات مسجلة</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Attendance Distribution (Donut Chart SVG) */}
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col">
+          <h4 className="text-[10px] font-black text-emerald-600 mb-6 flex items-center gap-2 uppercase tracking-widest"><PieChart size={14}/> توزيع الانضباط العام</h4>
+          <div className="flex-1 flex items-center justify-around gap-4">
+            <div className="relative w-24 h-24">
+              <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+                <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f1f5f9" strokeWidth="3"></circle>
+                <circle 
+                  cx="18" cy="18" r="15.915" fill="none" 
+                  stroke="#10b981" strokeWidth="3" 
+                  strokeDasharray={`${attendanceRate} ${100 - attendanceRate}`} 
+                  strokeDashoffset="0"
+                ></circle>
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-lg font-black text-emerald-600">{attendanceRate}%</span>
+                <span className="text-[7px] font-black text-slate-400">التزام</span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <span className="text-[8px] font-black text-slate-600">حضور: {presentCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                <span className="text-[8px] font-black text-slate-600">تأخر: {lateCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                <span className="text-[8px] font-black text-slate-600">غياب: {absentCount}</span>
               </div>
             </div>
           </div>
         </div>
-        <div className="h-20"></div>
-        
-        {/* بيانات القيد والعائلة */}
-        <div className="px-12 pb-10 grid grid-cols-1 md:grid-cols-4 gap-8">
-           <div className="space-y-1">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Users size={14}/> اسم الأب والأم</p>
-             <p className="text-base font-bold text-slate-800">{player.fatherName || '-'} / {player.motherName || '-'}</p>
-           </div>
-           <div className="space-y-1">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapPin size={14}/> مكان وسنة الولادة</p>
-             <p className="text-base font-bold text-slate-800">{player.birthPlace || '-'} ({calculateAge(player.birthDate)} سنة)</p>
-           </div>
-           <div className="space-y-1">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Home size={14}/> العنوان</p>
-             <p className="text-base font-bold text-slate-800">{player.address || 'غير مسجل'}</p>
-           </div>
-           <div className="space-y-1">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><CreditCard size={14}/> الرقم الوطني</p>
-             <p className="text-base font-bold text-slate-800 font-mono">{player.nationalId || '-'}</p>
-           </div>
-        </div>
 
-        {/* مؤهلات المدربين */}
-        {(player.role === 'مدرب' || player.role === 'مساعد مدرب') && (
-          <div className="px-12 pb-8 pt-6 border-t border-slate-50 bg-blue-50/30 flex flex-col md:flex-row gap-8">
-             <div className="flex items-center gap-4">
-               <div className="p-3 bg-blue-900 text-white rounded-2xl"><Award size={24}/></div>
-               <div>
-                 <p className="text-[10px] font-black text-slate-400 uppercase">الشهادة التدريبية</p>
-                 <p className="text-lg font-black text-blue-900">{player.coachingCertificate || 'لا يوجد'}</p>
-               </div>
+        {/* Cards & Penalties Visualization */}
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col">
+          <h4 className="text-[10px] font-black text-red-600 mb-6 flex items-center gap-2 uppercase tracking-widest"><AlertTriangle size={14}/> سجل المخالفات</h4>
+          <div className="flex-1 flex items-center justify-center gap-10">
+             <div className="text-center group">
+                <div className="w-10 h-14 bg-yellow-400 rounded-lg shadow-lg flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                   <span className="text-white font-black text-xl">{totalYellows}</span>
+                </div>
+                <span className="text-[8px] font-black text-slate-400">صفراء</span>
              </div>
-             <div className="flex items-center gap-4">
-               <div className="p-3 bg-white border-2 border-blue-900 text-blue-900 rounded-2xl"><GraduationCap size={24}/></div>
-               <div>
-                 <p className="text-[10px] font-black text-slate-400 uppercase">المؤهل العلمي</p>
-                 <p className="text-lg font-black text-slate-800">{player.academicDegree || 'لا يوجد'}</p>
-               </div>
+             <div className="text-center group">
+                <div className="w-10 h-14 bg-red-600 rounded-lg shadow-lg flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                   <span className="text-white font-black text-xl">{totalReds}</span>
+                </div>
+                <span className="text-[8px] font-black text-slate-400">حمراء</span>
              </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* تفاصيل العقد والملاحظات */}
-      <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-10">
-         <div className="space-y-6">
-            <h4 className="text-sm font-black text-blue-900 flex items-center gap-2">
-               <Shield size={18}/> تفاصيل العقد الرسمي
-            </h4>
-            <div className="grid grid-cols-2 gap-4">
-               <div className="bg-slate-50 p-4 rounded-2xl">
-                  <p className="text-[10px] font-black text-slate-400 uppercase">بداية العقد</p>
-                  <p className="font-bold text-slate-800">{player.contractStart || '-'}</p>
-               </div>
-               <div className="bg-slate-50 p-4 rounded-2xl">
-                  <p className="text-[10px] font-black text-slate-400 uppercase">نهاية العقد</p>
-                  <p className="font-bold text-slate-800">{player.contractEnd || '-'}</p>
-               </div>
-               <div className="bg-slate-50 p-4 rounded-2xl">
-                  <p className="text-[10px] font-black text-slate-400 uppercase">مدة العقد</p>
-                  <p className="font-bold text-slate-800">{player.contractDuration || '-'}</p>
-               </div>
-               <div className="bg-slate-50 p-4 rounded-2xl">
-                  <p className="text-[10px] font-black text-slate-400 uppercase">قيمة العقد / الراتب</p>
-                  <p className="font-black text-emerald-600">{player.contractValue || '-'}</p>
-               </div>
-            </div>
-         </div>
-         <div className="space-y-6">
-            <h4 className="text-sm font-black text-orange-600 flex items-center gap-2">
-               <StickyNote size={18}/> ملاحظات إدارية وفنية
-            </h4>
-            <div className="bg-orange-50/50 p-6 rounded-[2rem] border-2 border-dashed border-orange-100 min-h-[140px]">
-               <p className="text-sm font-bold text-slate-700 leading-relaxed italic">
-                  {player.notes || "لا توجد ملاحظات مسجلة لهذا العضو حالياً."}
-               </p>
-            </div>
-         </div>
+      {/* Main Stats Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-blue-900 p-5 rounded-2xl text-center space-y-1">
+          <p className="text-2xl font-black text-white">{!isStaff ? totalMinutes : playerAttendance.length}</p>
+          <p className="text-[8px] font-black text-blue-200 uppercase">{!isStaff ? 'دقائق المشاركة' : 'التمارين المنجزة'}</p>
+        </div>
+        <div className="bg-orange-500 p-5 rounded-2xl text-center space-y-1">
+          <p className="text-2xl font-black text-white">{!isStaff ? totalGoals : '-'}</p>
+          <p className="text-[8px] font-black text-orange-100 uppercase">الأهداف المحققة</p>
+        </div>
+        <div className="bg-emerald-600 p-5 rounded-2xl text-center space-y-1">
+          <p className="text-2xl font-black text-white">{!isStaff ? totalAssists : '-'}</p>
+          <p className="text-[8px] font-black text-emerald-100 uppercase">التمريرات الحاسمة</p>
+        </div>
+        <div className="bg-white border-2 border-slate-100 p-5 rounded-2xl text-center space-y-1 shadow-sm">
+          <p className="text-2xl font-black text-slate-800">{attendanceRate}%</p>
+          <p className="text-[8px] font-black text-slate-400 uppercase">معدل الانضباط</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center space-y-2">
-          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto"><Clock size={32}/></div>
-          <p className="text-4xl font-black text-slate-900">{!isStaff ? totalMinutes : playerAttendance.length}</p>
-          <p className="text-[10px] font-black text-slate-400 uppercase">{!isStaff ? 'دقائق اللعب' : 'عدد التمارين'}</p>
+      {/* Contract & Notes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+           <h4 className="text-[10px] font-black text-blue-900 border-r-4 border-orange-500 pr-3 uppercase"><Shield size={14} className="inline mr-1"/> تفاصيل العقد والالتزام</h4>
+           <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <p className="text-[7px] font-black text-slate-400">نهاية العقد</p>
+                <p className="text-xs font-black text-slate-800">{player.contractEnd || '-'}</p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <p className="text-[7px] font-black text-slate-400">الراتب / القيمة</p>
+                <p className="text-xs font-black text-emerald-600">{player.contractValue || '-'}</p>
+              </div>
+           </div>
+           <div className="bg-orange-50/30 p-4 rounded-xl border border-orange-100/50">
+             <p className="text-[8px] font-black text-orange-600 uppercase mb-1">ملاحظات فنية</p>
+             <p className="text-[10px] font-black text-slate-700 leading-relaxed italic">{player.notes || 'لا يوجد ملاحظات مسجلة.'}</p>
+           </div>
         </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center space-y-2">
-          <div className="w-16 h-16 bg-orange-50 text-orange-600 rounded-3xl flex items-center justify-center mx-auto"><Target size={32}/></div>
-          <p className="text-4xl font-black text-slate-900">{!isStaff ? totalGoals : '-'}</p>
-          <p className="text-[10px] font-black text-slate-400 uppercase">{!isStaff ? 'الأهداف المسجلة' : 'الرؤية الفنية'}</p>
-        </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center space-y-2">
-          <div className="w-16 h-16 bg-yellow-50 text-yellow-600 rounded-3xl flex items-center justify-center mx-auto"><AlertTriangle size={32}/></div>
-          <div className="flex justify-center gap-4">
-             <span className="text-2xl font-black text-yellow-600">{totalYellows}Y</span>
-             <span className="text-2xl font-black text-red-600">{totalReds}R</span>
-          </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase">سجل العقوبات</p>
-        </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center space-y-2">
-          <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto"><TrendingUp size={32}/></div>
-          <p className="text-4xl font-black text-slate-900">{attendanceRate}%</p>
-          <p className="text-[10px] font-black text-slate-400 uppercase">معدل الانضباط</p>
+
+        {/* Academic (Staff Only) or Career (Players) */}
+        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+          {isStaff ? (
+             <div className="space-y-6">
+               <h4 className="text-[10px] font-black text-[#001F3F] border-r-4 border-blue-900 pr-3 uppercase"><GraduationCap size={14} className="inline mr-1"/> المؤهلات العلمية والتدريبية</h4>
+               <div className="space-y-3">
+                 <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 bg-blue-50 text-blue-900 rounded-lg flex items-center justify-center font-black text-xs">C</div>
+                   <div>
+                     <p className="text-[8px] font-black text-slate-400 uppercase">الشهادة التدريبية</p>
+                     <p className="text-xs font-black text-slate-800">{player.coachingCertificate || 'لا يوجد'}</p>
+                   </div>
+                 </div>
+                 <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 bg-emerald-50 text-emerald-900 rounded-lg flex items-center justify-center font-black text-xs">U</div>
+                   <div>
+                     <p className="text-[8px] font-black text-slate-400 uppercase">الدرجة الجامعية</p>
+                     <p className="text-xs font-black text-slate-800">{player.academicDegree || 'لا يوجد'}</p>
+                   </div>
+                 </div>
+               </div>
+             </div>
+          ) : (
+            <div className="space-y-4">
+               <h4 className="text-[10px] font-black text-[#001F3F] border-r-4 border-blue-900 pr-3 uppercase"><Trophy size={14} className="inline mr-1"/> شريط الأداء الأخير</h4>
+               <div className="space-y-2 overflow-y-auto max-h-40 custom-scrollbar pr-2">
+                 {playerMatchesStats.slice(-3).reverse().map((s, i) => (
+                   <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                     <div className="flex items-center gap-2">
+                       <span className="text-[10px] font-black text-slate-800">{s.match.opponent}</span>
+                       <span className="text-[8px] font-black text-slate-400 bg-white px-2 rounded">{s.match.date}</span>
+                     </div>
+                     <div className="flex gap-1.5">
+                       {s.goals > 0 && <span className="bg-orange-500 text-white text-[8px] font-black px-1.5 rounded-full">{s.goals}G</span>}
+                       {s.assists > 0 && <span className="bg-emerald-500 text-white text-[8px] font-black px-1.5 rounded-full">{s.assists}A</span>}
+                     </div>
+                   </div>
+                 ))}
+                 {playerMatchesStats.length === 0 && <p className="text-[9px] text-slate-300 italic text-center py-4">لا يوجد مباريات سابقة</p>}
+               </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,54 +1,64 @@
 
 export type Category = string;
-export type Role = 'لاعب' | 'مدرب' | 'مساعد مدرب' | 'إداري' | 'طبيب';
-export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب';
-export type UserRole = 'مدير' | 'مدرب' | 'مشاهد';
-export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'تنشيطية' | 'تجريبية';
+export type Role = 'لاعب' | 'مدرب' | 'مساعد مدرب' | 'مدرب حراس' | 'مدرب لياقة' | 'إداري' | 'طبيب' | 'معالج' | 'منسق إعلامي' | 'مرافق';
+export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب' | 'غياب بعذر';
+export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد';
+export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'مباراة دولية';
 
 export interface AppNotification {
   id: string;
   message: string;
-  type: 'info' | 'success' | 'warning';
+  details?: string;
+  type: 'info' | 'success' | 'warning' | 'error';
   timestamp: number;
   isRead?: boolean;
-  persistent?: boolean;
 }
 
 export interface Person {
   id: string;
-  name: string;
+  name: string; // الاسم الثنائي
+  fatherName: string;
+  motherName: string;
+  birthDate: string;
+  birthPlace: string;
+  khana: string;
+  nationalId: string;
+  federalNumber: string;
+  internationalId: string;
+  address: string;
   category: Category;
   role: Role;
-  number?: number;
+  number?: number; // رقم القميص
   phone?: string;
-  address?: string;
   joinDate: string;
-  federalNumber?: string;
-  internationalId?: string; // الحقل الجديد
-  nationalId?: string;
-  birthDate?: string;
-  birthPlace?: string;
-  fatherName?: string;
-  motherName?: string;
-  nationality?: string;
-  khana?: string;
-  coachingCertificate?: string;
-  academicDegree?: string;
-  contractValue?: string;
-  contractDuration?: string;
+  
+  // Contracts
   contractStart?: string;
   contractEnd?: string;
+  contractDuration?: string;
+  contractValue?: string;
+
+  // Medical & Discipline
+  medicalHistory?: string;
+  injuries?: string;
+  penalties?: string;
   notes?: string;
+
+  // Academic (for staff)
+  coachingCertificate?: string;
+  academicDegree?: string;
 }
 
 export interface AttendanceRecord {
   id: string;
   personId: string;
-  sessionId?: string;
+  sessionId: string;
   date: string;
   time: string;
   status: AttendanceStatus;
-  note?: string;
+  excuse?: string;
+  fine?: string;
+  isLocked?: boolean;
 }
 
 export interface TrainingSession {
@@ -58,25 +68,15 @@ export interface TrainingSession {
   time: string;
   location: string;
   objective: string;
+  isCompleted?: boolean;
 }
 
-export interface GoalRecord {
+export interface MatchEvent {
+  id: string;
+  type: 'goal' | 'assist' | 'yellow' | 'red' | 'injury';
   player: string;
-  number: string;
-  time: string;
-}
-
-export interface CardRecord {
-  player: string;
-  number: string;
-  type: 'صفراء' | 'حمراء';
-  time: string;
-}
-
-export interface SubstitutionRecord {
-  playerOut: string;
-  playerIn: string;
-  time: string;
+  minute: string;
+  note?: string;
 }
 
 export interface Match {
@@ -85,20 +85,20 @@ export interface Match {
   matchType: MatchType;
   opponent: string;
   location: string;
-  advancePayment: string;
   date: string;
   time: string;
-  isCompleted?: boolean;
-  ourScore?: string;
-  opponentScore?: string;
-  goalList: GoalRecord[];
-  cardList: CardRecord[];
-  lineupDetails?: {
+  advancePayment: string;
+  isCompleted: boolean;
+  ourScore: string;
+  opponentScore: string;
+  events: MatchEvent[];
+  lineup: {
     starters: { name: string; number: string }[];
     subs: { name: string; number: string }[];
+    staff: { role: string; name: string }[];
     captain: string;
-    substitutionList: SubstitutionRecord[];
   };
+  notes?: string;
 }
 
 export interface AppUser {
@@ -118,8 +118,6 @@ export interface AppState {
   categories: Category[];
   currentUser: AppUser | null;
   notifications: AppNotification[];
-  driveFileId?: string;
   lastSyncTimestamp?: number;
-  isDriveConnected?: boolean;
-  googleEmail?: string;
+  globalCategoryFilter: Category | 'الكل';
 }

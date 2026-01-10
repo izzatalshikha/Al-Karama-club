@@ -11,13 +11,40 @@
     body {
       font-family: 'Tajawal', sans-serif;
       background-color: #f8fafc;
+      color: #0f172a; /* Slate-900 */
     }
     @media print {
+      /* إخفاء العناصر غير المطلوبة */
       .no-print {
         display: none !important;
       }
+      
+      /* إظهار عناصر الطباعة فقط */
       .print-only {
         display: block !important;
+      }
+
+      /* إعادة ضبط الحاويات لضمان ظهور كامل المحتوى المطبوع */
+      html, body, #root, main, section {
+        height: auto !important;
+        overflow: visible !important;
+        position: static !important;
+        background: white !important;
+      }
+
+      /* إعدادات الصفحة */
+      @page {
+        size: A4 landscape;
+        margin: 1cm;
+      }
+
+      /* تحسين الجداول للطباعة */
+      table {
+        page-break-inside: auto;
+      }
+      tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
       }
     }
     .custom-scrollbar::-webkit-scrollbar {
@@ -27,13 +54,10 @@
       background: #f1f1f1;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
+      background: #001F3F;
       border-radius: 10px;
     }
   </style>
-  <!-- Google API Scripts -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://apis.google.com/js/api.js" async defer></script>
 <script type="importmap">
 {
   "imports": {

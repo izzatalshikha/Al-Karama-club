@@ -1,232 +1,200 @@
 
-import React, { useState, useEffect } from 'react';
-import { ClipboardCheck, Save, FileText, BarChart3, Lock, ShieldCheck, AlertCircle, Clock, Calendar as CalendarIcon, AlertTriangle, Layers } from 'lucide-react';
-import { AppState, Category, AttendanceRecord, AttendanceStatus, TrainingSession } from '../types';
+import React, { useState } from 'react';
+import { ClipboardCheck, Save, ShieldAlert, History, Search, ShieldCheck, Lock, Clock, Calendar as CalendarIcon } from 'lucide-react';
+import { AppState, AttendanceStatus, AttendanceRecord } from '../types';
 
 interface AttendanceTrackerProps {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  addLog?: (m: string, d?: string, t?: any) => void;
 }
 
-const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState }) => {
-  const currentUser = state.currentUser;
-  const restrictedCat = currentUser?.restrictedCategory;
+const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, addLog }) => {
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [localRecords, setLocalRecords] = useState<Record<string, { status: AttendanceStatus; excuse?: string; fine?: string; time?: string; date?: string }>>({});
   
-  const isManager = currentUser?.role === 'مدير';
-  const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
-  const [selectedCategory, setSelectedCategory] = useState<Category>(restrictedCat || (state.categories[0] || 'رجال'));
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [localRecords, setLocalRecords] = useState<Record<string, { status: AttendanceStatus, time: string }>>({});
+  const currentUser = state.currentUser!;
+  const globalFilter = state.globalCategoryFilter;
 
-  useEffect(() => {
-    if (restrictedCat) setSelectedCategory(restrictedCat);
-  }, [restrictedCat]);
+  const sessions = state.sessions
+    .filter(s => (globalFilter === 'الكل' || s.category === globalFilter))
+    .sort((a, b) => b.date.localeCompare(a.date));
 
-  const categorySessions = state.sessions
-    .filter(s => s.category === selectedCategory)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const activeSession = state.sessions.find(s => s.id === selectedSessionId);
+  const players = state.people.filter(p => p.role === 'لاعب' && (activeSession ? p.category === activeSession.category : true));
+  const savedRecords = state.attendance.filter(r => r.sessionId === selectedSessionId);
 
-  useEffect(() => {
-    if (categorySessions.length > 0) {
-      setSelectedSessionId(categorySessions[0].id);
-    } else {
-      setSelectedSessionId('');
-    }
-  }, [selectedCategory, state.sessions]);
+  const handleSetStatus = (pid: string, status: AttendanceStatus) => {
+    // تسجيل الوقت والتاريخ فوراً عند اختيار الحالة
+    const now = new Date();
+    // تنسيق الوقت (الساعة:الدقيقة)
+    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    // تنسيق التاريخ (السنة-الشهر-اليوم)
+    const dateStr = now.toISOString().split('T')[0];
 
-  const selectedSession = state.sessions.find(s => s.id === selectedSessionId);
-  const players = state.people.filter(p => p.category === selectedCategory && p.role === 'لاعب');
-  const sessionRecords = state.attendance.filter(r => r.sessionId === selectedSessionId);
-
-  const presentCount = sessionRecords.filter(r => r.status === 'حاضر').length;
-  const lateCount = sessionRecords.filter(r => r.status === 'متأخر').length;
-  const absentCount = sessionRecords.filter(r => r.status === 'غائب').length;
-
-  const handleSetStatus = (personId: string, status: AttendanceStatus) => {
-    const hasExistingStatus = sessionRecords.some(r => r.personId === personId) || !!localRecords[personId];
-    
-    if (!isManager && hasExistingStatus) {
-      alert('لا يمكن تغيير الحالة بعد اختيارها. يرجى التواصل مع المدير للتعديل.');
-      return;
-    }
-    
-    const now = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', numberingSystem: 'latn' });
-    setLocalRecords(prev => ({ ...prev, [personId]: { status, time: now } }));
+    setLocalRecords(prev => ({ 
+      ...prev, 
+      [pid]: { ...prev[pid], status, time: timeStr, date: dateStr } 
+    }));
   };
 
   const saveAttendance = () => {
     const entries = Object.entries(localRecords);
-    if (entries.length === 0) return alert('الرجاء تحديد حالة اللاعبين أولاً');
+    if (entries.length === 0) return alert('يرجى رصد حالات اللاعبين أولاً');
 
-    // Fix: Explicitly type the entry to avoid unknown type error on 'data.time' and 'data.status'
-    const newRecords: AttendanceRecord[] = entries.map(([pid, data]: [string, { status: AttendanceStatus, time: string }]) => ({
+    const newRecords: AttendanceRecord[] = entries.map(([pid, data]) => ({
       id: Math.random().toString(36).substr(2, 9),
       personId: pid,
       sessionId: selectedSessionId,
-      date: selectedSession?.date || '',
-      time: data.time,
-      status: data.status
+      date: data.date || activeSession!.date,
+      time: data.time || (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0')),
+      status: data.status,
+      excuse: data.excuse,
+      fine: data.fine,
+      isLocked: true
     }));
 
-    setState(prev => ({
-      ...prev,
+    setState(p => ({
+      ...p,
       attendance: [
-        ...prev.attendance.filter(a => !(a.sessionId === selectedSessionId && localRecords[a.personId])),
+        ...p.attendance.filter(a => !(a.sessionId === selectedSessionId && localRecords[a.personId])),
         ...newRecords
       ],
-      notifications: [
-        ...prev.notifications,
-        {
-          id: Math.random().toString(36).substr(2, 9),
-          message: `قام ${currentUser?.username} بتحديث سجل حضور فئة ${selectedCategory}.`,
-          type: 'info',
-          timestamp: Date.now()
-        }
-      ]
     }));
+    
+    addLog?.('حفظ الحضور', `تم تثبيت سجل حضور تمرين ${activeSession?.objective}`, 'success');
     setLocalRecords({});
-  };
-
-  const getMonthlySummary = () => {
-    return players.map(player => {
-      const monthlyAtt = state.attendance.filter(a => {
-        const date = new Date(a.date);
-        return a.personId === player.id && 
-               (date.getMonth() + 1) === selectedMonth && 
-               date.getFullYear() === selectedYear;
-      });
-
-      return {
-        ...player,
-        absent: monthlyAtt.filter(a => a.status === 'غائب').length,
-        late: monthlyAtt.filter(a => a.status === 'متأخر').length,
-        present: monthlyAtt.filter(a => a.status === 'حاضر').length,
-        total: monthlyAtt.length
-      };
-    });
+    alert('تم حفظ السجل بنجاح وقفل البيانات');
   };
 
   return (
     <div className="space-y-6">
-      {isManager && (
-        <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 overflow-x-auto no-scrollbar no-print">
-          <div className="flex gap-2">
-            {state.categories.map(cat => (
-              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500'}`}>{cat}</button>
-            ))}
-          </div>
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row gap-6 items-end no-print relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-2 h-full bg-[#001F3F]"></div>
+        <div className="flex-1 space-y-2 w-full">
+           <label className="text-[10px] font-black text-slate-900 mr-2 uppercase tracking-widest">اختيار جلسة التمرين للرصد</label>
+           <select value={selectedSessionId} onChange={e => { setSelectedSessionId(e.target.value); setLocalRecords({}); }}
+            className="w-full bg-slate-100 border-2 border-slate-900 rounded-xl p-4 font-black text-xl text-slate-900 outline-none focus:border-orange-600 transition-all">
+             <option value="">-- اختر التمرين من القائمة --</option>
+             {sessions.map(s => <option key={s.id} value={s.id}>{s.date} | {s.objective} ({s.category})</option>)}
+           </select>
         </div>
-      )}
-
-      <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex gap-2 no-print">
-        <button onClick={() => setViewMode('daily')} className={`flex-1 py-3 rounded-2xl font-black transition-all ${viewMode === 'daily' ? 'bg-blue-900 text-white shadow-lg' : 'text-slate-500'}`}>السجل اليومي</button>
-        <button onClick={() => setViewMode('monthly')} className={`flex-1 py-3 rounded-2xl font-black transition-all ${viewMode === 'monthly' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500'}`}>تقرير الشهر</button>
+        <button 
+          onClick={saveAttendance} 
+          disabled={!selectedSessionId}
+          className="bg-[#001F3F] text-white px-10 py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-black disabled:opacity-30 transition-all flex items-center gap-2 border-b-4 border-black"
+        >
+          <Save size={24} /> تثبيت السجل النهائي
+        </button>
       </div>
 
-      {viewMode === 'daily' ? (
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-end no-print">
-            <div className="flex-1 space-y-2 w-full">
-              <label className="text-xs font-black text-slate-400 mr-2">اختيار التمرين</label>
-              <select value={selectedSessionId} onChange={e => setSelectedSessionId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-black text-slate-950 outline-none">
-                <option value="">-- اختر التمرين من القائمة --</option>
-                {categorySessions.map(s => <option key={s.id} value={s.id}>{s.date} - {s.objective}</option>)}
-              </select>
-            </div>
-            <div className="flex gap-2 w-full md:w-auto">
-              {!isManager && (
-                <button onClick={saveAttendance} className="flex-1 md:flex-none bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 flex items-center justify-center gap-2">
-                  <Save size={20} /> حفظ الحضور
-                </button>
-              )}
-              <button onClick={() => window.print()} className="flex-1 md:flex-none bg-slate-900 text-white px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-2">
-                <FileText size={20} /> طباعة
-              </button>
-            </div>
+      {activeSession && (
+        <div className="bg-white rounded-[2.5rem] shadow-sm border-2 border-slate-900 overflow-hidden relative">
+          <div className="p-6 border-b-2 border-slate-900 bg-slate-100 flex justify-between items-center">
+             <div className="flex items-center gap-4">
+               <div className="w-14 h-14 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center font-black text-2xl text-[#001F3F] shadow-md">K</div>
+               <div>
+                 <h3 className="text-xl font-black text-slate-900">{activeSession.objective}</h3>
+                 <p className="text-[10px] font-black text-[#001F3F] uppercase tracking-widest">{activeSession.category} • {activeSession.date}</p>
+               </div>
+             </div>
+             <div className="flex gap-3">
+               <div className="bg-white border-2 border-slate-900 px-5 py-2 rounded-xl text-center">
+                 <p className="text-[8px] font-black uppercase text-slate-400">إجمالي الحضور</p>
+                 <p className="text-lg font-black text-emerald-600">
+                    {state.attendance.filter(r => r.sessionId === selectedSessionId && (r.status === 'حاضر' || r.status === 'متأخر')).length}
+                 </p>
+               </div>
+               <div className="bg-[#001F3F] text-white px-5 py-2 rounded-xl text-center border-2 border-slate-900">
+                 <p className="text-[8px] font-black uppercase text-blue-200">اللاعبين</p>
+                 <p className="text-lg font-black">{players.length}</p>
+               </div>
+             </div>
           </div>
 
-          {selectedSession ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-                <table className="w-full text-right">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500">اللاعب</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 text-center">الحالة</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 text-center">التوقيت</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right min-w-[800px]">
+              <thead className="bg-slate-200 border-b-2 border-slate-900">
+                <tr>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">بيانات اللاعب</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest text-center">رصد الحالة الفوري</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">التوقيت المسجل</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">ملاحظات إضافية</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y-2 divide-slate-200">
+                {players.map(p => {
+                  const saved = savedRecords.find(r => r.personId === p.id);
+                  const local = localRecords[p.id];
+                  const currentStatus = local?.status || saved?.status;
+                  const currentTime = local?.time || saved?.time;
+                  
+                  // منع إداري الفئة من التعديل بعد الحفظ - التنبيه الصارم
+                  const isLockedForUser = saved && currentUser.role === 'إداري فئة';
+
+                  return (
+                    <tr key={p.id} className={`transition-all ${isLockedForUser ? 'bg-slate-50 opacity-90' : 'hover:bg-blue-50/30'}`}>
+                      <td className="px-6 py-5 border-l-2 border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-md border-2 border-slate-900 ${currentStatus ? 'bg-[#001F3F] text-white shadow-lg' : 'bg-white text-slate-900'}`}>
+                            {p.number || '??'}
+                          </div>
+                          <div>
+                            <span className="font-black text-[15px] text-slate-900 block leading-none mb-1">{p.name}</span>
+                            <span className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
+                               {isLockedForUser ? (
+                                 <><Lock size={10} className="text-red-500" /> مغلق (إدارة)</>
+                               ) : saved ? (
+                                 <><ShieldCheck size={10} className="text-emerald-500" /> مسجل مسبقاً</>
+                               ) : (
+                                 "لم يتم الرصد"
+                               )}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex justify-center gap-2">
+                          {['حاضر', 'متأخر', 'غائب', 'غياب بعذر'].map(st => (
+                            <button 
+                              key={st} 
+                              disabled={isLockedForUser}
+                              onClick={() => handleSetStatus(p.id, st as AttendanceStatus)}
+                              className={`px-4 py-2 rounded-lg text-[9px] font-black border-2 transition-all ${currentStatus === st ? 
+                                `bg-slate-900 text-white border-slate-900 scale-105 z-10 shadow-lg` 
+                                : 'bg-white text-slate-900 border-slate-300 hover:border-slate-900 disabled:opacity-50'}`}
+                            >
+                              {st}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                         <div className="flex flex-col gap-1">
+                            <div className="font-black text-[10px] text-slate-900 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 inline-flex items-center gap-2">
+                               <Clock size={12} className="text-orange-600"/> {currentTime || '--:--'}
+                            </div>
+                            { (local?.date || saved?.date) && (
+                              <div className="font-black text-[10px] text-slate-500 inline-flex items-center gap-2 px-1">
+                                 <CalendarIcon size={10}/> {local?.date || saved?.date}
+                              </div>
+                            )}
+                         </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <input 
+                          type="text" 
+                          disabled={isLockedForUser}
+                          placeholder="أدخل ملاحظات..." 
+                          value={local?.excuse || saved?.excuse || ''}
+                          onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
+                          className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2 text-[10px] font-black w-full outline-none focus:border-[#001F3F] text-slate-900 placeholder:text-slate-400 disabled:bg-slate-100" 
+                        />
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {players.map(p => {
-                      const saved = sessionRecords.find(r => r.personId === p.id);
-                      const local = localRecords[p.id];
-                      const status = local?.status || saved?.status;
-                      const isLocked = !isManager && !!status;
-                      return (
-                        <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 font-black text-slate-950">{p.name}</td>
-                          <td className="px-6 py-4 flex justify-center gap-1">
-                            {['حاضر', 'متأخر', 'غائب'].map(st => (
-                              <button key={st} onClick={() => handleSetStatus(p.id, st as AttendanceStatus)} disabled={isLocked && status !== st}
-                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all ${status === st ? 
-                                  (st === 'حاضر' ? 'bg-emerald-600 text-white' : st === 'متأخر' ? 'bg-orange-500 text-white' : 'bg-red-600 text-white') : 'bg-white text-slate-400'}`}>
-                                {st}
-                              </button>
-                            ))}
-                          </td>
-                          <td className="px-6 py-4 text-center font-black text-xs text-blue-700">{local?.time || saved?.time || '--:--'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="bg-blue-900 text-white p-8 rounded-[2.5rem] shadow-xl">
-                 <h4 className="text-lg font-black mb-6">إحصائيات فورية</h4>
-                 <div className="space-y-4">
-                    <div className="flex justify-between items-center bg-white/10 p-4 rounded-2xl">
-                      <span className="text-blue-200 font-bold text-xs">نسبة الالتزام</span>
-                      <span className="text-2xl font-black">{players.length ? Math.round(((presentCount + lateCount) / players.length) * 100) : 0}%</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 pt-4 border-t border-white/10 text-center">
-                       <div><p className="text-[10px] text-blue-300 font-black">حاضر</p><p className="text-xl font-black text-emerald-400">{presentCount}</p></div>
-                       <div><p className="text-[10px] text-blue-300 font-black">تأخير</p><p className="text-xl font-black text-orange-400">{lateCount}</p></div>
-                       <div><p className="text-[10px] text-blue-300 font-black">غائب</p><p className="text-xl font-black text-red-400">{absentCount}</p></div>
-                    </div>
-                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white py-20 rounded-[3rem] text-center text-slate-400 font-black italic border-2 border-dashed">يرجى اختيار تمرين أو إضافة تمرين جديد</div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-end no-print">
-            <div className="flex-1 grid grid-cols-2 gap-4 w-full">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 mr-2">الشهر</label>
-                <select value={selectedMonth} onChange={e => setSelectedMonth(parseInt(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-black text-slate-950 outline-none">
-                  {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('ar-EG', {month: 'long'})}</option>)}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 mr-2">السنة</label>
-                <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-black text-slate-950 outline-none">
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-            </div>
-            <button onClick={() => window.print()} className="w-full md:w-auto bg-orange-600 text-white px-10 py-4 rounded-2xl font-black flex items-center justify-center gap-2">
-              <FileText size={20} /> تصدير التقرير الشهري
-            </button>
-          </div>
-          <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-            <table className="w-full text-right">
-              <thead><tr className="bg-slate-50"><th className="px-6 py-4 text-xs font-black">الاسم</th><th className="px-6 py-4 text-xs font-black text-center">حاضر</th><th className="px-6 py-4 text-xs font-black text-center">تأخير</th><th className="px-6 py-4 text-xs font-black text-center">غياب</th></tr></thead>
-              <tbody className="divide-y divide-slate-50">{getMonthlySummary().map(row => (<tr key={row.id} className="hover:bg-slate-50/50"><td className="px-6 py-4 font-black text-slate-950">{row.name}</td><td className="px-6 py-4 text-center text-emerald-600 font-black">{row.present}</td><td className="px-6 py-4 text-center text-orange-500 font-black">{row.late}</td><td className="px-6 py-4 text-center text-red-600 font-black">{row.absent}</td></tr>))}</tbody>
+                  );
+                })}
+              </tbody>
             </table>
           </div>
         </div>

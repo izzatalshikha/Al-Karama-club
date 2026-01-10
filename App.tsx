@@ -1,36 +1,10 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, 
-  Calendar, 
-  ClipboardCheck, 
-  LayoutDashboard, 
-  Settings, 
-  LogOut, 
-  Menu,
-  X,
-  Trophy,
-  Bell,
-  CheckCircle,
-  Cloud,
-  CloudOff,
-  RefreshCw,
-  AlertCircle,
-  Trash2,
-  Share2,
-  Database
+  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Bell, CheckCircle2, Trash2
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { 
-  AppUser, 
-  AppState,
-  Category,
-  Person,
-  AppNotification,
-  AttendanceRecord,
-  TrainingSession,
-  Match
-} from './types';
+import { AppUser, AppState, Category, Person, TrainingSession, Match, AppNotification } from './types';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -43,313 +17,268 @@ import PlayerReport from './components/PlayerReport';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 
-// Supabase Configuration
-const SUPABASE_URL = 'https://kfwqoigsghlgigjriyxf.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Initialize Supabase client safely
+const supabaseUrl = 'https://kfwqoigsghlgigjriyxf.supabase.co';
+const supabaseAnonKey = 'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic';
 
-const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID_HERE"; // السطر 40 كما هو مطلوب الحفاظ عليه
+const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem('alkaramah_data');
-    const defaultCategories: Category[] = ['رجال', 'شباب', 'ناشئين', 'أشبال'];
-    
-    // مصفوفة المستخدمين الافتراضية (عدم الحذف أو التغيير نهائياً)
-    const defaultUsers: AppUser[] = [
-      { id: 'admin-main', username: 'Izzat', role: 'مدير', password: 'KSC@2026' },
-      { id: 'u-men', username: 'MEN', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'رجال' },
-      { id: 'u-18', username: 'U18', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'شباب' },
-      { id: 'u-16', username: 'U16', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'ناشئين' },
-      { id: 'u-14', username: 'U14', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'أشبال' },
-    ];
-
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (!parsed.matches) parsed.matches = [];
-      if (!parsed.notifications) parsed.notifications = [];
-      if (!parsed.categories) parsed.categories = defaultCategories;
-      if (!parsed.googleEmail) parsed.googleEmail = '';
-      
-      parsed.users = parsed.users.map((u: AppUser) => {
-        const def = defaultUsers.find(du => du.username === u.username);
-        return { ...u, password: u.password || def?.password || 'KSC2026' };
-      });
-
-      defaultUsers.forEach(defUser => {
-        if (!parsed.users.some((u: AppUser) => u.username === defUser.username)) {
-          parsed.users.push(defUser);
-        }
-      });
-      return parsed;
-    }
-    
-    return {
-      people: [],
-      attendance: [],
-      sessions: [],
-      matches: [],
-      categories: defaultCategories,
-      users: defaultUsers,
-      currentUser: null,
-      notifications: [],
-      isDriveConnected: true, 
-      googleEmail: 'Supabase Database'
-    };
-  });
-
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedPlayerForReport, setSelectedPlayerForReport] = useState<Person | null>(null);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<Person | null>(null);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const notificationRef = useRef<HTMLDivElement>(null);
 
-  // جلب البيانات الأولية من Supabase
-  useEffect(() => {
-    const initFetch = async () => {
-      await fetchFromSupabase();
+  const [state, setState] = useState<AppState>(() => {
+    const saved = localStorage.getItem('alkaramah_pro_final_v1');
+    const defaultCategories: Category[] = ['رجال', 'شباب', 'ناشئين', 'أشبال'];
+    const defaultUsers: AppUser[] = [
+      { id: 'admin-main', username: 'IZZAT', role: 'مدير', password: 'KSC@2026' },
+    ];
+
+    if (saved) return JSON.parse(saved);
+    
+    return {
+      people: [], attendance: [], sessions: [], matches: [],
+      categories: defaultCategories, users: defaultUsers,
+      currentUser: null, notifications: [],
+      globalCategoryFilter: 'الكل'
     };
-    initFetch();
-  }, []);
+  });
 
-  const fetchFromSupabase = async () => {
+  const fetchData = useCallback(async () => {
+    if (!state.currentUser || !supabase) return;
     setIsSyncing(true);
     try {
       const [
-        { data: people },
-        { data: attendance },
-        { data: sessions },
-        { data: matches },
-        { data: dbUsers },
-        { data: dbCategories }
+        { data: cats }, { data: ppl }, { data: sess }, { data: mtch }, { data: attn }
       ] = await Promise.all([
+        supabase.from('categories').select('name'),
         supabase.from('people').select('*'),
-        supabase.from('attendance').select('*'),
         supabase.from('sessions').select('*'),
         supabase.from('matches').select('*'),
-        supabase.from('users').select('*'),
-        supabase.from('categories').select('*')
+        supabase.from('attendance').select('*'),
       ]);
 
-      const defaultUsers: AppUser[] = [
-        { id: 'admin-main', username: 'Izzat', role: 'مدير', password: 'KSC@2026' },
-        { id: 'u-men', username: 'MEN', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'رجال' },
-        { id: 'u-18', username: 'U18', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'شباب' },
-        { id: 'u-16', username: 'U16', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'ناشئين' },
-        { id: 'u-14', username: 'U14', role: 'مدرب', password: 'KSC2026KSC', restrictedCategory: 'أشبال' },
-      ];
-
-      setState(prev => {
-        // دمج المستخدمين مع حماية المستخدمين الافتراضيين
-        const mergedUsers = [...defaultUsers];
-        if (dbUsers) {
-          dbUsers.forEach((u: any) => {
-            if (!mergedUsers.some(mu => mu.username === u.username)) {
-              mergedUsers.push(u);
-            }
-          });
-        }
-
-        return {
-          ...prev,
-          people: people || prev.people,
-          attendance: attendance || prev.attendance,
-          sessions: sessions || prev.sessions,
-          matches: matches || prev.matches,
-          categories: dbCategories?.map((c: any) => c.name) || prev.categories,
-          users: mergedUsers,
-          lastSyncTimestamp: Date.now()
-        };
-      });
+      setState(prev => ({
+        ...prev,
+        categories: cats && cats.length > 0 ? cats.map(c => c.name) : prev.categories,
+        people: ppl || prev.people,
+        sessions: sess || prev.sessions,
+        matches: mtch || prev.matches,
+        attendance: attn || prev.attendance
+      }));
     } catch (error) {
-      console.error('Supabase Fetch Error:', error);
+      console.warn("Supabase fetch failed, working offline mode.");
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [state.currentUser]);
 
-  // المزامنة التلقائية عند حدوث تغييرات (Immediate Auto-Sync)
   useEffect(() => {
-    const pushToSupabase = async () => {
-      if (!state.currentUser) return;
-      setIsSyncing(true);
+    if (state.currentUser && supabase) {
+      fetchData();
+    }
+  }, [state.currentUser, fetchData]);
+
+  useEffect(() => {
+    const syncCategories = async () => {
+      if (!supabase || !state.currentUser || state.currentUser.role !== 'مدير') return;
       try {
-        // تصفية المستخدمين لحفظ الحسابات الإضافية فقط وعدم لمس المستخدمين الافتراضيين في القاعدة
-        const extraUsers = state.users.filter(u => 
-          !['Izzat', 'MEN', 'U18', 'U16', 'U14'].includes(u.username)
-        );
-
-        const syncPromises = [];
-        
-        // استخدام upsert لضمان التحديث التلقائي
-        if (state.people.length > 0) syncPromises.push(supabase.from('people').upsert(state.people));
-        if (state.attendance.length > 0) syncPromises.push(supabase.from('attendance').upsert(state.attendance));
-        if (state.sessions.length > 0) syncPromises.push(supabase.from('sessions').upsert(state.sessions));
-        if (state.matches.length > 0) syncPromises.push(supabase.from('matches').upsert(state.matches));
-        if (extraUsers.length > 0) syncPromises.push(supabase.from('users').upsert(extraUsers));
-        
-        const catObjects = state.categories.map(name => ({ name }));
-        if (catObjects.length > 0) syncPromises.push(supabase.from('categories').upsert(catObjects, { onConflict: 'name' }));
-
-        await Promise.all(syncPromises);
-        setState(prev => ({ ...prev, lastSyncTimestamp: Date.now() }));
-      } catch (error) {
-        console.error('Supabase Sync Error:', error);
-      } finally {
-        setIsSyncing(false);
+        await supabase.from('categories').delete().neq('name', '---'); 
+        const insertData = state.categories.map(name => ({ name }));
+        if (insertData.length > 0) {
+          await supabase.from('categories').insert(insertData);
+        }
+      } catch (e) {
+        console.error("Categories sync failed", e);
       }
     };
+    syncCategories();
+    localStorage.setItem('alkaramah_pro_final_v1', JSON.stringify(state));
+  }, [state.categories, state.currentUser]);
 
-    const timer = setTimeout(() => {
-      pushToSupabase();
-    }, 2000); 
+  useEffect(() => {
+    if (state.currentUser) {
+      localStorage.setItem('alkaramah_pro_final_v1', JSON.stringify(state));
+    }
+  }, [state]);
 
-    localStorage.setItem('alkaramah_data', JSON.stringify(state));
-    return () => clearTimeout(timer);
-  }, [state.people, state.attendance, state.sessions, state.matches, state.users, state.categories]);
-
-  const handleLogin = (user: AppUser) => {
-    setState(prev => ({ ...prev, currentUser: user }));
-    setActiveTab('dashboard');
-  };
-
-  const handleLogout = () => {
-    setState(prev => ({ ...prev, currentUser: null }));
-  };
-
-  const openPlayerReport = (player: Person) => {
-    setSelectedPlayerForReport(player);
-    setActiveTab('player-report');
+  const addLog = (message: string, details?: string, type: AppNotification['type'] = 'info') => {
+    const newLog: AppNotification = {
+      id: Math.random().toString(36).substr(2, 9),
+      message,
+      details,
+      type,
+      timestamp: Date.now(),
+      isRead: false
+    };
+    setState(prev => ({
+      ...prev,
+      notifications: [newLog, ...prev.notifications].slice(0, 50)
+    }));
   };
 
   const markAllAsRead = () => {
     setState(prev => ({
       ...prev,
-      notifications: prev.notifications.map(n => n.isRead ? n : { ...n, isRead: true })
+      notifications: prev.notifications.map(n => ({ ...n, isRead: true }))
     }));
   };
 
+  const clearNotifications = () => {
+    setState(prev => ({ ...prev, notifications: [] }));
+  };
+
+  const navigateToMatch = (id: string) => {
+    setSelectedMatchId(id);
+    setActiveTab('matches');
+  };
+
+  const navigateToSession = (id: string) => {
+    setSelectedSessionId(id);
+    setActiveTab('attendance');
+  };
+
   if (!state.currentUser) {
-    return <Login onLogin={handleLogin} state={state} />;
+    return <Login onLogin={(u) => setState(p => ({ ...p, currentUser: u }))} state={state} />;
   }
 
   const menuItems = [
     { id: 'dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
-    { id: 'squad', label: 'الفئات واللاعبين', icon: Users },
+    { id: 'squad', label: 'إدارة الكوادر', icon: Users },
     { id: 'attendance', label: 'سجل الحضور', icon: ClipboardCheck },
-    { id: 'training', label: 'جدول التمارين', icon: Calendar },
-    { id: 'matches', label: 'جدول المباريات', icon: Trophy },
-    { id: 'settings', label: 'الإعدادات وقاعدة البيانات', icon: Settings, adminOnly: true },
+    { id: 'training', label: 'التمارين', icon: Calendar },
+    { id: 'matches', label: 'المباريات', icon: Trophy },
+    { id: 'settings', label: 'الإعدادات', icon: Settings, adminOnly: true },
   ];
 
-  return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-['Tajawal'] text-right" dir="rtl">
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+  const unreadCount = state.notifications.filter(n => !n.isRead).length;
 
-      <aside className={`fixed inset-y-0 right-0 z-50 w-72 bg-blue-900 text-white transition-transform duration-300 transform md:relative md:translate-x-0 md:w-64 flex flex-col no-print ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
-        <div className="p-6 flex items-center justify-between border-b border-blue-800/50">
-          <div className="flex items-center gap-3">
-            <div className="bg-white p-1 rounded-xl shadow-lg">
-              <ClubLogo size={42} />
-            </div>
-            <div>
-              <h1 className="font-black text-lg leading-tight">نادي الكرامة</h1>
-              <p className="text-[10px] text-blue-300 font-bold uppercase tracking-widest">مكتب كرة القدم</p>
-            </div>
-          </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden text-blue-200"><X size={24} /></button>
+  return (
+    <div className="flex h-screen bg-[#F0F4F8] font-['Tajawal'] text-right overflow-hidden" dir="rtl">
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 right-0 z-50 w-56 bg-[#001F3F] text-white transition-transform md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'} flex flex-col no-print shadow-2xl`}>
+        <div className="p-5 flex flex-col items-center border-b border-white/10">
+          <ClubLogo size={50} />
+          <h1 className="mt-3 font-black text-md">نادي الكرامة</h1>
+          <p className="text-[8px] text-orange-400 font-black tracking-widest uppercase">Football Office</p>
         </div>
 
-        <nav className="flex-1 mt-6 px-4 space-y-2 overflow-y-auto">
-          {menuItems.map((item) => {
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+          {menuItems.map(item => {
             if (item.adminOnly && state.currentUser?.role !== 'مدير') return null;
             const Icon = item.icon;
             return (
               <button key={item.id} onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-                className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === item.id ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/40' : 'hover:bg-blue-800 text-blue-100'}`}>
-                <Icon size={22} /><span className="font-bold">{item.label}</span>
+                className={`w-full flex items-center gap-2.5 p-2.5 rounded-lg transition-all font-black text-[11px] ${activeTab === item.id ? 'bg-orange-600 shadow-md' : 'hover:bg-white/5 text-blue-100'}`}>
+                <Icon size={16} /> <span>{item.label}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="p-6 border-t border-blue-800">
-          <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-300 hover:bg-red-900/30 transition-all font-bold text-sm">
-            <LogOut size={20} /><span>خروج من النظام</span>
+        <div className="p-3 border-t border-white/10">
+          <button onClick={() => setState(p => ({ ...p, currentUser: null }))} className="w-full flex items-center gap-2 p-2.5 rounded-lg text-red-400 hover:bg-red-900/20 font-black text-[11px] transition-colors">
+            <LogOut size={16} /> خروج
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden w-full">
-        <header className="bg-white border-b px-4 md:px-8 py-4 flex items-center justify-between no-print z-[150]">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-xl text-slate-600 md:hidden"><Menu size={24} /></button>
-            <h2 className="text-lg md:text-xl font-black text-slate-800 truncate">
-              {menuItems.find(m => m.id === activeTab)?.label}
-            </h2>
+      <main className="flex-1 flex flex-col overflow-hidden relative">
+        <header className="bg-white border-b px-5 py-2.5 flex items-center justify-between no-print z-40 shadow-sm relative">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg"><Menu size={18}/></button>
+            <h2 className="text-md font-black text-slate-800 uppercase tracking-tight">{menuItems.find(m => m.id === activeTab)?.label}</h2>
+            {isSyncing && <span className="text-[8px] font-black text-blue-500 animate-pulse mr-3">مزامنة سحابية...</span>}
           </div>
           
-          <div className="flex items-center gap-3 md:gap-4">
-            <div 
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
-                isSyncing ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'
-              }`}
-              title="مزامنة Supabase"
-            >
-              <Database size={18} className={isSyncing ? 'animate-spin' : ''} />
-              <span className="text-[10px] font-black hidden lg:block uppercase tracking-tighter">
-                {isSyncing ? 'جاري المزامنة...' : 'قاعدة البيانات نشطة'}
-              </span>
-            </div>
+          <div className="flex items-center gap-2">
+             <div className="relative">
+               <button 
+                 onClick={() => setShowNotifications(!showNotifications)} 
+                 className={`relative p-2 rounded-xl transition-all ${showNotifications ? 'bg-orange-600 text-white' : 'bg-slate-50 text-[#001F3F] hover:bg-slate-100 border border-slate-200'}`}
+               >
+                 <Bell size={18} />
+                 {unreadCount > 0 && (
+                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center px-1 border-2 border-white animate-bounce">
+                     {unreadCount}
+                   </span>
+                 )}
+               </button>
 
-            <div className="relative" ref={notificationRef}>
-              <button 
-                onClick={() => { setShowNotifications(!showNotifications); if(!showNotifications) markAllAsRead(); }}
-                className={`p-2.5 rounded-xl transition-all relative ${showNotifications ? 'bg-blue-900 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
-              >
-                <Bell size={22} />
-                {state.notifications.filter(n => !n.isRead).length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-600 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white">
-                    {state.notifications.filter(n => !n.isRead).length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex flex-col text-left items-end">
-                <span className="font-black text-sm text-slate-700">{state.currentUser?.username}</span>
-                <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-bold uppercase">{state.currentUser?.role}</span>
-              </div>
-              <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center font-black border border-orange-200">
-                {state.currentUser?.username?.charAt(0)}
-              </div>
-            </div>
+               {/* Notifications Panel */}
+               {showNotifications && (
+                 <div className="absolute left-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border-2 border-slate-900 overflow-hidden z-[100] animate-in slide-in-from-top-2 duration-200">
+                    <div className="bg-slate-50 p-4 border-b-2 border-slate-900 flex justify-between items-center">
+                       <h3 className="font-black text-xs text-slate-900">مركز التنبيهات</h3>
+                       <div className="flex gap-2">
+                          <button onClick={markAllAsRead} className="text-[9px] font-black text-blue-600 hover:underline">قراءة الكل</button>
+                          <button onClick={clearNotifications} className="text-[9px] font-black text-red-600 hover:underline">مسح</button>
+                       </div>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                       {state.notifications.length > 0 ? state.notifications.map(notif => (
+                         <div key={notif.id} className={`p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors ${!notif.isRead ? 'bg-orange-50/50' : ''}`}>
+                            <div className="flex gap-3">
+                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${notif.type === 'success' ? 'bg-emerald-100 text-emerald-600' : notif.type === 'error' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                  {notif.type === 'success' ? <CheckCircle2 size={16}/> : <Bell size={16}/>}
+                               </div>
+                               <div>
+                                  <p className={`text-[11px] font-black leading-tight ${notif.isRead ? 'text-slate-600' : 'text-slate-900'}`}>{notif.message}</p>
+                                  {notif.details && <p className="text-[9px] text-slate-400 mt-1 font-bold">{notif.details}</p>}
+                                  <p className="text-[8px] text-slate-300 mt-2 font-black uppercase">{new Date(notif.timestamp).toLocaleTimeString('ar-SY')}</p>
+                               </div>
+                            </div>
+                         </div>
+                       )) : (
+                         <div className="p-10 text-center space-y-3 opacity-30">
+                            <Bell size={32} className="mx-auto text-slate-400"/>
+                            <p className="text-[10px] font-black text-slate-500">لا يوجد تنبيهات جديدة حالياً</p>
+                         </div>
+                       )}
+                    </div>
+                 </div>
+               )}
+             </div>
+             
+             <div className="flex items-center gap-2 pr-3 border-r border-slate-100 mr-2">
+               <div className="text-left hidden sm:block">
+                 <p className="font-black text-[9px] text-slate-800 leading-none">{state.currentUser.username}</p>
+                 <p className="text-[7px] text-blue-600 font-black uppercase mt-1">{state.currentUser.role}</p>
+               </div>
+               <div className="w-8 h-8 bg-[#001F3F] text-white rounded-xl flex items-center justify-center font-black text-[12px] border-b-2 border-black">
+                 {state.currentUser.username.charAt(0).toUpperCase()}
+               </div>
+             </div>
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
-          <div className="max-w-7xl mx-auto flex-1 w-full space-y-12">
-            {activeTab === 'dashboard' && <Dashboard state={state} />}
-            {activeTab === 'squad' && <SquadManagement state={state} setState={setState} onOpenReport={openPlayerReport} />}
-            {activeTab === 'attendance' && <AttendanceTracker state={state} setState={setState} />}
-            {activeTab === 'training' && <TrainingPlanner state={state} setState={setState} />}
-            {activeTab === 'matches' && <MatchPlanner state={state} setState={setState} />}
-            {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
-            {activeTab === 'player-report' && <PlayerReport state={state} player={selectedPlayerForReport} onBack={() => setActiveTab('squad')} />}
-
-            <footer className="pt-10 pb-6 border-t border-slate-100 text-center no-print">
-               <p className="text-sm font-black text-slate-700 mb-1">نادي الكرامة الرياضي - مكتب كرة القدم</p>
-               <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em]">
-                 Izzat Amer Alshikha 2026
-               </p>
-            </footer>
+        <section className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar bg-slate-50/30">
+          <div className="max-w-5xl mx-auto pb-10">
+            {activeTab === 'dashboard' && <Dashboard state={state} setState={setState} onMatchClick={navigateToMatch} onSessionClick={navigateToSession} />}
+            {activeTab === 'squad' && <SquadManagement state={state} setState={setState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addLog} />}
+            {activeTab === 'attendance' && <AttendanceTracker state={state} setState={setState} addLog={addLog} />}
+            {activeTab === 'training' && <TrainingPlanner state={state} setState={setState} addLog={addLog} />}
+            {activeTab === 'matches' && <MatchPlanner state={state} setState={setState} defaultSelectedId={selectedMatchId} addLog={addLog} />}
+            {activeTab === 'settings' && <SettingsView state={state} setState={setState} addLog={addLog} />}
+            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} onBack={() => setActiveTab('squad')} />}
           </div>
         </section>
+
+        <footer className="bg-white/95 backdrop-blur-md border-t py-1.5 px-5 flex justify-between items-center no-print z-40">
+          <p className="text-[7px] font-black text-slate-500 tracking-tighter">نظام إدارة مكتب كرة القدم - نادي الكرامة</p>
+          <p className="text-[7px] font-black text-[#001F3F] border-r-2 border-orange-500 pr-2">By: Izzat Amer Al-Shikha</p>
+        </footer>
       </main>
+      
+      {/* Backdrop for notifications panel close on click outside */}
+      {showNotifications && (
+        <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)}></div>
+      )}
     </div>
   );
 };
