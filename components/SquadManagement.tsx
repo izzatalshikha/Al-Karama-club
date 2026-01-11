@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   UserPlus, Trash2, Search, X, Shield, Award, Layers, Home, Plus, AlertCircle, Calendar,
@@ -86,7 +87,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
   return (
     <div className="space-y-4 animate-in fade-in duration-500">
-      {/* Header & Controls */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-slate-900 no-print space-y-6">
         <div className="flex flex-col lg:flex-row gap-4 items-center">
           <div className="flex-1 relative w-full">
@@ -130,7 +130,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
           </div>
         </div>
 
-        {/* Sub-Tab Toggle Players vs Staff */}
         <div className="flex p-1.5 bg-slate-100 border-2 border-slate-900 rounded-2xl w-fit mx-auto md:mx-0">
           <button 
             onClick={() => setActiveSubTab('players')}
@@ -153,7 +152,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         </div>
       </div>
 
-      {/* Grid Display */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 no-print">
         {displayList.map(person => (
           <div key={person.id} className="bg-white p-5 rounded-[2rem] shadow-sm border-2 border-slate-900 group relative transition-all hover:shadow-xl border-b-[8px] hover:border-orange-600">
@@ -195,7 +193,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         ))}
       </div>
 
-      {/* واجهة معاينة التقرير الشاملة - Fullscreen Report View */}
       {showFullReportView && (
         <div className="fixed inset-0 bg-white z-[500] overflow-y-auto font-['Tajawal'] text-slate-900 p-0 md:p-10 no-print-overlay" dir="rtl">
            <div className="max-w-[1200px] mx-auto bg-white border-[6px] border-slate-900 rounded-[3rem] p-8 md:p-12 shadow-2xl relative">
@@ -209,6 +206,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                     <h1 className="text-4xl font-black text-slate-900">نادي الكرامة الرياضي</h1>
                     <h2 className="text-xl font-black text-blue-900 uppercase tracking-widest">مكتب كرة القدم المركزي</h2>
                     <p className="text-lg font-black text-orange-600 bg-orange-50 px-4 py-1 rounded-xl w-fit">كشف رسمي معتمد لفئة: {localCategoryFilter}</p>
+                    <p className="text-xs font-black text-slate-500 mt-2">المسؤول عن البيانات: {state.currentUser?.username}</p>
                  </div>
                  <div className="flex flex-col items-center">
                     <ClubLogo size={140} />
@@ -222,9 +220,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                  </div>
               </div>
 
-              {/* جداول البيانات المطبوعة */}
               <div className="space-y-12">
-                 {/* كشف اللاعبين */}
                  <div>
                     <h3 className="text-xl font-black bg-[#001F3F] text-white p-4 border-2 border-slate-900 rounded-2xl mb-6 flex items-center gap-3"><Users size={24}/> أولاً: كشف اللاعبين الأساسيين والاحتياط</h3>
                     <div className="overflow-x-auto">
@@ -265,7 +261,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                     </div>
                  </div>
 
-                 {/* كشف الكادر */}
                  <div>
                     <h3 className="text-xl font-black bg-orange-600 text-white p-4 border-2 border-slate-900 rounded-2xl mb-6 flex items-center gap-3"><Briefcase size={24}/> ثانياً: كشف الكادر الفني والإداري والطبي</h3>
                     <div className="overflow-x-auto">
@@ -316,19 +311,11 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                  </div>
               </div>
 
-              <p className="text-center mt-12 text-[9px] font-black text-slate-300 uppercase tracking-widest">Al-Karamah SC System | All Data Protected & Verified</p>
+              <p className="text-center mt-12 text-[9px] font-black text-slate-300 uppercase tracking-widest">Al-Karamah SC System | User: {state.currentUser?.username} | All Data Protected</p>
            </div>
         </div>
       )}
 
-      {/* واجهة التقرير المطبوعة (القديمة للطباعة المباشرة) - كما هي */}
-      <div className="hidden print:block print-only w-full" dir="rtl">
-        <div className="p-8 bg-white text-slate-900">
-           {/* محتوى الطباعة موجود داخل showFullReportView المطور */}
-        </div>
-      </div>
-
-      {/* Modal - تسجيل العضو (كما هو دون تعديل) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[250] p-4 no-print">
           <div className="bg-white rounded-[2.5rem] w-full max-w-4xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border-[6px] border-slate-900 flex flex-col h-[90vh]">
@@ -338,7 +325,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
             </div>
             
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10">
-              {/* القسم الأول: الشخصية */}
               <div className="space-y-6">
                 <h4 className="text-[12px] font-black text-[#001F3F] flex items-center gap-2 border-r-4 border-orange-600 pr-3 uppercase">البيانات الشخصية والولادة</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -375,7 +361,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 </div>
               </div>
 
-              {/* القسم الثاني: الأرقام والاتصال */}
               <div className="space-y-6">
                 <h4 className="text-[12px] font-black text-orange-600 flex items-center gap-2 border-r-4 border-slate-900 pr-3 uppercase">الوثائق الثبوتية والاتصال والعنوان</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -405,7 +390,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 </div>
               </div>
 
-              {/* القسم الثالث: الفنية والتعاقد */}
               <div className="space-y-6">
                 <h4 className="text-[12px] font-black text-emerald-700 flex items-center gap-2 border-r-4 border-slate-900 pr-3 uppercase">الوضعية الفنية والتعاقدية</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

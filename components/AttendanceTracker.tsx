@@ -39,7 +39,8 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   };
 
   const saveAttendance = () => {
-    const entries = Object.entries(localRecords);
+    // Explicitly cast Object.entries to provide types for 'data' in map
+    const entries = Object.entries(localRecords) as [string, { status: AttendanceStatus; excuse?: string; fine?: string; time?: string; date?: string }][];
     if (entries.length === 0) return alert('يرجى رصد حالات اللاعبين أولاً');
 
     const newRecords: AttendanceRecord[] = entries.map(([pid, data]) => ({
