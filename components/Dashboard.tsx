@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Users, Calendar, Trophy, Clock, MapPin, AlertCircle, ChevronLeft, ShieldAlert, Filter } from 'lucide-react';
+import { Users, Calendar, Trophy, Clock, MapPin, AlertCircle, ChevronLeft, ShieldAlert, Filter, Printer, FileText, ClipboardCheck } from 'lucide-react';
 import { AppState, Person } from '../types';
 
 interface DashboardProps {
@@ -20,7 +20,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const upcomingSessions = state.sessions
-    .filter(s => (globalFilter === 'الكل' || s.category === globalFilter) && s.date >= todayStr)
+    .filter(s => (globalFilter === 'الكل' || s.category === globalFilter) && s.date >= todayStr && !s.isCompleted)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // نظام فحص العقود (أقل من 3 أشهر = 90 يوماً)
@@ -58,9 +58,34 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         </div>
       </div>
 
+      {/* Quick Report Center - NEW SECTION */}
+      <div className="bg-slate-900 p-8 rounded-[3rem] border-4 border-orange-600 shadow-xl no-print">
+         <div className="flex items-center gap-4 mb-6">
+            <Printer className="text-orange-400" size={28}/>
+            <h3 className="text-xl font-black text-white uppercase tracking-tight">مركز التقارير المركزية السريعة</h3>
+         </div>
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white/10 p-5 rounded-2xl border border-white/10 flex flex-col items-center text-center space-y-3">
+               <FileText className="text-emerald-400" size={32}/>
+               <p className="text-white font-black text-sm uppercase">كشوفات الفئات</p>
+               <p className="text-[9px] text-slate-400">طباعة القوائم الكاملة للاعبين والكوادر والبيانات الثبوتية</p>
+            </div>
+            <div className="bg-white/10 p-5 rounded-2xl border border-white/10 flex flex-col items-center text-center space-y-3">
+               <ClipboardCheck className="text-blue-400" size={32}/>
+               <p className="text-white font-black text-sm uppercase">تقارير الانضباط</p>
+               <p className="text-[9px] text-slate-400">طباعة سجلات الحضور الشهرية والغيابات والالتزام بالتمارين</p>
+            </div>
+            <div className="bg-white/10 p-5 rounded-2xl border border-white/10 flex flex-col items-center text-center space-y-3">
+               <Trophy className="text-orange-400" size={32}/>
+               <p className="text-white font-black text-sm uppercase">أجندة المباريات</p>
+               <p className="text-[9px] text-slate-400">طباعة جداول المواجهات القادمة ونتائج الموسم للفئات</p>
+            </div>
+         </div>
+      </div>
+
       {/* Contract Expiry Alert Section */}
       {expiringContracts.length > 0 && (
-        <div className="bg-red-50 border-4 border-red-900 rounded-[2.5rem] p-6 shadow-xl animate-pulse">
+        <div className="bg-red-50 border-4 border-red-900 rounded-[2.5rem] p-6 shadow-xl animate-pulse no-print">
            <div className="flex items-center gap-4 mb-4">
               <div className="p-3 bg-red-900 text-white rounded-2xl shadow-lg"><ShieldAlert size={28} /></div>
               <h3 className="text-xl font-black text-red-900 uppercase">تنبيهات إدارية: عقود توشك على الانتهاء</h3>

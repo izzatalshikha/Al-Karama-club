@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Bell, RefreshCw, User
+  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Bell, RefreshCw, User, CloudCheck, CloudOff, Cloud
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification } from './types';
@@ -17,7 +17,18 @@ import PlayerReport from './components/PlayerReport';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 
-// Supabase Configuration (Strict Hardcoded)
+// Helper: Standard UUID v4 Generator for Supabase Compatibility
+export const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
+// Supabase Configuration
 const supabaseUrl = 'https://kfwqoigsghlgigjriyxf.supabase.co';
 const supabaseAnonKey = 'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -30,14 +41,15 @@ const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
   
   const [state, setState] = useState<AppState>(() => {
-    const defaultAdmin: AppUser = { id: 'admin-main', username: 'IZZAT', role: 'مدير', password: 'KSC@2026' };
-    const saved = localStorage.getItem('alkarama_local_v2');
+    const defaultAdmin: AppUser = { id: generateUUID(), username: 'IZZAT', role: 'مدير', password: 'KSC@2026' };
+    const saved = localStorage.getItem('alkarama_cloud_v4');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return { ...parsed, currentUser: null }; // Force login
+        return { ...parsed, currentUser: null }; 
       } catch (e) { console.error(e); }
     }
     return {
@@ -53,14 +65,13 @@ const App: React.FC = () => {
     };
   });
 
-  // Save to local as safety net
   useEffect(() => {
-    localStorage.setItem('alkarama_local_v2', JSON.stringify(state));
+    localStorage.setItem('alkarama_cloud_v4', JSON.stringify(state));
   }, [state]);
 
   const addLog = useCallback((message: string, details?: string, type: AppNotification['type'] = 'info') => {
     const newNotif: AppNotification = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUUID(),
       message, details, type, timestamp: Date.now(), isRead: false
     };
     setState(prev => ({
@@ -69,27 +80,35 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  // Smart Merge Helper: Preserves local data not yet in cloud
-  const smartMerge = (local: any[], remote: any[]) => {
-    if (!remote || remote.length === 0) return local; // Preservation rule
-    const remoteIds = new Set(remote.map(r => r.id));
-    const localOnly = local.filter(l => !remoteIds.has(l.id));
-    return [...remote, ...localOnly];
+  const sanitize = (data: any[]) => {
+    return data.map(item => {
+      const cleanItem = JSON.parse(JSON.stringify(item));
+      // استبعاد الحقول غير الموجودة في قاعدة البيانات لحل خطأ Sync Error
+      delete cleanItem.pitch;
+      delete cleanItem.location;
+      
+      Object.keys(cleanItem).forEach(key => {
+        if (cleanItem[key] === undefined || cleanItem[key] === "") {
+          cleanItem[key] = null;
+        }
+      });
+      return cleanItem;
+    });
   };
 
-  // Data Fetching Function (Optimized Smart Pull)
   const fetchData = useCallback(async () => {
     if (!state.currentUser) return;
     
     setIsSyncing(true);
+    setSyncStatus('syncing');
     try {
       const [
-        { data: cats, error: e1 },
-        { data: ppl, error: e2 },
-        { data: sess, error: e3 },
-        { data: mtch, error: e4 },
-        { data: attn, error: e5 },
-        { data: usrs, error: e6 }
+        { data: cats },
+        { data: ppl },
+        { data: sess },
+        { data: mtch },
+        { data: attn },
+        { data: usrs }
       ] = await Promise.all([
         supabase.from('categories').select('name'),
         supabase.from('people').select('*'),
@@ -99,70 +118,76 @@ const App: React.FC = () => {
         supabase.from('users').select('*'),
       ]);
 
-      if (e1 || e2 || e3 || e4 || e5 || e6) throw new Error("Cloud Error");
-
       setState(prev => ({
         ...prev,
         categories: (cats && cats.length > 0) ? cats.map(c => c.name) : prev.categories,
-        people: smartMerge(prev.people, ppl || []),
-        sessions: smartMerge(prev.sessions, sess || []),
-        matches: smartMerge(prev.matches, mtch || []),
-        attendance: smartMerge(prev.attendance, attn || []),
-        users: smartMerge(prev.users, usrs || [])
+        people: ppl || [],
+        sessions: sess || [],
+        matches: mtch || [],
+        attendance: attn || [],
+        users: usrs || prev.users
       }));
-      console.log("✅ Smart merge completed from Supabase");
-    } catch (error) {
+      setSyncStatus('synced');
+    } catch (error: any) {
       console.error("❌ Fetch Error:", error);
-      addLog('خطأ في جلب البيانات', 'فشل الاتصال بالسحاب، سيتم استخدام البيانات المحلية حالياً.', 'error');
+      setSyncStatus('error');
+      addLog('خطأ في جلب البيانات', error.message || 'فشل الوصول للسحاب.', 'error');
     } finally {
       setIsSyncing(false);
     }
   }, [state.currentUser, addLog]);
 
-  // Data Pushing Function (Secure Upsert)
   const pushData = useCallback(async (updatedState: AppState) => {
     if (!updatedState.currentUser) return;
 
+    setSyncStatus('syncing');
     try {
-      setIsSyncing(true);
-      const results = await Promise.allSettled([
-        updatedState.people.length > 0 ? supabase.from('people').upsert(updatedState.people, { onConflict: 'id' }) : Promise.resolve(),
-        updatedState.sessions.length > 0 ? supabase.from('sessions').upsert(updatedState.sessions, { onConflict: 'id' }) : Promise.resolve(),
-        updatedState.matches.length > 0 ? supabase.from('matches').upsert(updatedState.matches, { onConflict: 'id' }) : Promise.resolve(),
-        updatedState.attendance.length > 0 ? supabase.from('attendance').upsert(updatedState.attendance, { onConflict: 'id' }) : Promise.resolve(),
-        updatedState.users.length > 0 ? supabase.from('users').upsert(updatedState.users, { onConflict: 'id' }) : Promise.resolve()
-      ]);
+      const tables = [
+        { name: 'people', data: updatedState.people },
+        { name: 'sessions', data: updatedState.sessions },
+        { name: 'matches', data: updatedState.matches },
+        { name: 'attendance', data: updatedState.attendance },
+        { name: 'users', data: updatedState.users }
+      ];
 
-      const failed = results.some(r => r.status === 'rejected');
-      if (failed) {
-        addLog('فشلت المزامنة', 'البيانات محفوظة في جهازك فقط، يرجى التحقق من الإنترنت.', 'warning');
-      } else {
-        console.log("✅ Cloud Sync Successful");
+      for (const table of tables) {
+        if (table.data.length > 0) {
+          const { error } = await supabase
+            .from(table.name)
+            .upsert(sanitize(table.data), { onConflict: 'id' });
+          
+          if (error) {
+            const msg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+            throw new Error(`${table.name}: ${msg}`);
+          }
+        }
       }
-    } catch (error) {
-      console.error("❌ Global Push Error:", error);
-      addLog('خطأ تقني في المزامنة', 'لم نتمكن من الوصول لقاعدة البيانات السحابية.', 'error');
-    } finally {
-      setIsSyncing(false);
+
+      setSyncStatus('synced');
+    } catch (error: any) {
+      setSyncStatus('error');
+      const errorMsg = error.message || 'خطأ غير معروف في السحاب';
+      addLog('فشل مزامنة الجداول', errorMsg, 'error');
+      console.error("❌ Sync Error:", errorMsg);
     }
   }, [addLog]);
 
-  // Initial fetch and periodical sync
   useEffect(() => {
     if (state.currentUser) {
       fetchData();
-      const interval = setInterval(fetchData, 60000); // 1 minute interval for passive sync
-      return () => clearInterval(interval);
     }
   }, [state.currentUser, fetchData]);
 
-  // State update wrapper
-  const updateStateAndSync = (updater: (prev: AppState) => AppState) => {
+  const updateStateAndSync = async (updater: (prev: AppState) => AppState) => {
+    let nextState: AppState | null = null;
     setState(prev => {
-      const newState = updater(prev);
-      pushData(newState); // Push immediately on change
-      return newState;
+      nextState = updater(prev);
+      return nextState;
     });
+
+    if (nextState) {
+      await pushData(nextState);
+    }
   };
 
   const handleLogout = () => {
@@ -224,17 +249,25 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all duration-500 ${
+              syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+              syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-700 animate-pulse' :
+              'bg-orange-50 border-orange-200 text-orange-700'
+            }`}>
+               {syncStatus === 'synced' && <CloudCheck size={18} />}
+               {syncStatus === 'error' && <CloudOff size={18} />}
+               {syncStatus === 'syncing' && <Cloud size={18} className="animate-bounce" />}
+               <span className="text-[10px] font-black uppercase whitespace-nowrap hidden sm:inline">
+                 {syncStatus === 'synced' ? 'مزامنة كاملة' : syncStatus === 'error' ? 'خطأ بالربط' : 'جاري الرفع...'}
+               </span>
+            </div>
+
             <div className="hidden md:flex flex-col items-end px-4 border-r-2 border-orange-500">
-              <span className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">المسؤول عن النظام</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">المسؤول الحالي</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-black text-[#001F3F]">{state.currentUser.username}</span>
                 <User size={14} className="text-orange-600" />
               </div>
-            </div>
-
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${isSyncing ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-100'}`}>
-               <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-orange-500 animate-ping' : 'bg-emerald-500'}`}></div>
-               <span className="text-[10px] font-black text-slate-700 uppercase">{isSyncing ? 'مزامنة نشطة' : 'سحابة مربوطة'}</span>
             </div>
 
             <button onClick={fetchData} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
@@ -249,7 +282,7 @@ const App: React.FC = () => {
               {showNotifications && (
                 <div className="absolute left-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border-2 border-slate-900 overflow-hidden z-[100] text-right">
                   <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                    <h3 className="font-black text-xs uppercase text-slate-800">مركز التنبيهات</h3>
+                    <h3 className="font-black text-xs uppercase text-slate-800">تنبيهات النظام</h3>
                     <button onClick={() => setState(p => ({ ...p, notifications: p.notifications.map(n => ({...n, isRead: true})) }))} className="text-[10px] text-blue-600 font-bold">قراءة الكل</button>
                   </div>
                   <div className="max-h-96 overflow-y-auto custom-scrollbar">
@@ -284,7 +317,7 @@ const App: React.FC = () => {
 
         <footer className="bg-white/95 backdrop-blur-md border-t py-1.5 px-5 flex justify-between items-center no-print z-40">
            <p className="text-[7px] font-black text-slate-500 tracking-tighter">نادي الكرامة الرياضي - مكتب كرة القدم المركزي</p>
-           <p className="text-[7px] font-black text-[#001F3F] border-r-2 border-orange-500 pr-2">By: Izzat Amer Al-Shikha | النسخة المحمية (Smart Merge Activated)</p>
+           <p className="text-[7px] font-black text-[#001F3F] border-r-2 border-orange-500 pr-2">By: Izzat Amer Al-Shikha | النسخة السحابية الموحدة (V4)</p>
         </footer>
       </main>
       

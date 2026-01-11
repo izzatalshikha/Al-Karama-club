@@ -3,7 +3,7 @@ export type Category = string;
 export type Role = 'لاعب' | 'مدرب' | 'مساعد مدرب' | 'مدرب حراس' | 'مدرب لياقة' | 'إداري' | 'طبيب' | 'معالج' | 'منسق إعلامي' | 'مرافق';
 export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب' | 'غياب بعذر';
 export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد';
-export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'مباراة دولية';
+export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية' | 'مباراة دولية';
 
 export interface AppNotification {
   id: string;
@@ -16,7 +16,7 @@ export interface AppNotification {
 
 export interface Person {
   id: string;
-  name: string; // الاسم الثنائي
+  name: string;
   fatherName: string;
   motherName: string;
   birthDate: string;
@@ -28,23 +28,16 @@ export interface Person {
   address: string;
   category: Category;
   role: Role;
-  number?: number; // رقم القميص
+  number?: number;
   phone?: string;
   joinDate: string;
-  
-  // Contracts
   contractStart?: string;
   contractEnd?: string;
-  contractDuration?: string;
   contractValue?: string;
-
-  // Medical & Discipline
   medicalHistory?: string;
   injuries?: string;
   penalties?: string;
   notes?: string;
-
-  // Academic (for staff)
   coachingCertificate?: string;
   academicDegree?: string;
 }
@@ -66,7 +59,7 @@ export interface TrainingSession {
   category: Category;
   date: string;
   time: string;
-  location: string;
+  pitch?: string;
   objective: string;
   isCompleted?: boolean;
 }
@@ -74,7 +67,7 @@ export interface TrainingSession {
 export interface MatchEvent {
   id: string;
   type: 'goal' | 'assist' | 'yellow' | 'red' | 'injury';
-  player: string;
+  player: string; // الاسم أو ID
   minute: string;
   note?: string;
 }
@@ -84,7 +77,7 @@ export interface Match {
   category: Category;
   matchType: MatchType;
   opponent: string;
-  location: string;
+  pitch?: string;
   date: string;
   time: string;
   advancePayment: string;
@@ -93,8 +86,15 @@ export interface Match {
   opponentScore: string;
   events: MatchEvent[];
   lineup: {
-    starters: { name: string; number: string }[];
-    subs: { name: string; number: string }[];
+    starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
+    subs: { 
+      playerId: string; 
+      name: string; 
+      number: string; 
+      minutesPlayed?: string;
+      substitutionMinute?: string;
+      replacedPlayerId?: string;
+    }[];
     staff: { role: string; name: string }[];
     captain: string;
   };
@@ -118,6 +118,5 @@ export interface AppState {
   categories: Category[];
   currentUser: AppUser | null;
   notifications: AppNotification[];
-  lastSyncTimestamp?: number;
   globalCategoryFilter: Category | 'الكل';
 }

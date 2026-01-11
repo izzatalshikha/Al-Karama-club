@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { ShieldCheck, CloudUpload, Trash2, Key, Info, UserPlus, X, Edit2, ShieldAlert, Layers, Plus, Database } from 'lucide-react';
+import { ShieldCheck, CloudUpload, Trash2, Key, Info, UserPlus, X, Edit2, ShieldAlert, Layers, Plus, Database, Lock, Eye, EyeOff } from 'lucide-react';
 import { AppState, AppUser, UserRole, Category } from '../types';
+import { generateUUID } from '../App';
 
 interface SettingsProps {
   state: AppState;
@@ -13,39 +14,45 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newCatName, setNewCatName] = useState('');
+  const [showPassInForm, setShowPassInForm] = useState(false);
   
+  const currentUser = state.currentUser;
+  const isGlobalManager = currentUser?.role === 'مدير';
+
   const [userFormData, setUserFormData] = useState<Partial<AppUser>>({
     username: '',
-    role: 'إداري فئة'
+    role: 'إداري فئة',
+    password: '',
+    restrictedCategory: ''
   });
 
   const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد'];
 
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userFormData.username) return;
+    if (!userFormData.username || !userFormData.password) return alert('يرجى إكمال كافة البيانات المطلوبة');
 
     if (editingUserId) {
       setState(prev => ({
         ...prev,
         users: prev.users.map(u => u.id === editingUserId ? { ...u, ...userFormData } as AppUser : u)
       }));
-      addLog?.('تعديل صلاحية مستخدم', `تم تحديث بيانات المستخدم: ${userFormData.username}`);
+      addLog?.('تعديل صلاحية مستخدم', `تم تحديث بيانات المستخدم: ${userFormData.username}`, 'info');
     } else {
       const newUser: AppUser = {
-        id: Math.random().toString(36).substr(2, 9),
-        username: userFormData.username!,
+        id: generateUUID(),
+        username: userFormData.username!.trim(),
         role: userFormData.role as UserRole,
-        password: 'KSC' + (Math.floor(Math.random() * 9000) + 1000),
-        restrictedCategory: userFormData.role === 'مدير' ? undefined : userFormData.restrictedCategory
+        password: userFormData.password!,
+        restrictedCategory: userFormData.role === 'إداري فئة' ? userFormData.restrictedCategory : undefined
       };
       setState(prev => ({ ...prev, users: [...prev.users, newUser] }));
-      addLog?.('إنشاء حساب مستخدم', `تم إنشاء مستخدم جديد بنجاح: ${newUser.username}`, 'success');
+      addLog?.('إنشاء حساب مستخدم', `تم إنشاء مستخدم جديد بنجاح: ${newUser.username} برتبة ${newUser.role}`, 'success');
     }
 
     setIsUserModalOpen(false);
     setEditingUserId(null);
-    setUserFormData({ username: '', role: 'إداري فئة' });
+    setUserFormData({ username: '', role: 'إداري فئة', password: '', restrictedCategory: '' });
   };
 
   const handleAddCategory = () => {
@@ -75,154 +82,163 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
     addLog?.('تصدير قاعدة البيانات', 'تم إنشاء وتنزيل نسخة احتياطية شاملة للنظام.');
   };
 
+  const deleteUser = (id: string, name: string) => {
+    if (name.toUpperCase() === 'IZZAT') return alert('لا يمكن حذف الحساب الجذري للنظام.');
+    if (confirm(`هل أنت متأكد من حذف حساب ${name}؟`)) {
+      setState(p => ({ ...p, users: p.users.filter(u => u.id !== id) }));
+      addLog?.('حذف مستخدم', `تم حذف حساب المستخدم: ${name}`, 'error');
+    }
+  };
+
+  const labelClass = "text-[10px] font-black text-slate-500 mr-2 uppercase block mb-1.5";
+  const fieldClass = "w-full bg-slate-50 border-2 border-slate-200 rounded-xl py-3 px-4 font-black text-slate-800 outline-none focus:border-orange-600 transition-all";
+
   return (
     <div className="max-w-6xl mx-auto space-y-12 pb-24">
-      {/* Category Control */}
+      {isGlobalManager && (
+        <div className="bg-white p-10 rounded-[3rem] shadow-sm border-2 border-slate-900">
+           <div className="flex justify-between items-center mb-8">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                  <ShieldCheck size={28} className="text-[#001F3F]" /> مركز التحكم في الحسابات والأدوار
+                </h3>
+                <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-widest">إدارة الدخول، الصلاحيات، وكلمات السر (خاص بالمديرين)</p>
+              </div>
+              <button onClick={() => { setEditingUserId(null); setIsUserModalOpen(true); }} className="bg-[#001F3F] text-white px-6 py-3 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg border-b-4 border-black">
+                <UserPlus size={18}/> إضافة حساب جديد
+              </button>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {state.users.map(user => (
+                <div key={user.id} className="bg-slate-50 p-6 rounded-[2rem] border-2 border-slate-200 relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 w-1.5 h-full bg-[#001F3F]"></div>
+                   <div className="flex justify-between items-start mb-4">
+                      <div className="w-10 h-10 bg-white border border-slate-200 rounded-xl flex items-center justify-center">
+                         <Key size={18} className="text-orange-600"/>
+                      </div>
+                      <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase border ${user.role === 'مدير' ? 'bg-orange-600 text-white border-orange-700' : user.role === 'مشاهد' ? 'bg-slate-200 text-slate-600' : 'bg-[#001F3F] text-white border-black'}`}>
+                        {user.role}
+                      </span>
+                   </div>
+                   <h4 className="font-black text-lg text-slate-900">{user.username}</h4>
+                   <p className="text-[9px] font-black text-slate-400 mt-1 uppercase tracking-tighter">
+                      {user.restrictedCategory ? `مخصص لفئة: ${user.restrictedCategory}` : 'صلاحيات وصول شاملة'}
+                   </p>
+                   <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-center">
+                      <p className="text-[10px] font-black text-slate-300">PASS: {user.password ? '****' : 'N/A'}</p>
+                      <div className="flex gap-2">
+                         <button onClick={() => { setEditingUserId(user.id); setUserFormData(user); setIsUserModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={16}/></button>
+                         {user.username.toUpperCase() !== 'IZZAT' && (
+                           <button onClick={() => deleteUser(user.id, user.username)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                         )}
+                      </div>
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+      )}
+
       <div className="bg-white p-12 rounded-[4rem] shadow-sm border border-slate-100">
-        <h3 className="text-3xl font-black text-slate-800 mb-10 flex items-center gap-6">
-          <div className="p-4 bg-blue-50 text-blue-900 rounded-[1.5rem] shadow-lg shadow-blue-100"><Layers size={28} /></div>
-          إدارة الفئات الرياضية بنظام النادي
-        </h3>
+        <h3 className="text-3xl font-black text-slate-800 mb-10">إدارة الفئات الرياضية</h3>
         <div className="flex flex-col md:flex-row gap-6 mb-12">
           <input 
             type="text" 
             value={newCatName} 
             onChange={e => setNewCatName(e.target.value)}
-            placeholder="ادخل اسم الفئة الجديدة هنا..."
-            className="flex-1 bg-slate-50 border-4 border-slate-100 rounded-[2rem] p-6 font-black text-2xl outline-none focus:ring-8 focus:ring-blue-900/5 focus:bg-white focus:border-blue-900 transition-all placeholder:text-slate-300"
+            placeholder="مثال: فئة البراعم.."
+            className="flex-1 bg-slate-50 border-4 border-slate-100 rounded-[2rem] p-6 font-black text-2xl outline-none focus:border-orange-600 transition-all"
           />
           <button 
             onClick={handleAddCategory}
-            className="bg-[#001F3F] text-white px-12 py-6 rounded-[2rem] font-black text-xl hover:bg-black transition-all flex items-center justify-center gap-4 shadow-2xl shadow-blue-900/20 group"
+            disabled={!isGlobalManager}
+            className="bg-[#001F3F] text-white px-12 py-6 rounded-[2rem] font-black disabled:opacity-30"
           >
-            <Plus size={32} className="group-hover:rotate-90 transition-transform" /> إضافة الفئة الرياضية
+            تثبيت الفئة الجديدة
           </button>
         </div>
         <div className="flex flex-wrap gap-4">
-          {state.categories.map(c => (
-            <div key={c} className="group flex items-center gap-6 bg-slate-50 px-8 py-4 rounded-3xl border-4 border-transparent hover:border-blue-900 hover:bg-white transition-all shadow-sm">
-              <span className="font-black text-xl text-slate-800">{c}</span>
-              <button onClick={() => removeCategory(c)} className="text-red-300 hover:text-red-600 transition-colors transform hover:scale-125">
-                <Trash2 size={22} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* User Management */}
-      <div className="bg-white p-12 rounded-[4rem] shadow-sm border border-slate-100">
-        <div className="flex justify-between items-center mb-12">
-          <h3 className="text-3xl font-black text-slate-800 flex items-center gap-6">
-            <div className="p-4 bg-orange-50 text-orange-600 rounded-[1.5rem] shadow-lg shadow-orange-100"><ShieldCheck size={28} /></div>
-            إدارة صلاحيات المستخدمين والكوادر
-          </h3>
-          <button 
-            onClick={() => { setEditingUserId(null); setUserFormData({ username: '', role: 'إداري فئة' }); setIsUserModalOpen(true); }}
-            className="bg-orange-600 text-white px-10 py-5 rounded-[2rem] font-black text-lg flex items-center gap-4 hover:bg-black transition-all shadow-2xl shadow-orange-200 group"
-          >
-            <UserPlus size={28} className="group-hover:scale-110 transition-transform" /> إضافة مستخدم جديد
-          </button>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {state.users.map(user => (
-            <div key={user.id} className="group flex items-center justify-between p-8 bg-slate-50 rounded-[3rem] border-4 border-transparent hover:border-orange-500 hover:bg-white transition-all shadow-sm">
-              <div className="flex items-center gap-6">
-                <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-xl ${user.role === 'مدير' ? 'bg-[#001F3F] text-white' : 'bg-orange-100 text-orange-600'}`}>
-                  {user.username.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-black text-2xl text-slate-800">{user.username}</p>
-                  <div className="flex items-center gap-3 mt-1.5">
-                    <span className={`text-[10px] font-black px-4 py-1.5 rounded-full shadow-sm ${user.role === 'مدير' ? 'bg-blue-50 text-blue-900' : 'bg-orange-50 text-orange-700'}`}>
-                      {user.role}
-                    </span>
-                    {user.restrictedCategory && (
-                      <span className="text-[10px] bg-slate-200 text-slate-600 px-4 py-1.5 rounded-full font-black border border-slate-300 uppercase tracking-widest">
-                        فئة: {user.restrictedCategory}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                <button onClick={() => { setEditingUserId(user.id); setUserFormData(user); setIsUserModalOpen(true); }} className="p-4 bg-white text-slate-400 hover:text-blue-900 rounded-2xl shadow-sm border border-slate-100 transition-all">
-                  <Edit2 size={22} />
-                </button>
-                {user.username !== 'IZZAT' && (
-                  <button onClick={() => { if(confirm('هل أنت متأكد من حذف هذا الحساب؟')) { setState(p => ({...p, users: p.users.filter(u => u.id !== user.id)})); addLog?.('حذف حساب', `تم مسح حساب المستخدم: ${user.username}`, 'error'); } }} className="p-4 bg-red-50 text-red-300 hover:bg-red-600 hover:text-white rounded-2xl transition-all shadow-sm">
-                    <Trash2 size={22} />
-                  </button>
+           {state.categories.map(cat => (
+             <div key={cat} className="bg-slate-50 border-2 border-slate-200 px-6 py-3 rounded-2xl flex items-center gap-4 group">
+                <span className="font-black text-slate-700">{cat}</span>
+                {isGlobalManager && (
+                  <button onClick={() => removeCategory(cat)} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><X size={16}/></button>
                 )}
-              </div>
-            </div>
-          ))}
+             </div>
+           ))}
         </div>
       </div>
 
-      {/* System Actions & Backup */}
-      <div className="bg-[#001F3F] p-16 rounded-[5rem] shadow-[0_40px_80px_-20px_rgba(0,31,63,0.4)] relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-500 to-blue-500"></div>
-        <h3 className="text-3xl font-black text-white mb-10 flex items-center gap-6">
-          <div className="p-4 bg-white/10 text-orange-400 rounded-[1.5rem]"><Database size={32} /></div>
-          مركز صيانة النظام والنسخ الاحتياطي
-        </h3>
-        <div className="bg-white/5 backdrop-blur-3xl p-10 rounded-[3rem] border-2 border-white/10 flex gap-8 mb-12">
-          <Info className="text-orange-500 shrink-0" size={32} />
-          <p className="text-base text-blue-100 font-bold leading-relaxed">
-            يُرجى الاحتفاظ بنسخة احتياطية أسبوعية من بيانات النادي لضمان أقصى درجات الأمان. 
-            <br/>
-            <span className="text-orange-500 font-black mt-3 block text-xl">كلمة المرور الافتراضية للمدير: KSC@2026</span>
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-8">
-          <button onClick={exportData} className="flex-1 bg-white text-[#001F3F] font-black py-8 rounded-[2.5rem] hover:bg-orange-500 hover:text-white transition-all shadow-2xl flex items-center justify-center gap-5 text-2xl group">
-            <CloudUpload size={36} className="group-hover:-translate-y-2 transition-transform" /> تصدير قاعدة بيانات النادي (JSON)
-          </button>
-          <button onClick={() => { if(confirm('تصفير النظام؟ سيتم مسح كافة البيانات بشكل نهائي.')) { localStorage.clear(); window.location.reload(); } }} className="sm:w-1/4 bg-red-600/20 text-red-400 font-black py-8 rounded-[2.5rem] hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-4 text-xl">
-            <ShieldAlert size={28} /> تصفير شامل
-          </button>
+      <div className="bg-[#001F3F] p-16 rounded-[5rem] shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32"></div>
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
+           <div className="text-white">
+              <h3 className="text-3xl font-black mb-2">نسخة الحماية والنسخ الاحتياطي</h3>
+              <p className="font-black text-orange-400 uppercase tracking-widest text-sm">تصدير كافة البيانات المسجلة على النظام في ملف واحد</p>
+           </div>
+           <button onClick={exportData} className="bg-white text-[#001F3F] font-black px-12 py-6 rounded-[2.5rem] flex items-center justify-center gap-5 text-2xl shadow-xl hover:scale-105 transition-all">
+             <Database size={32}/> تصدير قاعدة البيانات (JSON)
+           </button>
         </div>
       </div>
 
-      {/* User Modal */}
       {isUserModalOpen && (
-        <div className="fixed inset-0 bg-[#001F3F]/90 backdrop-blur-3xl flex items-center justify-center z-[200] p-6 no-print">
-          <div className="bg-white rounded-[5rem] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border-[10px] border-white">
-            <div className="p-12 border-b bg-slate-50 flex justify-between items-center rounded-t-[4rem]">
-              <h3 className="text-3xl font-black text-slate-800">{editingUserId ? 'تعديل الصلاحيات' : 'تسجيل حساب جديد'}</h3>
-              <button onClick={() => setIsUserModalOpen(false)} className="bg-slate-200 p-5 rounded-[2rem] text-slate-600 hover:rotate-90 transition-transform"><X size={32} /></button>
+        <div className="fixed inset-0 bg-[#001F3F]/90 backdrop-blur-3xl flex items-center justify-center z-[500] p-6 no-print overflow-y-auto">
+          <div className="bg-white rounded-[4rem] w-full max-w-xl shadow-2xl border-[10px] border-white p-12">
+            <div className="flex justify-between items-center mb-10">
+               <h3 className="text-2xl font-black text-[#001F3F] uppercase tracking-tighter">إعدادات دخول الحساب</h3>
+               <button onClick={() => setIsUserModalOpen(false)} className="bg-slate-100 p-3 rounded-full"><X/></button>
             </div>
-            <form onSubmit={handleSaveUser} className="p-12 space-y-10">
-              <div className="space-y-3">
-                <label className="text-[12px] font-black text-slate-500 mr-2 uppercase tracking-widest">اسم المستخدم (للدخول)</label>
-                <input required type="text" disabled={userFormData.username === 'IZZAT'} value={userFormData.username || ''} onChange={e => setUserFormData({ ...userFormData, username: e.target.value })}
-                  className="w-full bg-slate-50 border-4 border-slate-100 rounded-[2rem] py-6 px-10 font-black text-2xl text-slate-800 outline-none focus:ring-8 focus:ring-blue-900/5 focus:bg-white focus:border-blue-900 transition-all disabled:opacity-50" />
+            <form onSubmit={handleSaveUser} className="space-y-6">
+              <div>
+                <label className={labelClass}>اسم المستخدم (الاسم الحقيقي أو الكنية)</label>
+                <input required type="text" value={userFormData.username || ''} onChange={e => setUserFormData({ ...userFormData, username: e.target.value })}
+                  className={fieldClass} placeholder="مثال: Ahmed_KSC" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <label className="text-[12px] font-black text-slate-500 mr-2 uppercase tracking-widest">نوع الحساب</label>
-                  <select className="w-full bg-slate-50 border-4 border-slate-100 rounded-[2rem] p-6 font-black text-xl outline-none focus:border-blue-900"
-                    value={userFormData.role} onChange={e => setUserFormData({ ...userFormData, role: e.target.value as UserRole, restrictedCategory: e.target.value === 'مدير' ? undefined : userFormData.restrictedCategory })}>
-                    {roles.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
+
+              <div>
+                <label className={labelClass}>كلمة المرور الخاصة بالحساب</label>
+                <div className="relative">
+                   <input required type={showPassInForm ? "text" : "password"} value={userFormData.password || ''} onChange={e => setUserFormData({ ...userFormData, password: e.target.value })}
+                    className={fieldClass} placeholder="اكتب كلمة سر قوية.." />
+                   <button type="button" onClick={() => setShowPassInForm(!showPassInForm)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      {showPassInForm ? <EyeOff size={20}/> : <Eye size={20}/>}
+                   </button>
                 </div>
-                {userFormData.role !== 'مدير' && (
-                  <div className="space-y-3 animate-in slide-in-from-top-4 duration-300">
-                    <label className="text-[12px] font-black text-slate-500 mr-2 uppercase tracking-widest">الفئة المسؤولة</label>
-                    <select className="w-full bg-slate-50 border-4 border-slate-100 rounded-[2rem] p-6 font-black text-xl outline-none focus:border-orange-500"
-                      value={userFormData.restrictedCategory || ''} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value as Category || undefined })}>
-                      <option value="">جميع الفئات</option>
-                      {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <label className={labelClass}>رتبة الصلاحية</label>
+                    <select className={fieldClass}
+                      value={userFormData.role} onChange={e => setUserFormData({ ...userFormData, role: e.target.value as UserRole, restrictedCategory: '' })}>
+                      {roles.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                  </div>
-                )}
+                 </div>
+                 {userFormData.role === 'إداري فئة' && (
+                    <div>
+                      <label className={labelClass}>الفئة المخصصة</label>
+                      <select required className={fieldClass}
+                        value={userFormData.restrictedCategory} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value })}>
+                        <option value="">-- اختر الفئة --</option>
+                        {/* Fixed the incorrect map call that used 'cat' instead of 'c' */}
+                        {state.categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                    </div>
+                 )}
               </div>
-              <div className="flex gap-6 pt-6">
-                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 bg-slate-100 text-slate-600 font-black py-6 rounded-[2.5rem] text-xl hover:bg-slate-200 transition-colors">إلغاء</button>
-                <button type="submit" className="flex-[2] bg-[#001F3F] text-white font-black py-6 rounded-[2.5rem] shadow-2xl hover:bg-black transition-colors text-2xl">تثبيت البيانات</button>
+
+              <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-100 flex items-start gap-3">
+                 <ShieldAlert className="text-blue-600 shrink-0" size={20}/>
+                 <p className="text-[10px] font-black text-blue-900 leading-relaxed uppercase">
+                    تنبيه: "إداري الفئة" سيقتصر وصوله فقط على البيانات الخاصة بفئته المحددة أعلاه، ولن يتمكن من تعديل الحضور بعد رصده للمرة الأولى.
+                 </p>
               </div>
+
+              <button type="submit" className="w-full bg-[#001F3F] text-white font-black py-6 rounded-[2.5rem] shadow-2xl text-2xl hover:bg-black transition-all">
+                {editingUserId ? 'تحديث بيانات الحساب' : 'تثبيت الحساب في النظام'}
+              </button>
             </form>
           </div>
         </div>
