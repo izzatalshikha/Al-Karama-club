@@ -303,7 +303,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 {!isViewer && (
                   <div className="flex gap-2">
                     <button onClick={() => { setEditingId(person.id); setFormData(person); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-900 hover:bg-[#001F3F] hover:text-white rounded-xl border-2 border-slate-900 transition-all shadow-sm"><Plus size={16}/></button>
-                    <button onClick={async () => { if(confirm(`هل أنت متأكد من حذف ${person.name}؟`)) { try { const { error } = await supabase.from('people').delete().eq('id', person.id); if (error) throw error; setState(p => ({...p, people: p.people.filter(x => x.id !== person.id)})); addLog?.('حذف عضو', `تم مسح ملف: ${person.name}`, 'error'); } catch (e: any) { alert("حدث خطأ أثناء الحذف من السحاب: " + (e.message || e)); } } }} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl border-2 border-red-900 transition-all shadow-sm"><Trash2 size={16}/></button>
+                    <button onClick={async () => { if(confirm(`هل أنت متأكد من حذف ${person.name}؟`)) { await supabase.from('people').delete().eq('id', person.id); setState(p => ({...p, people: p.people.filter(x => x.id !== person.id)})); addLog?.('حذف عضو', `تم مسح ملف: ${person.name}`, 'error'); } }} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl border-2 border-red-900 transition-all shadow-sm"><Trash2 size={16}/></button>
                   </div>
                 )}
              </div>

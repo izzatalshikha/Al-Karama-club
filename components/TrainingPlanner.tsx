@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo } from 'react';
-// Renamed Calendar to Calendar as CalendarIcon to match its usage in the component and other parts of the app
 import { Calendar as CalendarIcon, MapPin, Clock, Plus, Trash2, Edit, X, Printer, FileText, CheckCircle, ShieldCheck, Lock, AlertCircle, Map, ChevronRight, BarChart3, PieChart, Users, User, TrendingUp, CalendarDays } from 'lucide-react';
 import { AppState, TrainingSession, Category, Person, AttendanceRecord } from '../types';
 import { generateUUID, supabase } from '../App';
@@ -380,7 +379,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                         {canModifyConfig && (
                           <div className="flex gap-1">
                             <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all"><Edit size={14}/></button>
-                            <button onClick={async () => { if(confirm('حذف التمرين؟')) { try { const { error } = await supabase.from('sessions').delete().eq('id', session.id); if (error) throw error; setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); addLog?.('حذف تمرين', 'تم إزالة الحصة التدريبية من الأجندة', 'error'); } catch (e: any) { alert("خطأ في الحذف: " + (e.message || e)); } } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
+                            <button onClick={async () => { if(confirm('حذف التمرين؟')) { await supabase.from('sessions').delete().eq('id', session.id); setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); addLog?.('حذف تمرين', 'تم إزالة الحصة التدريبية من الأجندة', 'error'); } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
                           </div>
                         )}
                      </div>
@@ -401,7 +400,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
               );
             })}
             {filteredSessions.length === 0 && (
-               <div className="col-span-full py-20 text-center opacity-30 italic font-black text-sm uppercase tracking-widest">لا توجد تمارين مجدولة حالياً لهذه الفئة</div>
+               <div className="col-span-full py-20 text-center opacity-30 italic font-black text-sm uppercase tracking-widest">لا توجد تمارين تمارين مجدولة حالياً لهذه الفئة</div>
             )}
           </div>
         </>

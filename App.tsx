@@ -83,10 +83,7 @@ const App: React.FC = () => {
   const sanitize = (data: any[]) => {
     return data.map(item => {
       const cleanItem = JSON.parse(JSON.stringify(item));
-      // استبعاد الحقول غير الموجودة في قاعدة البيانات لحل خطأ Sync Error
-      delete cleanItem.pitch;
-      delete cleanItem.location;
-      
+      // لا يتم حذف الحقول الأساسية هنا لضمان مطابقتها لقاعدة البيانات
       Object.keys(cleanItem).forEach(key => {
         if (cleanItem[key] === undefined || cleanItem[key] === "") {
           cleanItem[key] = null;
@@ -118,6 +115,7 @@ const App: React.FC = () => {
         supabase.from('users').select('*'),
       ]);
 
+      // استبدال الحالة المحلية بالكامل ببيانات السحاب لضمان التزامن ومنع عودة المحذوفات
       setState(prev => ({
         ...prev,
         categories: (cats && cats.length > 0) ? cats.map(c => c.name) : prev.categories,
@@ -136,6 +134,24 @@ const App: React.FC = () => {
       setIsSyncing(false);
     }
   }, [state.currentUser, addLog]);
+
+  // الاشتراك في المزامنة اللحظية Realtime
+  useEffect(() => {
+    if (!state.currentUser) return;
+
+    const channels = ['people', 'sessions', 'matches', 'attendance', 'users'].map(table => 
+      supabase
+        .channel(`public:${table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: table }, () => {
+          fetchData(); // تحديث تلقائي عند حدوث أي تغيير خارجي (إضافة، تعديل، حذف)
+        })
+        .subscribe()
+    );
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, [state.currentUser, fetchData]);
 
   const pushData = useCallback(async (updatedState: AppState) => {
     if (!updatedState.currentUser) return;
@@ -292,7 +308,7 @@ const App: React.FC = () => {
                       state.notifications.map(n => (
                         <div key={n.id} className={`p-4 border-b hover:bg-slate-50 transition-colors ${!n.isRead ? 'bg-orange-50/50' : ''}`}>
                           <p className="text-[11px] font-black text-slate-700 leading-tight">{n.message}</p>
-                          <span className="text-[9px] text-slate-400 mt-1 block">{new Date(n.timestamp).toLocaleTimeString('ar-SY')}</span>
+                          <span className="text-[9px] text-slate-400 mt-1 block">{new Date(n.timestamp).toLocaleTimeString('ar-SY')}</p>
                         </div>
                       ))
                     )}
