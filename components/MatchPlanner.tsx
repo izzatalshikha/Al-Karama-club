@@ -6,7 +6,7 @@ import {
   Printer, FileText, Users, Save, ShieldAlert, BookOpen, Info, Timer, LogOut, LogIn, Crown, Map, ChevronRight, CheckCircle
 } from 'lucide-react';
 import { AppState, Match, MatchType, MatchEvent, Person } from '../types';
-import { generateUUID } from '../App';
+import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
 
 interface MatchPlannerProps {
@@ -332,7 +332,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                   <button onClick={() => setActiveMatch(m)} className="flex-1 bg-[#001F3F] text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 hover:bg-black transition-all">
                     <BookOpen size={16}/> التشكيل والتقرير
                   </button>
-                  <button onClick={() => { if(confirm('حذف المباراة؟')) setState(p => ({...p, matches: p.matches.filter(x => x.id !== m.id)})) }} className="p-3 bg-red-50 text-red-600 rounded-xl border-2 border-red-900 hover:bg-red-600 hover:text-white transition-all"><Trash2 size={16}/></button>
+                  <button onClick={async () => { if(confirm('حذف المباراة؟')) { try { const { error } = await supabase.from('matches').delete().eq('id', m.id); if (error) throw error; setState(p => ({...p, matches: p.matches.filter(x => x.id !== m.id)})); } catch (e: any) { alert("حدث خطأ أثناء الحذف: " + (e.message || e)); } } }} className="p-3 bg-red-50 text-red-600 rounded-xl border-2 border-red-900 hover:bg-red-600 hover:text-white transition-all"><Trash2 size={16}/></button>
                 </div>
                 <button 
                   onClick={() => toggleMatchComplete(m.id, !!m.isCompleted)}

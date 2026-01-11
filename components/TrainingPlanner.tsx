@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
-import { Calendar, MapPin, Clock, Plus, Trash2, Edit, X, Printer, FileText, CheckCircle, ShieldCheck, Lock, AlertCircle, Map, ChevronRight, BarChart3, PieChart, Users, User, TrendingUp, CalendarDays } from 'lucide-react';
+// Renamed Calendar to Calendar as CalendarIcon to match its usage in the component and other parts of the app
+import { Calendar as CalendarIcon, MapPin, Clock, Plus, Trash2, Edit, X, Printer, FileText, CheckCircle, ShieldCheck, Lock, AlertCircle, Map, ChevronRight, BarChart3, PieChart, Users, User, TrendingUp, CalendarDays } from 'lucide-react';
 import { AppState, TrainingSession, Category, Person, AttendanceRecord } from '../types';
-import { generateUUID } from '../App';
+import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
 
 interface TrainingPlannerProps {
@@ -318,7 +319,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
            onClick={() => setActiveTab('agenda')}
            className={`px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 transition-all ${activeTab === 'agenda' ? 'bg-[#001F3F] text-white shadow-lg scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
          >
-            <Calendar size={18}/> الأجندة التدريبية
+            <CalendarIcon size={18}/> الأجندة التدريبية
          </button>
          <button 
            onClick={() => setActiveTab('stats')}
@@ -333,7 +334,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
           <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row justify-between items-center no-print gap-4">
             <div>
                <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
-                 <Calendar size={24} className="text-blue-900" /> أجندة التدريبات المركزية (الجدولة)
+                 <CalendarIcon size={24} className="text-blue-900" /> أجندة التدريبات المركزية (الجدولة)
                </h3>
                <p className="text-[10px] font-black text-slate-400 mt-1">تنظيم مواعيد التدريب لجميع الفئات - ميزة التعديل محصورة بمدير المكتب</p>
             </div>
@@ -341,7 +342,6 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
               <button 
                 onClick={() => {
                     if (state.globalCategoryFilter === 'الكل') return alert("يرجى اختيار فئة محددة أولاً لطباعة البرنامج.");
-                    // Reuse old logic for simple schedule print
                     const catSessions = state.sessions.filter(s => s.category === state.globalCategoryFilter).sort((a,b) => a.date.localeCompare(b.date));
                     setPrintData({
                       type: 'category',
@@ -377,202 +377,131 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                         {isComp && (
                            <span className="text-[9px] font-black text-white flex items-center gap-1 bg-emerald-600 px-2 py-1 rounded-lg border border-emerald-700"><CheckCircle size={12}/> انتهى</span>
                         )}
-                        {locked ? (
-                          <span className="text-[9px] font-black text-red-600 flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg border border-red-200"><Lock size={12}/> مغلق إدارياً</span>
-                        ) : (
-                          <span className="text-[9px] font-black text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200"><ShieldCheck size={12}/> متاح للرصد</span>
+                        {canModifyConfig && (
+                          <div className="flex gap-1">
+                            <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all"><Edit size={14}/></button>
+                            <button onClick={async () => { if(confirm('حذف التمرين؟')) { try { const { error } = await supabase.from('sessions').delete().eq('id', session.id); if (error) throw error; setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); addLog?.('حذف تمرين', 'تم إزالة الحصة التدريبية من الأجندة', 'error'); } catch (e: any) { alert("خطأ في الحذف: " + (e.message || e)); } } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
+                          </div>
                         )}
                      </div>
                   </div>
-
-                  <h4 className="font-black text-lg text-slate-900 leading-tight mb-4">{session.objective}</h4>
-                  
-                  <div className="space-y-2 mb-6">
-                     <div className="flex items-center gap-2 text-[11px] font-black text-slate-600">
-                        <Clock size={14} className="text-orange-600"/> {session.time} • {session.date}
-                     </div>
-                     {session.pitch && (
-                       <div className="flex items-center gap-2 text-[11px] font-black text-slate-600">
-                          <Map size={14} className="text-emerald-600"/> {session.pitch}
-                       </div>
-                     )}
+                  <h4 className="text-lg font-black text-slate-900 mb-4">{session.objective}</h4>
+                  <div className="space-y-2 text-[11px] font-black text-slate-500 uppercase tracking-tighter">
+                     <p className="flex items-center gap-2"><CalendarIcon size={14} className="text-orange-600"/> {session.date}</p>
+                     <p className="flex items-center gap-2"><Clock size={14} className="text-[#001F3F]"/> {session.time}</p>
+                     <p className="flex items-center gap-2"><MapPin size={14} className="text-emerald-600"/> {session.pitch || 'غير محدد'}</p>
                   </div>
-
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => toggleSessionComplete(session.id, !!isComp)}
-                      className={`flex-1 py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 transition-all border-2 ${isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700' : 'bg-[#001F3F] border-slate-900 text-white'}`}
-                    >
-                      <CheckCircle size={14}/> {isComp ? 'إعادة فتح' : 'إنهاء التمرين'}
-                    </button>
-                    {canModifyConfig && (
-                      <div className="flex gap-1">
-                        <button onClick={() => {setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true);}} className="p-2.5 bg-blue-50 text-blue-900 rounded-xl border-2 border-blue-900 hover:bg-blue-900 hover:text-white transition-all"><Edit size={16}/></button>
-                        <button onClick={() => { if(confirm('تنبيه: هل أنت متأكد من حذف هذا التمرين نهائياً؟')) setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})) }} className="p-2.5 bg-red-50 text-red-600 rounded-xl border-2 border-red-900 hover:bg-red-600 hover:text-white transition-all"><Trash2 size={16}/></button>
-                      </div>
-                    )}
-                  </div>
+                  <button 
+                    onClick={() => toggleSessionComplete(session.id, !!isComp)}
+                    className={`mt-6 w-full py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700' : 'bg-slate-100 border-slate-900 text-slate-900 hover:bg-emerald-50'}`}
+                  >
+                     <CheckCircle size={14}/> {isComp ? 'إعادة فتح التمرين' : 'تأشير كتم الإنجاز'}
+                  </button>
                 </div>
               );
             })}
             {filteredSessions.length === 0 && (
-              <div className="col-span-full py-20 text-center bg-slate-50 border-4 border-dashed border-slate-200 rounded-[3rem]">
-                <Calendar size={48} className="text-slate-200 mx-auto mb-4" />
-                <p className="text-slate-400 font-black italic">لا يوجد تمارين مجدولة حالياً لهذه الفئة</p>
-              </div>
+               <div className="col-span-full py-20 text-center opacity-30 italic font-black text-sm uppercase tracking-widest">لا توجد تمارين مجدولة حالياً لهذه الفئة</div>
             )}
           </div>
         </>
       ) : (
-        <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom duration-500">
-           {/* Reports Configuration Box */}
-           <div className="bg-white p-10 rounded-[3rem] border-4 border-slate-900 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-2 h-full bg-[#001F3F]"></div>
-              <h3 className="text-2xl font-black text-slate-900 mb-8 flex items-center gap-3">
-                 <PieChart size={28} className="text-orange-600"/> تخصيص التقرير الإحصائي
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                 <div className="space-y-6">
-                    <div>
-                       <label className={labelClass}>نوع التقرير</label>
-                       <div className="flex p-1.5 bg-slate-100 rounded-xl border-2 border-slate-200">
-                          <button onClick={() => setReportType('category')} className={`flex-1 py-3 rounded-lg font-black text-xs transition-all ${reportType === 'category' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>تقرير الفئة</button>
-                          <button onClick={() => setReportType('player')} className={`flex-1 py-3 rounded-lg font-black text-xs transition-all ${reportType === 'player' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>تقرير اللاعب</button>
-                       </div>
-                    </div>
-
-                    <div>
-                       <label className={labelClass}>الفئة المستهدفة</label>
-                       <select 
-                         disabled={!!restrictedCat}
-                         value={selectedCatForReport} 
-                         onChange={e => { setSelectedCatForReport(e.target.value); setSelectedPlayerId(''); }}
-                         className={fieldClass}
-                       >
-                          {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
-                       </select>
-                    </div>
-
-                    {reportType === 'player' && (
-                       <div>
-                          <label className={labelClass}>اختر اللاعب</label>
-                          <select value={selectedPlayerId} onChange={e => setSelectedPlayerId(e.target.value)} className={fieldClass}>
-                             <option value="">-- اختر اللاعب من القائمة --</option>
-                             {state.people.filter(p => p.role === 'لاعب' && p.category === selectedCatForReport).map(p => (
-                                <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
-                             ))}
-                          </select>
-                       </div>
-                    )}
-                 </div>
-
-                 <div className="space-y-6">
-                    <label className={labelClass}>الفترة الزمنية (شهري / سنوي)</label>
-                    <div className="grid grid-cols-2 gap-4">
-                       <div>
-                          <label className="text-[9px] font-black text-slate-400 mb-1 block">الشهر</label>
-                          <select value={reportPeriod.month} onChange={e => setReportPeriod({...reportPeriod, month: e.target.value})} className={fieldClass}>
-                             {Array.from({length: 12}).map((_, i) => (
-                                <option key={i} value={(i+1).toString().padStart(2, '0')}>
-                                   {new Date(0, i).toLocaleString('ar-SY', {month: 'long'})}
-                                </option>
-                             ))}
-                          </select>
-                       </div>
-                       <div>
-                          <label className="text-[9px] font-black text-slate-400 mb-1 block">السنة</label>
-                          <select value={reportPeriod.year} onChange={e => setReportPeriod({...reportPeriod, year: e.target.value})} className={fieldClass}>
-                             {[2024, 2025, 2026].map(y => <option key={y} value={y.toString()}>{y}</option>)}
-                          </select>
-                       </div>
-                    </div>
-
-                    <div className="bg-blue-50 p-6 rounded-2xl border-2 border-blue-100 mt-4">
-                       <p className="text-[11px] font-black text-blue-900 flex items-center gap-2">
-                          <TrendingUp size={16}/> سيقوم النظام بتحليل كافة سجلات الحضور والغياب ودرجات الالتزام للفترة المختارة وتصديرها كملف PDF رسمي.
-                       </p>
-                    </div>
-
-                    <button onClick={generateReport} className="w-full bg-orange-600 text-white py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 shadow-xl hover:bg-orange-700 transition-all border-b-4 border-orange-800">
-                       <FileText size={24}/> توليد واستخراج التقرير
-                    </button>
-                 </div>
-              </div>
+        <div className="bg-white p-10 rounded-[3rem] border-2 border-slate-900 shadow-sm no-print">
+           <div className="flex items-center gap-4 mb-10">
+              <BarChart3 className="text-blue-900" size={32}/>
+              <h3 className="text-2xl font-black text-slate-900">محرك استخراج التقارير الفنية</h3>
            </div>
 
-           {/* Quick Stats Grid for visual feedback */}
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-sm flex items-center gap-4">
-                 <div className="p-4 bg-blue-100 text-blue-900 rounded-2xl"><Users size={24}/></div>
-                 <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase">لاعبو الفئة</p>
-                    <p className="text-2xl font-black">{state.people.filter(p => p.role === 'لاعب' && p.category === selectedCatForReport).length}</p>
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-4">
+                 <label className={labelClass}>نوع التقرير</label>
+                 <div className="flex bg-slate-100 p-1 rounded-xl border-2 border-slate-200">
+                    <button onClick={() => setReportType('category')} className={`flex-1 py-3 rounded-lg font-black text-xs transition-all ${reportType === 'category' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>تقرير فئة</button>
+                    <button onClick={() => setReportType('player')} className={`flex-1 py-3 rounded-lg font-black text-xs transition-all ${reportType === 'player' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>تقرير لاعب</button>
                  </div>
               </div>
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-sm flex items-center gap-4">
-                 <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl"><CalendarDays size={24}/></div>
-                 <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase">تمارين الشهر</p>
-                    <p className="text-2xl font-black">{state.sessions.filter(s => s.category === selectedCatForReport && s.date.startsWith(`${reportPeriod.year}-${reportPeriod.month}`)).length}</p>
+
+              {reportType === 'category' ? (
+                <div className="space-y-2">
+                   <label className={labelClass}>الفئة المستهدفة</label>
+                   <select value={selectedCatForReport} onChange={e => setSelectedCatForReport(e.target.value)} className={fieldClass}>
+                      {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                   </select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                   <label className={labelClass}>البحث عن لاعب</label>
+                   <select value={selectedPlayerId} onChange={e => setSelectedPlayerId(e.target.value)} className={fieldClass}>
+                      <option value="">-- اختر لاعب من القائمة --</option>
+                      {state.people.filter(p => p.role === 'لاعب').sort((a,b) => a.name.localeCompare(b.name)).map(p => (
+                         <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
+                      ))}
+                   </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                    <label className={labelClass}>الشهر</label>
+                    <select value={reportPeriod.month} onChange={e => setReportPeriod({...reportPeriod, month: e.target.value})} className={fieldClass}>
+                       {Array.from({length:12}).map((_,i) => {
+                          const val = (i+1).toString().padStart(2, '0');
+                          return <option key={val} value={val}>{val}</option>;
+                       })}
+                    </select>
+                 </div>
+                 <div className="space-y-2">
+                    <label className={labelClass}>السنة</label>
+                    <select value={reportPeriod.year} onChange={e => setReportPeriod({...reportPeriod, year: e.target.value})} className={fieldClass}>
+                       {['2024','2025','2026'].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
                  </div>
               </div>
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-sm flex items-center gap-4">
-                 <div className="p-4 bg-orange-100 text-orange-900 rounded-2xl"><TrendingUp size={24}/></div>
-                 <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase">مستوى الانضباط</p>
-                    <p className="text-2xl font-black text-orange-600">ممتاز</p>
-                 </div>
+
+              <div className="flex items-end">
+                 <button onClick={generateReport} className="w-full bg-[#001F3F] text-white py-4 rounded-2xl font-black text-md shadow-xl hover:bg-black transition-all border-b-4 border-black">استخراج ومعاينة التقرير</button>
               </div>
            </div>
         </div>
       )}
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 no-print">
-          <div className="bg-white rounded-[3rem] w-full max-w-lg shadow-2xl overflow-hidden border-[6px] border-slate-900">
-            <div className="p-8 border-b-2 bg-slate-100 flex justify-between items-center">
-              <h3 className="text-xl font-black text-slate-900 uppercase">جدولة حصة تدريبية مركزية</h3>
-              <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-xl border-2 border-slate-900"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleSave} className="p-8 space-y-5">
-              <div className="grid grid-cols-1 gap-4">
-                 <div>
-                    <label className={labelClass}>الفئة المستهدفة</label>
-                    <select required className={fieldClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                      {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[500] p-4 no-print">
+           <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl border-[6px] border-slate-900 overflow-hidden">
+              <div className="p-6 bg-slate-100 border-b-2 border-slate-900 flex justify-between items-center">
+                 <h3 className="font-black text-slate-900 uppercase">{editingSessionId ? 'تحديث موعد تمرين' : 'جدولة تمرين مركزي جديد'}</h3>
+                 <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
+              </div>
+              <form onSubmit={handleSave} className="p-8 space-y-5">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className={labelClass}>الفئة</label>
+                       <select required className={fieldClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                          {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                       </select>
+                    </div>
+                    <div className="space-y-1">
+                       <label className={labelClass}>الملعب</label>
+                       <input type="text" className={fieldClass} value={formData.pitch || ''} onChange={e => setFormData({...formData, pitch: e.target.value})} placeholder="مثلاً: ملعب الكرامة.." />
+                    </div>
                  </div>
-              </div>
-              <div>
-                 <label className={labelClass}>الملعب المستضيف</label>
-                 <input type="text" placeholder="مثلاً: ملعب منشأة الكرامة.." className={fieldClass} value={formData.pitch || ''} onChange={e => setFormData({ ...formData, pitch: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                 <div>
-                    <label className={labelClass}>تاريخ التمرين</label>
-                    <input type="date" required className={fieldClass} value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} />
-                 </div>
-                 <div>
-                    <label className={labelClass}>التوقيت المعتمد</label>
-                    <input type="time" required className={fieldClass} value={formData.time || ''} onChange={e => setFormData({ ...formData, time: e.target.value })} />
-                 </div>
-              </div>
-              <div>
-                 <label className={labelClass}>الهدف التدريبي الرئيسي</label>
-                 <textarea required rows={3} placeholder="مثال: تحسين اللياقة البدنية والكرات العرضية.." className={`${fieldClass} py-3 h-24`} value={formData.objective || ''} onChange={e => setFormData({ ...formData, objective: e.target.value })}></textarea>
-              </div>
-              
-              <div className="bg-orange-50 p-4 rounded-xl border-2 border-orange-200 flex gap-3 items-start">
-                 <AlertCircle className="text-orange-600 shrink-0" size={18}/>
                  <div className="space-y-1">
-                    <p className="text-[10px] font-black text-orange-900 leading-relaxed">تنبيه نظام الرقابة: سيتم قفل إمكانية رصد الحضور لهذا التمرين تلقائياً بعد مضي 30 دقيقة من الموعد المحدد.</p>
+                    <label className={labelClass}>موضوع / هدف التمرين</label>
+                    <input required type="text" className={fieldClass} value={formData.objective || ''} onChange={e => setFormData({...formData, objective: e.target.value})} placeholder="مثلاً: تكتيك هجومي.." />
                  </div>
-              </div>
-
-              <button type="submit" className="w-full bg-[#001F3F] text-white font-black py-5 rounded-2xl shadow-xl border-b-4 border-black hover:bg-black transition-all uppercase tracking-widest text-lg">تثبيت الجدولة في النظام</button>
-            </form>
-          </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className={labelClass}>التاريخ</label>
+                       <input required type="date" className={fieldClass} value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className={labelClass}>التوقيت</label>
+                       <input required type="time" className={fieldClass} value={formData.time || ''} onChange={e => setFormData({...formData, time: e.target.value})} />
+                    </div>
+                 </div>
+                 <button type="submit" className="w-full bg-[#001F3F] text-white py-5 rounded-2xl font-black shadow-xl hover:bg-black transition-all mt-4 uppercase">حفظ وتثبيت التمرين</button>
+              </form>
+           </div>
         </div>
       )}
     </div>

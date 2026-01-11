@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, CloudUpload, Trash2, Key, Info, UserPlus, X, Edit2, ShieldAlert, Layers, Plus, Database, Lock, Eye, EyeOff } from 'lucide-react';
 import { AppState, AppUser, UserRole, Category } from '../types';
-import { generateUUID } from '../App';
+import { generateUUID, supabase } from '../App';
 
 interface SettingsProps {
   state: AppState;
@@ -82,11 +82,17 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
     addLog?.('تصدير قاعدة البيانات', 'تم إنشاء وتنزيل نسخة احتياطية شاملة للنظام.');
   };
 
-  const deleteUser = (id: string, name: string) => {
+  const deleteUser = async (id: string, name: string) => {
     if (name.toUpperCase() === 'IZZAT') return alert('لا يمكن حذف الحساب الجذري للنظام.');
     if (confirm(`هل أنت متأكد من حذف حساب ${name}؟`)) {
-      setState(p => ({ ...p, users: p.users.filter(u => u.id !== id) }));
-      addLog?.('حذف مستخدم', `تم حذف حساب المستخدم: ${name}`, 'error');
+      try {
+        const { error } = await supabase.from('users').delete().eq('id', id);
+        if (error) throw error;
+        setState(p => ({ ...p, users: p.users.filter(u => u.id !== id) }));
+        addLog?.('حذف مستخدم', `تم حذف حساب المستخدم: ${name}`, 'error');
+      } catch (e: any) {
+        alert("خطأ في الحذف من السحاب: " + (e.message || e));
+      }
     }
   };
 
@@ -222,7 +228,6 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
                       <select required className={fieldClass}
                         value={userFormData.restrictedCategory} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value })}>
                         <option value="">-- اختر الفئة --</option>
-                        {/* Fixed the incorrect map call that used 'cat' instead of 'c' */}
                         {state.categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
                     </div>

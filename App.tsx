@@ -31,7 +31,7 @@ export const generateUUID = () => {
 // Supabase Configuration
 const supabaseUrl = 'https://kfwqoigsghlgigjriyxf.supabase.co';
 const supabaseAnonKey = 'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
