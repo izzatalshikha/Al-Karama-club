@@ -14,6 +14,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   const globalFilter = state.globalCategoryFilter;
+  const restrictedCat = state.currentUser?.restrictedCategory;
 
   const upcomingMatches = state.matches
     .filter(m => (globalFilter === 'الكل' || m.category === globalFilter) && m.date >= todayStr && !m.isCompleted)
@@ -25,7 +26,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
 
   // نظام فحص العقود (أقل من 3 أشهر = 90 يوماً)
   const expiringContracts = state.people.filter(p => {
-    if (!p.contractEnd) return false;
+    // فلترة العقود بناءً على الفئة أيضاً
+    const isOurCategory = globalFilter === 'الكل' || p.category === globalFilter;
+    if (!isOurCategory || !p.contractEnd) return false;
+    
     const end = new Date(p.contractEnd);
     const diffTime = end.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -40,23 +44,25 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      {/* Category Filter Dropdown */}
-      <div className="bg-white p-5 rounded-[2rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row justify-between items-center no-print">
-        <h3 className="text-md font-black text-slate-900 flex items-center gap-3">
-          <Filter size={20} className="text-[#001F3F]" /> تصفية البيانات في لوحة التحكم
-        </h3>
-        <div className="flex items-center gap-3 mt-3 md:mt-0">
-          <label className="text-[10px] font-black text-slate-500 uppercase">عرض بيانات فئة:</label>
-          <select 
-            value={globalFilter}
-            onChange={e => setState(p => ({ ...p, globalCategoryFilter: e.target.value as any }))}
-            className="bg-slate-100 border-2 border-slate-900 rounded-xl py-2 px-4 font-black text-[12px] text-slate-900 outline-none h-11 appearance-none cursor-pointer hover:bg-white transition-colors min-w-[150px]"
-          >
-            <option value="الكل">جميع الفئات</option>
-            {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+      {/* Category Filter Dropdown - يظهر فقط للمدير والمشاهد العام */}
+      {!restrictedCat && (
+        <div className="bg-white p-5 rounded-[2rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row justify-between items-center no-print">
+          <h3 className="text-md font-black text-slate-900 flex items-center gap-3">
+            <Filter size={20} className="text-[#001F3F]" /> تصفية البيانات في لوحة التحكم
+          </h3>
+          <div className="flex items-center gap-3 mt-3 md:mt-0">
+            <label className="text-[10px] font-black text-slate-500 uppercase">عرض بيانات فئة:</label>
+            <select 
+              value={globalFilter}
+              onChange={e => setState(p => ({ ...p, globalCategoryFilter: e.target.value as any }))}
+              className="bg-slate-100 border-2 border-slate-900 rounded-xl py-2 px-4 font-black text-[12px] text-slate-900 outline-none h-11 appearance-none cursor-pointer hover:bg-white transition-colors min-w-[150px]"
+            >
+              <option value="الكل">جميع الفئات</option>
+              {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Quick Report Center - NEW SECTION */}
       <div className="bg-slate-900 p-8 rounded-[3rem] border-4 border-orange-600 shadow-xl no-print">

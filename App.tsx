@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Bell, RefreshCw, User, CloudCheck, CloudOff, Cloud
+  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Bell, RefreshCw, User, CloudCheck, CloudOff, Cloud, Map, Sparkles
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification } from './types';
@@ -16,6 +16,8 @@ import SettingsView from './components/SettingsView';
 import PlayerReport from './components/PlayerReport';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
+import LocationAssistant from './components/LocationAssistant';
+import AIAssistant from './components/AIAssistant';
 
 // Helper: Standard UUID v4 Generator for Supabase Compatibility
 export const generateUUID = () => {
@@ -43,6 +45,8 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
   
+  const syncLockRef = useRef(false);
+
   const [state, setState] = useState<AppState>(() => {
     const defaultAdmin: AppUser = { id: generateUUID(), username: 'IZZAT', role: 'مدير', password: 'KSC@2026' };
     const saved = localStorage.getItem('alkarama_cloud_v4');
@@ -65,6 +69,13 @@ const App: React.FC = () => {
     };
   });
 
+  // تحديث فلتر الفئة العالمي تلقائياً عند تسجيل الدخول إذا كان المستخدم مقيداً بفئة معينة
+  useEffect(() => {
+    if (state.currentUser?.restrictedCategory) {
+      setState(prev => ({ ...prev, globalCategoryFilter: state.currentUser!.restrictedCategory! }));
+    }
+  }, [state.currentUser]);
+
   useEffect(() => {
     localStorage.setItem('alkarama_cloud_v4', JSON.stringify(state));
   }, [state]);
@@ -83,7 +94,6 @@ const App: React.FC = () => {
   const sanitize = (data: any[]) => {
     return data.map(item => {
       const cleanItem = JSON.parse(JSON.stringify(item));
-      // لا يتم حذف الحقول الأساسية هنا لضمان مطابقتها لقاعدة البيانات
       Object.keys(cleanItem).forEach(key => {
         if (cleanItem[key] === undefined || cleanItem[key] === "") {
           cleanItem[key] = null;
@@ -93,12 +103,29 @@ const App: React.FC = () => {
     });
   };
 
-  const fetchData = useCallback(async () => {
-    if (!state.currentUser) return;
+  const fetchData = useCallback(async (force = false) => {
+    if (!state.currentUser || (syncLockRef.current && !force)) return;
     
     setIsSyncing(true);
     setSyncStatus('syncing');
     try {
+      // بناء استعلامات مفلترة بحسب الفئة لضمان الخصوصية التامة
+      let pplQuery = supabase.from('people').select('*');
+      let sessQuery = supabase.from('sessions').select('*');
+      let mtchQuery = supabase.from('matches').select('*');
+      let usrsQuery = supabase.from('users').select('*');
+
+      if (state.currentUser.restrictedCategory) {
+        pplQuery = pplQuery.eq('category', state.currentUser.restrictedCategory);
+        sessQuery = sessQuery.eq('category', state.currentUser.restrictedCategory);
+        mtchQuery = mtchQuery.eq('category', state.currentUser.restrictedCategory);
+      }
+
+      // إذا لم يكن مديراً، يرى فقط بياناته في جدول المستخدمين
+      if (state.currentUser.role !== 'مدير') {
+        usrsQuery = usrsQuery.eq('id', state.currentUser.id);
+      }
+
       const [
         { data: cats },
         { data: ppl },
@@ -108,26 +135,27 @@ const App: React.FC = () => {
         { data: usrs }
       ] = await Promise.all([
         supabase.from('categories').select('name'),
-        supabase.from('people').select('*'),
-        supabase.from('sessions').select('*'),
-        supabase.from('matches').select('*'),
+        pplQuery,
+        sessQuery,
+        mtchQuery,
         supabase.from('attendance').select('*'),
-        supabase.from('users').select('*'),
+        usrsQuery,
       ]);
 
-      // استبدال الحالة المحلية بالكامل ببيانات السحاب لضمان التزامن ومنع عودة المحذوفات
+      // فلترة سجلات الحضور في الذاكرة لتشمل فقط من هم متاحين للمستخدم
+      const filteredAttn = attn ? attn.filter(a => (ppl || []).some(p => p.id === a.personId)) : [];
+
       setState(prev => ({
         ...prev,
         categories: (cats && cats.length > 0) ? cats.map(c => c.name) : prev.categories,
         people: ppl || [],
         sessions: sess || [],
         matches: mtch || [],
-        attendance: attn || [],
+        attendance: filteredAttn,
         users: usrs || prev.users
       }));
       setSyncStatus('synced');
     } catch (error: any) {
-      console.error("❌ Fetch Error:", error);
       setSyncStatus('error');
       addLog('خطأ في جلب البيانات', error.message || 'فشل الوصول للسحاب.', 'error');
     } finally {
@@ -135,7 +163,6 @@ const App: React.FC = () => {
     }
   }, [state.currentUser, addLog]);
 
-  // الاشتراك في المزامنة اللحظية Realtime
   useEffect(() => {
     if (!state.currentUser) return;
 
@@ -143,7 +170,7 @@ const App: React.FC = () => {
       supabase
         .channel(`public:${table}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: table }, () => {
-          fetchData(); // تحديث تلقائي عند حدوث أي تغيير خارجي (إضافة، تعديل، حذف)
+          if (!syncLockRef.current) fetchData();
         })
         .subscribe()
     );
@@ -156,6 +183,7 @@ const App: React.FC = () => {
   const pushData = useCallback(async (updatedState: AppState) => {
     if (!updatedState.currentUser) return;
 
+    syncLockRef.current = true;
     setSyncStatus('syncing');
     try {
       const tables = [
@@ -172,26 +200,23 @@ const App: React.FC = () => {
             .from(table.name)
             .upsert(sanitize(table.data), { onConflict: 'id' });
           
-          if (error) {
-            const msg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
-            throw new Error(`${table.name}: ${msg}`);
-          }
+          if (error) throw new Error(`${table.name}: ${error.message}`);
         }
       }
 
       setSyncStatus('synced');
     } catch (error: any) {
       setSyncStatus('error');
-      const errorMsg = error.message || 'خطأ غير معروف في السحاب';
-      addLog('فشل مزامنة الجداول', errorMsg, 'error');
-      console.error("❌ Sync Error:", errorMsg);
+      addLog('فشل مزامنة الجداول', error.message || 'خطأ غير معروف', 'error');
+    } finally {
+      setTimeout(() => {
+        syncLockRef.current = false;
+      }, 500);
     }
   }, [addLog]);
 
   useEffect(() => {
-    if (state.currentUser) {
-      fetchData();
-    }
+    if (state.currentUser) fetchData(true);
   }, [state.currentUser, fetchData]);
 
   const updateStateAndSync = async (updater: (prev: AppState) => AppState) => {
@@ -201,9 +226,7 @@ const App: React.FC = () => {
       return nextState;
     });
 
-    if (nextState) {
-      await pushData(nextState);
-    }
+    if (nextState) await pushData(nextState);
   };
 
   const handleLogout = () => {
@@ -221,6 +244,8 @@ const App: React.FC = () => {
     { id: 'attendance', label: 'نظام الحضور', icon: ClipboardCheck },
     { id: 'training', label: 'التدريبات', icon: Calendar },
     { id: 'matches', label: 'المباريات', icon: Trophy },
+    { id: 'ai', label: 'المحلل الذكي (AI)', icon: Sparkles },
+    { id: 'logistics', label: 'المساعد اللوجستي', icon: Map },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ];
 
@@ -228,7 +253,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex text-right font-['Tajawal'] overflow-hidden" dir="rtl">
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 right-0 z-50 w-64 bg-[#001F3F] text-white transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'} no-print shadow-2xl`}>
         <div className="h-full flex flex-col">
           <div className="p-6 flex items-center justify-between border-b border-white/10">
@@ -242,7 +266,7 @@ const App: React.FC = () => {
             {navItems.map((item) => (
               <button key={item.id} onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === item.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
-                <item.icon size={20} />
+                <item.icon size={20} className={item.id === 'ai' ? 'animate-pulse text-orange-400' : ''} />
                 <span className="font-bold">{item.label}</span>
               </button>
             ))}
@@ -265,56 +289,63 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all duration-500 ${
-              syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-              syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-700 animate-pulse' :
-              'bg-orange-50 border-orange-200 text-orange-700'
-            }`}>
-               {syncStatus === 'synced' && <CloudCheck size={18} />}
-               {syncStatus === 'error' && <CloudOff size={18} />}
-               {syncStatus === 'syncing' && <Cloud size={18} className="animate-bounce" />}
-               <span className="text-[10px] font-black uppercase whitespace-nowrap hidden sm:inline">
-                 {syncStatus === 'synced' ? 'مزامنة كاملة' : syncStatus === 'error' ? 'خطأ بالربط' : 'جاري الرفع...'}
-               </span>
+            {/* عرض اسم المستخدم والرتبة بجانب الإشعارات والمزامنة */}
+            <div className="hidden sm:flex items-center gap-4 ml-6 border-l pl-6 border-slate-200">
+               <div className="flex items-center gap-3">
+                  <div className="text-left">
+                    <p className="text-xs font-black text-slate-900 leading-none">{state.currentUser.username}</p>
+                    <p className="text-[9px] font-black text-orange-600 uppercase tracking-widest mt-1">{state.currentUser.role}</p>
+                  </div>
+                  <div className="w-10 h-10 bg-[#001F3F] text-white rounded-xl flex items-center justify-center font-black shadow-lg border-2 border-white ring-2 ring-slate-100">
+                    <User size={20} />
+                  </div>
+               </div>
             </div>
 
-            <div className="hidden md:flex flex-col items-end px-4 border-r-2 border-orange-500">
-              <span className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">المسؤول الحالي</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-[#001F3F]">{state.currentUser.username}</span>
-                <User size={14} className="text-orange-600" />
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2.5 rounded-xl transition-all relative ${unreadCount > 0 ? 'bg-orange-50 text-orange-600' : 'bg-slate-100 text-slate-400'}`}
+                >
+                  <Bell size={20} />
+                  {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white animate-bounce">{unreadCount}</span>}
+                </button>
+                {showNotifications && (
+                  <div className="absolute left-0 mt-3 w-80 bg-white border-2 border-slate-900 rounded-[2rem] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                    <div className="p-4 bg-slate-100 border-b-2 border-slate-900 font-black text-xs flex justify-between">
+                       <span>آخر التنبيهات والعمليات</span>
+                       <button onClick={() => setState(p => ({...p, notifications: []}))} className="text-red-600">مسح الكل</button>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                       {state.notifications.length === 0 ? (
+                         <p className="py-8 text-center text-[10px] font-black text-slate-400 italic">لا يوجد إشعارات حالياً</p>
+                       ) : state.notifications.map(n => (
+                         <div key={n.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                            <p className="text-[11px] font-black text-slate-900">{n.message}</p>
+                            <p className="text-[9px] font-medium text-slate-400 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</p>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
 
-            <button onClick={fetchData} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
-              <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
-            </button>
-            
-            <div className="relative">
-              <button onClick={() => setShowNotifications(!showNotifications)} className={`p-2.5 rounded-xl relative border ${showNotifications ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                <Bell size={20} />
-                {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white">{unreadCount}</span>}
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all duration-500 ${
+                syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-700 animate-pulse' :
+                'bg-orange-50 border-orange-200 text-orange-700'
+              }`}>
+                 {syncStatus === 'synced' && <CloudCheck size={18} />}
+                 {syncStatus === 'error' && <CloudOff size={18} />}
+                 {syncStatus === 'syncing' && <Cloud size={18} className="animate-bounce" />}
+                 <span className="text-[10px] font-black uppercase whitespace-nowrap hidden sm:inline">
+                   {syncStatus === 'synced' ? 'مزامنة كاملة' : syncStatus === 'error' ? 'خطأ بالربط' : 'جاري الرفع...'}
+                 </span>
+              </div>
+              <button onClick={() => fetchData(true)} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all shadow-sm">
+                <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
               </button>
-              {showNotifications && (
-                <div className="absolute left-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border-2 border-slate-900 overflow-hidden z-[100] text-right">
-                  <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                    <h3 className="font-black text-xs uppercase text-slate-800">تنبيهات النظام</h3>
-                    <button onClick={() => setState(p => ({ ...p, notifications: p.notifications.map(n => ({...n, isRead: true})) }))} className="text-[10px] text-blue-600 font-bold">قراءة الكل</button>
-                  </div>
-                  <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                    {state.notifications.length === 0 ? (
-                      <div className="p-8 text-center text-slate-400 text-xs italic opacity-50">لا توجد تنبيهات</div>
-                    ) : (
-                      state.notifications.map(n => (
-                        <div key={n.id} className={`p-4 border-b hover:bg-slate-50 transition-colors ${!n.isRead ? 'bg-orange-50/50' : ''}`}>
-                          <p className="text-[11px] font-black text-slate-700 leading-tight">{n.message}</p>
-                          <span className="text-[9px] text-slate-400 mt-1 block">{new Date(n.timestamp).toLocaleTimeString('ar-SY')}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </header>
@@ -326,20 +357,13 @@ const App: React.FC = () => {
             {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateStateAndSync as any} addLog={addLog} />}
             {activeTab === 'training' && <TrainingPlanner state={state} setState={updateStateAndSync as any} addLog={addLog} />}
             {activeTab === 'matches' && <MatchPlanner state={state} setState={updateStateAndSync as any} defaultSelectedId={selectedMatchId} addLog={addLog} />}
+            {activeTab === 'ai' && <AIAssistant state={state} />}
+            {activeTab === 'logistics' && <LocationAssistant />}
             {activeTab === 'settings' && <SettingsView state={state} setState={updateStateAndSync as any} addLog={addLog} />}
             {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} onBack={() => setActiveTab('squad')} />}
           </div>
         </section>
-
-        <footer className="bg-white/95 backdrop-blur-md border-t py-1.5 px-5 flex justify-between items-center no-print z-40">
-           <p className="text-[7px] font-black text-slate-500 tracking-tighter">نادي الكرامة الرياضي - مكتب كرة القدم المركزي</p>
-           <p className="text-[7px] font-black text-[#001F3F] border-r-2 border-orange-500 pr-2">By: Izzat Amer Al-Shikha | النسخة السحابية الموحدة (V4)</p>
-        </footer>
       </main>
-      
-      {showNotifications && (
-        <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)}></div>
-      )}
     </div>
   );
 };

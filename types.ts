@@ -66,8 +66,8 @@ export interface TrainingSession {
 
 export interface MatchEvent {
   id: string;
-  type: 'goal' | 'assist' | 'yellow' | 'red' | 'injury';
-  player: string; // الاسم أو ID
+  type: 'goal' | 'assist' | 'yellow' | 'red' | 'injury' | 'substitution';
+  player: string; 
   minute: string;
   note?: string;
 }
@@ -84,6 +84,9 @@ export interface Match {
   isCompleted: boolean;
   ourScore: string;
   opponentScore: string;
+  stoppageTime?: string; // للحفاظ على التوافق القديم
+  stoppageTime1?: string; // وقت ضائع شوط أول
+  stoppageTime2?: string; // وقت ضائع شوط ثاني
   events: MatchEvent[];
   lineup: {
     starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];

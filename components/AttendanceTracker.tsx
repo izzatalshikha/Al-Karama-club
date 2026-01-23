@@ -23,6 +23,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const restrictedCat = currentUser.restrictedCategory;
   const isViewer = currentUser.role === 'مشاهد';
   const isCatAdmin = currentUser.role === 'إداري فئة';
+  const isManager = currentUser.role === 'مدير';
 
   // فلترة الجلسات بحسب الصلاحية
   const sessions = state.sessions
@@ -47,11 +48,14 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const handleSetStatus = (pid: string, status: AttendanceStatus) => {
     if (isLockedByTime || isViewer) return;
     
-    // قفل لإداري الفئة: إذا كان السجل موجوداً مسبقاً في قاعدة البيانات، لا يمكن التعديل
+    // قفل لإداري الفئة: إذا كانت الحالة قد تم اختيارها مسبقاً (سواء تم حفظها أو مجرد اختيارها محلياً)، يمنع التغيير.
+    // يتم استثناء "المدير" فقط من هذا القيد.
     if (isCatAdmin) {
-       const alreadySaved = savedRecords.some(r => r.personId === pid);
-       if (alreadySaved) {
-          alert('نظام الحماية: لا يمكنك تعديل حالة لاعب تم رصد حضوره مسبقاً. يرجى مراجعة مدير المكتب.');
+       const alreadySaved = savedRecords.some(r => r.personId === pid && r.status);
+       const alreadySelectedLocally = localRecords[pid]?.status;
+       
+       if (alreadySaved || alreadySelectedLocally) {
+          alert('نظام الحماية: لا يمكنك تعديل حالة الحضور بعد رصدها للمرة الأولى. يرجى مراجعة مدير المكتب لأي تعديلات ضرورية.');
           return;
        }
     }
@@ -68,6 +72,16 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
 
   const handleSetExcuse = (pid: string, excuse: string) => {
     if (isLockedByTime || isViewer) return;
+    
+    // منع إداري الفئة من تعديل الملاحظة إذا كانت مسجلة مسبقاً في السحاب
+    if (isCatAdmin) {
+      const alreadySaved = savedRecords.find(r => r.personId === pid);
+      if (alreadySaved && alreadySaved.excuse) {
+        alert('نظام الحماية: الملاحظات المسجلة مسبقاً لا يمكن تعديلها من قبل إداري الفئة.');
+        return;
+      }
+    }
+
     setLocalRecords(prev => ({
       ...prev,
       [pid]: { ...prev[pid], excuse }
@@ -285,8 +299,10 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                   const currentTime = local?.time || saved?.time;
                   const currentExcuse = local?.excuse !== undefined ? local.excuse : (saved?.excuse || '');
                   
-                  // تعطيل الزر إذا كان إداري فئة والسجل موجود مسبقاً
-                  const isDisabledForAdmin = isCatAdmin && saved && saved.status;
+                  // الحماية الجديدة: إذا كان إداري فئة وكانت الحالة مرصودة مسبقاً (محلياً أو سحابياً)، يتم تعطيل الأزرار.
+                  // يتم السماح للمدير فقط بالتعديل.
+                  const isAlreadyMarked = (saved && saved.status) || (local && local.status);
+                  const isDisabledForUser = !isManager && isAlreadyMarked;
 
                   return (
                     <tr key={p.id} className="hover:bg-blue-50/30 transition-all">
@@ -303,7 +319,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                           {['حاضر', 'متأخر', 'غائب', 'غياب بعذر'].map(st => (
                             <button 
                               key={st} 
-                              disabled={isDisabledForAdmin || isViewer}
+                              disabled={isDisabledForUser || isViewer}
                               onClick={() => handleSetStatus(p.id, st as AttendanceStatus)}
                               className={`px-4 py-2 rounded-lg text-[9px] font-black border-2 transition-all ${currentStatus === st ? 
                                 `bg-slate-900 text-white border-slate-900 scale-105 z-10 shadow-lg` 
@@ -319,7 +335,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                       </td>
                       <td className="px-6 py-5">
                         <input 
-                          disabled={isDisabledForAdmin || isViewer}
+                          disabled={isDisabledForUser || isViewer}
                           type="text" 
                           placeholder="اكتب العذر أو الملاحظة هنا..." 
                           value={currentExcuse}

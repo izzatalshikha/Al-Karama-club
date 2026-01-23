@@ -16,9 +16,10 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const currentUser = state.currentUser;
   const restrictedCat = currentUser?.restrictedCategory;
   
-  // Strict Role Control: Only Manager ('مدير') can add/edit/delete
+  // تحديث الصلاحيات: المدير وإداري الفئة يمكنهم الإدارة
   const isManager = currentUser?.role === 'مدير';
-  const canModifyConfig = isManager; 
+  const isCatAdmin = currentUser?.role === 'إداري فئة';
+  const canModifyConfig = isManager || isCatAdmin; 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showPrintView, setShowPrintView] = useState(false);
@@ -46,24 +47,26 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
     e.preventDefault();
     if (!formData.date || !formData.time) return;
 
-    // Time validation: Prevent past dates/times
-    const selectedDateTime = new Date(`${formData.date}T${formData.time}`);
-    const now = new Date();
-    if (!editingSessionId && selectedDateTime < now) {
-      alert("تنبيه: لا يمكن جدولة تمرين في تاريخ أو وقت سابق للوقت الحالي.");
+    // منع إضافة تمرين بتاريخ قديم (مقارنة باليوم الحالي)
+    const today = new Date().toISOString().split('T')[0];
+    if (formData.date < today) {
+      alert("تنبيه أمني: لا يمكن جدولة تمرين في تاريخ قديم. يرجى اختيار تاريخ اليوم أو تاريخ مستقبلي.");
       return;
     }
+
+    // ضمان أن إداري الفئة لا يقوم بتغيير الفئة المخصصة له
+    const finalCategory = restrictedCat || formData.category;
 
     if (editingSessionId) {
       setState(prev => ({
         ...prev,
-        sessions: prev.sessions.map(s => s.id === editingSessionId ? { ...s, ...formData } as TrainingSession : s)
+        sessions: prev.sessions.map(s => s.id === editingSessionId ? { ...s, ...formData, category: finalCategory } as TrainingSession : s)
       }));
-      addLog?.('تعديل موعد تمرين', `تم تحديث بيانات تمرين فئة ${formData.category}`, 'info');
+      addLog?.('تعديل موعد تمرين', `تم تحديث بيانات تمرين فئة ${finalCategory}`, 'info');
     } else {
       const newSession: TrainingSession = {
         id: generateUUID(),
-        category: formData.category as Category,
+        category: finalCategory as Category,
         date: formData.date || '',
         time: formData.time || '16:00',
         pitch: formData.pitch || 'غير محدد',
@@ -78,6 +81,13 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   };
 
   const toggleSessionComplete = (id: string, currentStatus: boolean) => {
+    // التحقق من صلاحية الفئة لإداري الفئة
+    const session = state.sessions.find(s => s.id === id);
+    if (isCatAdmin && session?.category !== restrictedCat) {
+      alert('لا تملك صلاحية تعديل تمارين خارج فئتك المخصصة.');
+      return;
+    }
+
     setState(prev => ({
       ...prev,
       sessions: prev.sessions.map(s => s.id === id ? { ...s, isCompleted: !currentStatus } : s)
@@ -335,16 +345,17 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
                  <CalendarIcon size={24} className="text-blue-900" /> أجندة التدريبات المركزية (الجدولة)
                </h3>
-               <p className="text-[10px] font-black text-slate-400 mt-1">تنظيم مواعيد التدريب لجميع الفئات - ميزة التعديل محصورة بمدير المكتب</p>
+               <p className="text-[10px] font-black text-slate-400 mt-1">تنظيم مواعيد التدريب لجميع الفئات - ميزة التعديل محصورة بمدير المكتب أو إداري الفئة</p>
             </div>
             <div className="flex gap-3">
               <button 
                 onClick={() => {
-                    if (state.globalCategoryFilter === 'الكل') return alert("يرجى اختيار فئة محددة أولاً لطباعة البرنامج.");
-                    const catSessions = state.sessions.filter(s => s.category === state.globalCategoryFilter).sort((a,b) => a.date.localeCompare(b.date));
+                    const cat = restrictedCat || state.globalCategoryFilter;
+                    if (cat === 'الكل') return alert("يرجى اختيار فئة محددة أولاً لطباعة البرنامج.");
+                    const catSessions = state.sessions.filter(s => s.category === cat).sort((a,b) => a.date.localeCompare(b.date));
                     setPrintData({
                       type: 'category',
-                      title: `أجندة تمارين فئة: ${state.globalCategoryFilter}`,
+                      title: `أجندة تمارين فئة: ${cat}`,
                       period: 'كامل الأجندة المتاحة',
                       sessions: catSessions,
                       stats: { totalSessions: catSessions.length, attendanceRate: 'N/A', totalPresence: 'N/A', totalLates: 'N/A', totalAbsence: 'N/A', totalExcused: 'N/A' }
@@ -368,6 +379,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
             {filteredSessions.map(session => {
               const locked = isSessionLocked(session);
               const isComp = session.isCompleted;
+              // التحقق من ملكية الحصة لإداري الفئة
+              const isOwner = isManager || (isCatAdmin && session.category === restrictedCat);
               return (
                 <div key={session.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-slate-900 relative group overflow-hidden border-b-8 transition-all no-print ${locked ? 'border-slate-300 opacity-80' : isComp ? 'border-emerald-600' : 'hover:border-blue-900'}`}>
                   <div className="flex justify-between items-center mb-4">
@@ -376,7 +389,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                         {isComp && (
                            <span className="text-[9px] font-black text-white flex items-center gap-1 bg-emerald-600 px-2 py-1 rounded-lg border border-emerald-700"><CheckCircle size={12}/> انتهى</span>
                         )}
-                        {canModifyConfig && (
+                        {isOwner && (
                           <div className="flex gap-1">
                             <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all"><Edit size={14}/></button>
                             <button onClick={async () => { if(confirm('حذف التمرين؟')) { await supabase.from('sessions').delete().eq('id', session.id); setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); addLog?.('حذف تمرين', 'تم إزالة الحصة التدريبية من الأجندة', 'error'); } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
@@ -391,8 +404,9 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                      <p className="flex items-center gap-2"><MapPin size={14} className="text-emerald-600"/> {session.pitch || 'غير محدد'}</p>
                   </div>
                   <button 
+                    disabled={!isOwner}
                     onClick={() => toggleSessionComplete(session.id, !!isComp)}
-                    className={`mt-6 w-full py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700' : 'bg-slate-100 border-slate-900 text-slate-900 hover:bg-emerald-50'}`}
+                    className={`mt-6 w-full py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${!isOwner ? 'opacity-30' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700' : 'bg-slate-100 border-slate-900 text-slate-900 hover:bg-emerald-50'}`}
                   >
                      <CheckCircle size={14}/> {isComp ? 'إعادة فتح التمرين' : 'تأشير كتم الإنجاز'}
                   </button>
@@ -423,8 +437,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
               {reportType === 'category' ? (
                 <div className="space-y-2">
                    <label className={labelClass}>الفئة المستهدفة</label>
-                   <select value={selectedCatForReport} onChange={e => setSelectedCatForReport(e.target.value)} className={fieldClass}>
-                      {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                   <select disabled={!!restrictedCat} value={selectedCatForReport} onChange={e => setSelectedCatForReport(e.target.value)} className={fieldClass}>
+                      {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
                    </select>
                 </div>
               ) : (
@@ -432,7 +446,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                    <label className={labelClass}>البحث عن لاعب</label>
                    <select value={selectedPlayerId} onChange={e => setSelectedPlayerId(e.target.value)} className={fieldClass}>
                       <option value="">-- اختر لاعب من القائمة --</option>
-                      {state.people.filter(p => p.role === 'لاعب').sort((a,b) => a.name.localeCompare(b.name)).map(p => (
+                      {state.people.filter(p => p.role === 'لاعب' && (!restrictedCat || p.category === restrictedCat)).sort((a,b) => a.name.localeCompare(b.name)).map(p => (
                          <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
                       ))}
                    </select>
@@ -475,8 +489,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <label className={labelClass}>الفئة</label>
-                       <select required className={fieldClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                          {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                       <select required disabled={!!restrictedCat} className={fieldClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                          {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div className="space-y-1">
