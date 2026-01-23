@@ -18,6 +18,7 @@ import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 import LocationAssistant from './components/LocationAssistant';
 import AIAssistant from './components/AIAssistant';
+import ChatBot from './components/ChatBot';
 
 // Helper: Standard UUID v4 Generator for Supabase Compatibility
 export const generateUUID = () => {
@@ -289,7 +290,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* عرض اسم المستخدم والرتبة بجانب الإشعارات والمزامنة */}
             <div className="hidden sm:flex items-center gap-4 ml-6 border-l pl-6 border-slate-200">
                <div className="flex items-center gap-3">
                   <div className="text-left">
@@ -363,6 +363,9 @@ const App: React.FC = () => {
             {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} onBack={() => setActiveTab('squad')} />}
           </div>
         </section>
+        
+        {/* بوت الدردشة العائم متاح في كامل أرجاء التطبيق */}
+        <ChatBot />
       </main>
     </div>
   );
