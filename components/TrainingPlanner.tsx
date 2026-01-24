@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Calendar as CalendarIcon, MapPin, Clock, Plus, Trash2, Edit, X, Printer, FileText, CheckCircle, ShieldCheck, Lock, AlertCircle, Map, ChevronRight, BarChart3, PieChart, Users, User, TrendingUp, CalendarDays } from 'lucide-react';
+import { Calendar as CalendarIcon, MapPin, Clock, Plus, Trash2, Edit, X, Printer, FileText, CheckCircle, ShieldCheck, Lock, AlertCircle, Map, ChevronRight, BarChart3, PieChart, Users, User, TrendingUp, CalendarDays, Gavel, UserCircle, Hash, Trophy } from 'lucide-react';
 import { AppState, TrainingSession, Category, Person, AttendanceRecord } from '../types';
 import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
@@ -16,7 +16,6 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const currentUser = state.currentUser;
   const restrictedCat = currentUser?.restrictedCategory;
   
-  // تحديث الصلاحيات: المدير وإداري الفئة يمكنهم الإدارة
   const isManager = currentUser?.role === 'مدير';
   const isCatAdmin = currentUser?.role === 'إداري فئة';
   const canModifyConfig = isManager || isCatAdmin; 
@@ -26,8 +25,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const [activeTab, setActiveTab] = useState<'agenda' | 'stats'>('agenda');
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   
-  // States for Stats
-  const [reportType, setReportType] = useState<'category' | 'player'>('category');
+  const [reportType, setReportType] = useState<'category' | 'player' | 'discipline'>('category');
   const [selectedCatForReport, setSelectedCatForReport] = useState<string>(restrictedCat || state.categories[0] || '');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>('');
   const [reportPeriod, setReportPeriod] = useState<{ month: string, year: string }>({
@@ -47,14 +45,6 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
     e.preventDefault();
     if (!formData.date || !formData.time) return;
 
-    // منع إضافة تمرين بتاريخ قديم (مقارنة باليوم الحالي)
-    const today = new Date().toISOString().split('T')[0];
-    if (formData.date < today) {
-      alert("تنبيه أمني: لا يمكن جدولة تمرين في تاريخ قديم. يرجى اختيار تاريخ اليوم أو تاريخ مستقبلي.");
-      return;
-    }
-
-    // ضمان أن إداري الفئة لا يقوم بتغيير الفئة المخصصة له
     const finalCategory = restrictedCat || formData.category;
 
     if (editingSessionId) {
@@ -81,18 +71,13 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   };
 
   const toggleSessionComplete = (id: string, currentStatus: boolean) => {
-    // التحقق من صلاحية الفئة لإداري الفئة
     const session = state.sessions.find(s => s.id === id);
-    if (isCatAdmin && session?.category !== restrictedCat) {
-      alert('لا تملك صلاحية تعديل تمارين خارج فئتك المخصصة.');
-      return;
-    }
+    if (isCatAdmin && session?.category !== restrictedCat) return;
 
     setState(prev => ({
       ...prev,
       sessions: prev.sessions.map(s => s.id === id ? { ...s, isCompleted: !currentStatus } : s)
     }));
-    addLog?.('تحديث حالة تمرين', currentStatus ? 'تم إعادة فتح التمرين' : 'تم تأشير التمرين كمنتهي', 'info');
   };
 
   const filteredSessions = useMemo(() => {
@@ -102,22 +87,13 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
       .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [state.sessions, restrictedCat, state.globalCategoryFilter]);
 
-  // Check if session is older than 30 minutes for locking UI
-  const isSessionLocked = (session: TrainingSession) => {
-    const sessionTime = new Date(`${session.date}T${session.time}`);
-    const now = new Date();
-    const diffInMinutes = (now.getTime() - sessionTime.getTime()) / (1000 * 60);
-    return diffInMinutes > 30;
-  };
-
-  // --- STATS COMPUTATION LOGIC ---
   const generateReport = () => {
-    const isCategory = reportType === 'category';
     const period = `${reportPeriod.year}-${reportPeriod.month}`;
     
-    if (isCategory) {
+    if (reportType === 'category') {
       const catSessions = state.sessions.filter(s => s.category === selectedCatForReport && s.date.startsWith(period));
       const catPlayers = state.people.filter(p => p.role === 'لاعب' && p.category === selectedCatForReport);
+      const catMatches = state.matches.filter(m => m.category === selectedCatForReport && m.date.startsWith(period));
       
       let totalPresence = 0;
       let totalLates = 0;
@@ -132,6 +108,22 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
         totalExcused += records.filter(r => r.status === 'غياب بعذر').length;
       });
 
+      const playerList = catPlayers.map(p => {
+        const playerRecords = state.attendance.filter(a => a.personId === p.id && a.date.startsWith(period));
+        const present = playerRecords.filter(r => r.status === 'حاضر').length;
+        const late = playerRecords.filter(r => r.status === 'متأخر').length;
+        const attRate = catSessions.length > 0 ? Math.round(((present + late * 0.7) / catSessions.length) * 100) : 0;
+
+        let yellows = 0;
+        let reds = 0;
+        catMatches.forEach(m => {
+          yellows += m.events.filter(e => e.type === 'yellow' && (e.player === p.id || e.player === p.name)).length;
+          reds += m.events.filter(e => e.type === 'red' && (e.player === p.id || e.player === p.name)).length;
+        });
+
+        return { ...p, attRate, yellows, reds };
+      }).sort((a,b) => b.attRate - a.attRate);
+
       const totalPossible = catSessions.length * catPlayers.length;
       const attendanceRate = totalPossible > 0 ? Math.round((totalPresence / totalPossible) * 100) : 0;
 
@@ -140,14 +132,16 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
         title: `تقرير أداء فئة: ${selectedCatForReport}`,
         period: `${reportPeriod.month} / ${reportPeriod.year}`,
         sessions: catSessions,
+        playerList,
         stats: { totalSessions: catSessions.length, attendanceRate, totalPresence, totalLates, totalAbsence, totalExcused, playersCount: catPlayers.length }
       });
-    } else {
+    } else if (reportType === 'player') {
       const player = state.people.find(p => p.id === selectedPlayerId);
       if (!player) return alert('يرجى اختيار اللاعب أولاً');
 
       const playerRecords = state.attendance.filter(a => a.personId === player.id && a.date.startsWith(period));
       const playerSessions = state.sessions.filter(s => s.category === player.category && s.date.startsWith(period));
+      const playerMatches = state.matches.filter(m => m.category === player.category && m.date.startsWith(period));
 
       const present = playerRecords.filter(r => r.status === 'حاضر').length;
       const late = playerRecords.filter(r => r.status === 'متأخر').length;
@@ -156,16 +150,49 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
       
       const score = playerSessions.length > 0 ? Math.round(((present + (late * 0.5)) / playerSessions.length) * 100) : 0;
 
+      let matchYellows = 0;
+      let matchReds = 0;
+      playerMatches.forEach(m => {
+        matchYellows += m.events.filter(e => e.type === 'yellow' && (e.player === player.id || e.player === player.name)).length;
+        matchReds += m.events.filter(e => e.type === 'red' && (e.player === player.id || e.player === player.name)).length;
+      });
+
       setPrintData({
         type: 'player',
         player,
         title: `تقرير التزام اللاعب: ${player.name}`,
         period: `${reportPeriod.month} / ${reportPeriod.year}`,
-        stats: { present, late, absent, excused, total: playerSessions.length, score },
+        stats: { present, late, absent, excused, total: playerSessions.length, score, matchYellows, matchReds },
         records: playerRecords.map(r => {
           const s = state.sessions.find(ses => ses.id === r.sessionId);
           return { ...r, objective: s?.objective || 'تمرين عام' };
         })
+      });
+    } else if (reportType === 'discipline') {
+      const catPlayers = state.people.filter(p => p.role === 'لاعب' && p.category === selectedCatForReport);
+      
+      const disciplinaryStats = catPlayers.map(p => {
+        const records = state.attendance.filter(a => a.personId === p.id && a.date.startsWith(period));
+        const lates = records.filter(r => r.status === 'متأخر').length;
+        const absences = records.filter(r => r.status === 'غائب').length;
+        const excused = records.filter(r => r.status === 'غياب بعذر').length;
+        return {
+          id: p.id,
+          name: p.name,
+          number: p.number,
+          federalId: p.federalNumber || p.nationalId || 'بدون رقم',
+          lates,
+          absences,
+          excused,
+          totalOffenses: lates + absences
+        };
+      }).sort((a,b) => b.totalOffenses - a.totalOffenses);
+
+      setPrintData({
+        type: 'discipline',
+        title: `كشف انضباط فئة: ${selectedCatForReport}`,
+        period: `${reportPeriod.month} / ${reportPeriod.year}`,
+        stats: disciplinaryStats
       });
     }
     setShowPrintView(true);
@@ -174,7 +201,6 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const fieldClass = "w-full bg-white border-2 border-slate-900 rounded-xl py-4 px-4 font-black text-slate-900 outline-none focus:border-orange-600 transition-all text-sm";
   const labelClass = "text-[10px] font-black text-slate-900 mr-2 uppercase block mb-1.5";
 
-  // --- PRINT VIEW MODAL ---
   if (showPrintView && printData) {
     return (
       <div className="fixed inset-0 bg-white z-[600] overflow-y-auto p-12 dir-rtl text-right">
@@ -199,49 +225,87 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
               </div>
            </div>
 
-           {printData.type === 'category' ? (
+           {printData.type === 'discipline' ? (
+              <div className="space-y-8">
+                <h4 className="text-lg font-black border-r-4 border-red-600 pr-3 flex items-center gap-2">
+                   <Gavel size={20}/> سجل الغيابات والتأخيرات (ملخص انضباطي)
+                </h4>
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 border-y-2 border-slate-900 text-[10px] font-black uppercase">
+                      <th className="p-4 border-l"># الهوية</th>
+                      <th className="p-4 border-l">الصورة</th>
+                      <th className="p-4 border-l">الاسم الكامل</th>
+                      <th className="p-4 border-l text-center">التأخيرات</th>
+                      <th className="p-4 border-l text-center">الغيابات</th>
+                      <th className="p-4 text-center">إجمالي المخالفات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printData.stats.map((p: any, idx: number) => (
+                      <tr key={idx} className="border-b border-slate-200 text-sm font-black transition-colors hover:bg-slate-50">
+                        <td className="p-4 border-l text-center text-[10px] text-slate-400">ID: {p.federalId}</td>
+                        <td className="p-4 border-l text-center">
+                           <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-center mx-auto shadow-inner text-[#001F3F]">
+                              <UserCircle size={32} strokeWidth={1}/>
+                           </div>
+                        </td>
+                        <td className="p-4 border-l">
+                           <div className="flex flex-col">
+                              <span>{p.name}</span>
+                              <span className="text-[9px] text-orange-600 uppercase flex items-center gap-1"><Hash size={8}/> الرقم: {p.number || '--'}</span>
+                           </div>
+                        </td>
+                        <td className="p-4 border-l text-center text-orange-600">{p.lates}</td>
+                        <td className="p-4 border-l text-center text-red-600">{p.absences}</td>
+                        <td className="p-4 text-center bg-slate-50 font-black">{p.totalOffenses}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+           ) : printData.type === 'category' ? (
               <div className="space-y-10">
                  <div className="grid grid-cols-4 gap-4">
-                    <div className="bg-slate-50 p-6 border-2 border-slate-900 text-center">
+                    <div className="bg-slate-50 p-6 border-2 border-slate-900 text-center rounded-2xl">
                        <p className="text-[10px] font-black text-slate-400 uppercase">إجمالي الحصص</p>
                        <p className="text-3xl font-black">{printData.stats.totalSessions}</p>
                     </div>
-                    <div className="bg-emerald-50 p-6 border-2 border-emerald-900 text-center">
+                    <div className="bg-emerald-50 p-6 border-2 border-emerald-900 text-center rounded-2xl">
                        <p className="text-[10px] font-black text-emerald-600 uppercase">معدل الحضور</p>
                        <p className="text-3xl font-black text-emerald-700">%{printData.stats.attendanceRate}</p>
                     </div>
-                    <div className="bg-orange-50 p-6 border-2 border-orange-900 text-center">
+                    <div className="bg-orange-50 p-6 border-2 border-orange-900 text-center rounded-2xl">
                        <p className="text-[10px] font-black text-orange-600 uppercase">حالات التأخير</p>
                        <p className="text-3xl font-black text-orange-700">{printData.stats.totalLates}</p>
                     </div>
-                    <div className="bg-red-50 p-6 border-2 border-red-900 text-center">
+                    <div className="bg-red-50 p-6 border-2 border-red-900 text-center rounded-2xl">
                        <p className="text-[10px] font-black text-red-600 uppercase">حالات الغياب</p>
                        <p className="text-3xl font-black text-red-700">{printData.stats.totalAbsence}</p>
                     </div>
                  </div>
 
-                 <h4 className="text-lg font-black border-r-4 border-blue-900 pr-3">سجل التدريبات خلال الفترة</h4>
+                 <h4 className="text-lg font-black border-r-4 border-blue-900 pr-3">خلاصة أداء اللاعبين في الفترة</h4>
                  <table className="w-full text-right border-collapse">
                     <thead>
-                       <tr className="bg-slate-100 border-y-2 border-slate-900 text-xs font-black">
-                          <th className="p-4 border-l border-slate-200">التاريخ</th>
-                          <th className="p-4 border-l border-slate-200">موضوع التمرين</th>
-                          <th className="p-4 border-l border-slate-200 text-center">حاضر</th>
-                          <th className="p-4 text-center">غائب</th>
+                       <tr className="bg-slate-100 border-y-2 border-slate-900 text-[10px] font-black">
+                          <th className="p-3 border-l border-slate-200">اللاعب</th>
+                          <th className="p-3 border-l border-slate-200 text-center">الرقم</th>
+                          <th className="p-3 border-l border-slate-200 text-center">معدل الحضور</th>
+                          <th className="p-3 border-l border-slate-200 text-center text-yellow-600">صفراء</th>
+                          <th className="p-3 text-center text-red-600">حمراء</th>
                        </tr>
                     </thead>
                     <tbody>
-                       {printData.sessions.map((s: any) => {
-                          const att = state.attendance.filter(a => a.sessionId === s.id);
-                          return (
-                             <tr key={s.id} className="border-b border-slate-200 text-sm font-black">
-                                <td className="p-4 border-l border-slate-200">{s.date}</td>
-                                <td className="p-4 border-l border-slate-200 text-xs">{s.objective}</td>
-                                <td className="p-4 border-l border-slate-200 text-center text-emerald-600">{att.filter(r => r.status === 'حاضر').length}</td>
-                                <td className="p-4 text-center text-red-600">{att.filter(r => r.status === 'غائب').length}</td>
-                             </tr>
-                          );
-                       })}
+                       {printData.playerList.map((p: any) => (
+                          <tr key={p.id} className="border-b border-slate-200 text-xs font-black">
+                             <td className="p-3 border-l border-slate-200">{p.name}</td>
+                             <td className="p-3 border-l border-slate-200 text-center">{p.number || '--'}</td>
+                             <td className="p-3 border-l border-slate-200 text-center">%{p.attRate}</td>
+                             <td className="p-3 border-l border-slate-200 text-center text-yellow-600">{p.yellows}</td>
+                             <td className="p-3 text-center text-red-600">{p.reds}</td>
+                          </tr>
+                       ))}
                     </tbody>
                  </table>
               </div>
@@ -260,25 +324,26 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-4 gap-4">
-                    <div className="text-center p-4 border-2 border-slate-200">
-                       <p className="text-[10px] font-black text-slate-400">حاضر</p>
-                       <p className="text-2xl font-black">{printData.stats.present}</p>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-slate-50 p-4 border-2 border-slate-200 rounded-xl text-center">
+                       <p className="text-[10px] font-black text-slate-400">سجل التمارين</p>
+                       <div className="flex justify-around mt-2">
+                          <div className="text-center"><p className="text-[8px] text-emerald-600">حاضر</p><p className="font-black">{printData.stats.present}</p></div>
+                          <div className="text-center"><p className="text-[8px] text-orange-600">متأخر</p><p className="font-black">{printData.stats.late}</p></div>
+                          <div className="text-center"><p className="text-[8px] text-red-600">غائب</p><p className="font-black">{printData.stats.absent}</p></div>
+                       </div>
                     </div>
-                    <div className="text-center p-4 border-2 border-slate-200">
-                       <p className="text-[10px] font-black text-slate-400">متأخر</p>
-                       <p className="text-2xl font-black text-orange-600">{printData.stats.late}</p>
+                    <div className="bg-yellow-50 p-4 border-2 border-yellow-400 rounded-xl text-center flex flex-col justify-center">
+                       <p className="text-[10px] font-black text-yellow-700 uppercase">انضباط المباريات (صفراء)</p>
+                       <p className="text-3xl font-black text-yellow-800">{printData.stats.matchYellows}</p>
                     </div>
-                    <div className="text-center p-4 border-2 border-slate-200">
-                       <p className="text-[10px] font-black text-slate-400">غياب بعذر</p>
-                       <p className="text-2xl font-black text-blue-600">{printData.stats.excused}</p>
-                    </div>
-                    <div className="text-center p-4 border-2 border-slate-200">
-                       <p className="text-[10px] font-black text-slate-400">غائب</p>
-                       <p className="text-2xl font-black text-red-600">{printData.stats.absent}</p>
+                    <div className="bg-red-50 p-4 border-2 border-red-400 rounded-xl text-center flex flex-col justify-center">
+                       <p className="text-[10px] font-black text-red-700 uppercase">انضباط المباريات (حمراء)</p>
+                       <p className="text-3xl font-black text-red-800">{printData.stats.matchReds}</p>
                     </div>
                  </div>
 
+                 <h4 className="text-lg font-black border-r-4 border-blue-900 pr-3">سجل التفاصيل اليومية</h4>
                  <table className="w-full text-right border-collapse">
                     <thead>
                        <tr className="bg-slate-100 border-y-2 border-slate-900 text-xs font-black">
@@ -322,18 +387,11 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Tab Switcher */}
       <div className="bg-white p-2 rounded-2xl border-2 border-slate-900 flex gap-2 w-fit no-print mx-auto mb-8 shadow-sm">
-         <button 
-           onClick={() => setActiveTab('agenda')}
-           className={`px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 transition-all ${activeTab === 'agenda' ? 'bg-[#001F3F] text-white shadow-lg scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
-         >
+         <button onClick={() => setActiveTab('agenda')} className={`px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 transition-all ${activeTab === 'agenda' ? 'bg-[#001F3F] text-white shadow-lg scale-105' : 'text-slate-500 hover:bg-slate-100'}`}>
             <CalendarIcon size={18}/> الأجندة التدريبية
          </button>
-         <button 
-           onClick={() => setActiveTab('stats')}
-           className={`px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 transition-all ${activeTab === 'stats' ? 'bg-[#001F3F] text-white shadow-lg scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
-         >
+         <button onClick={() => setActiveTab('stats')} className={`px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 transition-all ${activeTab === 'stats' ? 'bg-[#001F3F] text-white shadow-lg scale-105' : 'text-slate-500 hover:bg-slate-100'}`}>
             <BarChart3 size={18}/> التقارير والإحصائيات
          </button>
       </div>
@@ -345,11 +403,10 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
                  <CalendarIcon size={24} className="text-blue-900" /> أجندة التدريبات المركزية (الجدولة)
                </h3>
-               <p className="text-[10px] font-black text-slate-400 mt-1">تنظيم مواعيد التدريب لجميع الفئات - ميزة التعديل محصورة بمدير المكتب أو إداري الفئة</p>
+               <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-widest">تنظيم مواعيد التدريب لجميع الفئات</p>
             </div>
             <div className="flex gap-3">
-              <button 
-                onClick={() => {
+              <button onClick={() => {
                     const cat = restrictedCat || state.globalCategoryFilter;
                     if (cat === 'الكل') return alert("يرجى اختيار فئة محددة أولاً لطباعة البرنامج.");
                     const catSessions = state.sessions.filter(s => s.category === cat).sort((a,b) => a.date.localeCompare(b.date));
@@ -358,18 +415,16 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                       title: `أجندة تمارين فئة: ${cat}`,
                       period: 'كامل الأجندة المتاحة',
                       sessions: catSessions,
+                      playerList: [],
                       stats: { totalSessions: catSessions.length, attendanceRate: 'N/A', totalPresence: 'N/A', totalLates: 'N/A', totalAbsence: 'N/A', totalExcused: 'N/A' }
                     });
                     setShowPrintView(true);
-                }} 
-                className="bg-white text-slate-900 border-2 border-slate-900 px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-slate-50 transition-all"
-              >
+                }} className="bg-white text-slate-900 border-2 border-slate-900 px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-slate-50 transition-all">
                 <Printer size={18}/> طباعة البرنامج
               </button>
               {canModifyConfig && (
-                <button onClick={() => { setEditingSessionId(null); setIsModalOpen(true); }}
-                  className="bg-[#001F3F] text-white px-8 py-3 rounded-xl flex items-center gap-2 font-black text-sm shadow-lg border-b-4 border-black hover:bg-black transition-all">
-                  <Plus size={20} /> إضافة حصة تدريبية جديدة
+                <button onClick={() => { setEditingSessionId(null); setIsModalOpen(true); }} className="bg-[#001F3F] text-white px-8 py-3 rounded-xl flex items-center gap-2 font-black text-sm shadow-lg border-b-4 border-black hover:bg-black transition-all">
+                  <Plus size={20} /> إضافة حصة تدريبية
                 </button>
               )}
             </div>
@@ -377,25 +432,18 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
             {filteredSessions.map(session => {
-              const locked = isSessionLocked(session);
               const isComp = session.isCompleted;
-              // التحقق من ملكية الحصة لإداري الفئة
               const isOwner = isManager || (isCatAdmin && session.category === restrictedCat);
               return (
-                <div key={session.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-slate-900 relative group overflow-hidden border-b-8 transition-all no-print ${locked ? 'border-slate-300 opacity-80' : isComp ? 'border-emerald-600' : 'hover:border-blue-900'}`}>
+                <div key={session.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-slate-900 relative group overflow-hidden border-b-8 transition-all no-print ${isComp ? 'border-emerald-600' : 'hover:border-blue-900'}`}>
                   <div className="flex justify-between items-center mb-4">
                      <span className="bg-[#001F3F] text-white text-[9px] font-black px-3 py-1 rounded-lg uppercase">{session.category}</span>
-                     <div className="flex gap-1">
-                        {isComp && (
-                           <span className="text-[9px] font-black text-white flex items-center gap-1 bg-emerald-600 px-2 py-1 rounded-lg border border-emerald-700"><CheckCircle size={12}/> انتهى</span>
-                        )}
-                        {isOwner && (
-                          <div className="flex gap-1">
-                            <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all"><Edit size={14}/></button>
-                            <button onClick={async () => { if(confirm('حذف التمرين؟')) { await supabase.from('sessions').delete().eq('id', session.id); setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); addLog?.('حذف تمرين', 'تم إزالة الحصة التدريبية من الأجندة', 'error'); } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
-                          </div>
-                        )}
-                     </div>
+                     {isOwner && (
+                       <div className="flex gap-1">
+                         <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all"><Edit size={14}/></button>
+                         <button onClick={async () => { if(confirm('حذف التمرين؟')) { await supabase.from('sessions').delete().eq('id', session.id); setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
+                       </div>
+                     )}
                   </div>
                   <h4 className="text-lg font-black text-slate-900 mb-4">{session.objective}</h4>
                   <div className="space-y-2 text-[11px] font-black text-slate-500 uppercase tracking-tighter">
@@ -403,38 +451,32 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                      <p className="flex items-center gap-2"><Clock size={14} className="text-[#001F3F]"/> {session.time}</p>
                      <p className="flex items-center gap-2"><MapPin size={14} className="text-emerald-600"/> {session.pitch || 'غير محدد'}</p>
                   </div>
-                  <button 
-                    disabled={!isOwner}
-                    onClick={() => toggleSessionComplete(session.id, !!isComp)}
-                    className={`mt-6 w-full py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${!isOwner ? 'opacity-30' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700' : 'bg-slate-100 border-slate-900 text-slate-900 hover:bg-emerald-50'}`}
-                  >
+                  <button disabled={!isOwner} onClick={() => toggleSessionComplete(session.id, !!isComp)} className={`mt-6 w-full py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${!isOwner ? 'opacity-30' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700' : 'bg-slate-100 border-slate-900 text-slate-900 hover:bg-emerald-50'}`}>
                      <CheckCircle size={14}/> {isComp ? 'إعادة فتح التمرين' : 'تأشير كتم الإنجاز'}
                   </button>
                 </div>
               );
             })}
-            {filteredSessions.length === 0 && (
-               <div className="col-span-full py-20 text-center opacity-30 italic font-black text-sm uppercase tracking-widest">لا توجد تمارين تمارين مجدولة حالياً لهذه الفئة</div>
-            )}
           </div>
         </>
       ) : (
         <div className="bg-white p-10 rounded-[3rem] border-2 border-slate-900 shadow-sm no-print">
            <div className="flex items-center gap-4 mb-10">
               <BarChart3 className="text-blue-900" size={32}/>
-              <h3 className="text-2xl font-black text-slate-900">محرك استخراج التقارير الفنية</h3>
+              <h3 className="text-2xl font-black text-slate-900">مركز استخراج التقارير والبيانات البصرية</h3>
            </div>
 
            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-4">
                  <label className={labelClass}>نوع التقرير</label>
-                 <div className="flex bg-slate-100 p-1 rounded-xl border-2 border-slate-200">
-                    <button onClick={() => setReportType('category')} className={`flex-1 py-3 rounded-lg font-black text-xs transition-all ${reportType === 'category' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>تقرير فئة</button>
-                    <button onClick={() => setReportType('player')} className={`flex-1 py-3 rounded-lg font-black text-xs transition-all ${reportType === 'player' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>تقرير لاعب</button>
+                 <div className="flex flex-col gap-1 bg-slate-100 p-1 rounded-xl border-2 border-slate-200">
+                    <button onClick={() => setReportType('category')} className={`w-full py-3 rounded-lg font-black text-[10px] transition-all ${reportType === 'category' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>📊 تقرير فئة (بصري)</button>
+                    <button onClick={() => setReportType('discipline')} className={`w-full py-3 rounded-lg font-black text-[10px] transition-all ${reportType === 'discipline' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500'}`}>⚖️ كشف انضباط الهوية</button>
+                    <button onClick={() => setReportType('player')} className={`w-full py-3 rounded-lg font-black text-[10px] transition-all ${reportType === 'player' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>👤 تقرير التزام لاعب</button>
                  </div>
               </div>
 
-              {reportType === 'category' ? (
+              {reportType === 'category' || reportType === 'discipline' ? (
                 <div className="space-y-2">
                    <label className={labelClass}>الفئة المستهدفة</label>
                    <select disabled={!!restrictedCat} value={selectedCatForReport} onChange={e => setSelectedCatForReport(e.target.value)} className={fieldClass}>
@@ -445,8 +487,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                 <div className="space-y-2">
                    <label className={labelClass}>البحث عن لاعب</label>
                    <select value={selectedPlayerId} onChange={e => setSelectedPlayerId(e.target.value)} className={fieldClass}>
-                      <option value="">-- اختر لاعب من القائمة --</option>
-                      {state.people.filter(p => p.role === 'لاعب' && (!restrictedCat || p.category === restrictedCat)).sort((a,b) => a.name.localeCompare(b.name)).map(p => (
+                      <option value="">-- اختر لاعب --</option>
+                      {state.people.filter(p => p.role === 'لاعب' && (!restrictedCat || p.category === restrictedCat)).map(p => (
                          <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
                       ))}
                    </select>
@@ -457,10 +499,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                  <div className="space-y-2">
                     <label className={labelClass}>الشهر</label>
                     <select value={reportPeriod.month} onChange={e => setReportPeriod({...reportPeriod, month: e.target.value})} className={fieldClass}>
-                       {Array.from({length:12}).map((_,i) => {
-                          const val = (i+1).toString().padStart(2, '0');
-                          return <option key={val} value={val}>{val}</option>;
-                       })}
+                       {Array.from({length:12}).map((_,i) => <option key={i+1} value={(i+1).toString().padStart(2, '0')}>{(i+1).toString().padStart(2, '0')}</option>)}
                     </select>
                  </div>
                  <div className="space-y-2">
@@ -472,7 +511,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
               </div>
 
               <div className="flex items-end">
-                 <button onClick={generateReport} className="w-full bg-[#001F3F] text-white py-4 rounded-2xl font-black text-md shadow-xl hover:bg-black transition-all border-b-4 border-black">استخراج ومعاينة التقرير</button>
+                 <button onClick={generateReport} className="w-full bg-[#001F3F] text-white py-4 rounded-2xl font-black text-md shadow-xl hover:bg-black transition-all mt-4 uppercase">إنشاء ومعاينة التقرير</button>
               </div>
            </div>
         </div>
@@ -482,7 +521,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
         <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[500] p-4 no-print">
            <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl border-[6px] border-slate-900 overflow-hidden">
               <div className="p-6 bg-slate-100 border-b-2 border-slate-900 flex justify-between items-center">
-                 <h3 className="font-black text-slate-900 uppercase">{editingSessionId ? 'تحديث موعد تمرين' : 'جدولة تمرين مركزي جديد'}</h3>
+                 <h3 className="font-black text-slate-900 uppercase">جدولة تمرين مركزي جديد</h3>
                  <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
               </div>
               <form onSubmit={handleSave} className="p-8 space-y-5">
@@ -495,12 +534,12 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                     </div>
                     <div className="space-y-1">
                        <label className={labelClass}>الملعب</label>
-                       <input type="text" className={fieldClass} value={formData.pitch || ''} onChange={e => setFormData({...formData, pitch: e.target.value})} placeholder="مثلاً: ملعب الكرامة.." />
+                       <input type="text" className={fieldClass} value={formData.pitch || ''} onChange={e => setFormData({...formData, pitch: e.target.value})} placeholder="ملعب الكرامة.." />
                     </div>
                  </div>
                  <div className="space-y-1">
                     <label className={labelClass}>موضوع / هدف التمرين</label>
-                    <input required type="text" className={fieldClass} value={formData.objective || ''} onChange={e => setFormData({...formData, objective: e.target.value})} placeholder="مثلاً: تكتيك هجومي.." />
+                    <input required type="text" className={fieldClass} value={formData.objective || ''} onChange={e => setFormData({...formData, objective: e.target.value})} placeholder="تكتيك هجومي.." />
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -512,7 +551,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                        <input required type="time" className={fieldClass} value={formData.time || ''} onChange={e => setFormData({...formData, time: e.target.value})} />
                     </div>
                  </div>
-                 <button type="submit" className="w-full bg-[#001F3F] text-white py-5 rounded-2xl font-black shadow-xl hover:bg-black transition-all mt-4 uppercase">حفظ وتثبيت التمرين</button>
+                 <button type="submit" className="w-full bg-[#001F3F] text-white py-5 rounded-2xl font-black shadow-xl hover:bg-black transition-all mt-4 uppercase">حفظ التمرين</button>
               </form>
            </div>
         </div>

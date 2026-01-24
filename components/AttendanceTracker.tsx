@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { ClipboardCheck, Save, ShieldAlert, History, Search, ShieldCheck, Lock, Clock, Calendar as CalendarIcon, AlertCircle, Printer, ChevronRight, FileText } from 'lucide-react';
+import { ClipboardCheck, Save, ShieldAlert, History, Search, ShieldCheck, Lock, Unlock, Clock, Calendar as CalendarIcon, AlertCircle, Printer, ChevronRight, FileText } from 'lucide-react';
 // Import only types from types.ts
 import { AppState, AttendanceStatus, AttendanceRecord, TrainingSession } from '../types';
 // Correctly import generateUUID helper from App.tsx where it is defined and exported
-import { generateUUID } from '../App';
+import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
 
 interface AttendanceTrackerProps {
@@ -15,7 +15,7 @@ interface AttendanceTrackerProps {
 
 const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, addLog }) => {
   const [selectedSessionId, setSelectedSessionId] = useState('');
-  const [localRecords, setLocalRecords] = useState<Record<string, { status: AttendanceStatus; excuse?: string; time?: string; date?: string }>>({});
+  const [localRecords, setLocalRecords] = useState<Record<string, { status: AttendanceStatus | null; excuse?: string; time?: string; date?: string }>>({});
   const [showPrintView, setShowPrintView] = useState(false);
   
   const currentUser = state.currentUser!;
@@ -38,26 +38,35 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const savedRecords = state.attendance.filter(r => r.sessionId === selectedSessionId);
 
   // Auto-lock check: Is session older than 30 minutes?
-  const isLockedByTime = activeSession ? (() => {
+  const isTimeExpired = activeSession ? (() => {
     const sessionTime = new Date(`${activeSession.date}T${activeSession.time}`);
     const now = new Date();
     const diffInMinutes = (now.getTime() - sessionTime.getTime()) / (1000 * 60);
     return diffInMinutes > 30;
   })() : false;
 
+  const isLocked = activeSession?.isLocked || (isTimeExpired && !isManager);
+
   const handleSetStatus = (pid: string, status: AttendanceStatus) => {
-    if (isLockedByTime || isViewer) return;
+    if (isLocked || isViewer) return;
     
-    // قفل لإداري الفئة: إذا كانت الحالة قد تم اختيارها مسبقاً (سواء تم حفظها أو مجرد اختيارها محلياً)، يمنع التغيير.
-    // يتم استثناء "المدير" فقط من هذا القيد.
-    if (isCatAdmin) {
-       const alreadySaved = savedRecords.some(r => r.personId === pid && r.status);
-       const alreadySelectedLocally = localRecords[pid]?.status;
-       
-       if (alreadySaved || alreadySelectedLocally) {
-          alert('نظام الحماية: لا يمكنك تعديل حالة الحضور بعد رصدها للمرة الأولى. يرجى مراجعة مدير المكتب لأي تعديلات ضرورية.');
-          return;
-       }
+    const saved = savedRecords.find(r => r.personId === pid);
+    const local = localRecords[pid];
+    const currentStatus = local?.status !== undefined ? local.status : (saved?.status || null);
+
+    // للمدير: إذا ضغط على الحالة المختارة مسبقاً، يتم إلغاء الاختيار
+    if (isManager && currentStatus === status) {
+      setLocalRecords(prev => ({ 
+        ...prev, 
+        [pid]: { ...prev[pid], status: null } 
+      }));
+      return;
+    }
+
+    // قفل لإداري الفئة: إذا كانت الحالة قد تم اختيارها مسبقاً، يمنع التغيير.
+    if (isCatAdmin && currentStatus !== null) {
+      alert('نظام الحماية: لا يمكنك تعديل حالة الحضور بعد رصدها للمرة الأولى. يرجى مراجعة مدير المكتب لأي تعديلات ضرورية.');
+      return;
     }
 
     const now = new Date();
@@ -71,9 +80,8 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   };
 
   const handleSetExcuse = (pid: string, excuse: string) => {
-    if (isLockedByTime || isViewer) return;
+    if (isLocked || isViewer) return;
     
-    // منع إداري الفئة من تعديل الملاحظة إذا كانت مسجلة مسبقاً في السحاب
     if (isCatAdmin) {
       const alreadySaved = savedRecords.find(r => r.personId === pid);
       if (alreadySaved && alreadySaved.excuse) {
@@ -89,36 +97,74 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   };
 
   const saveAttendance = () => {
-    if (isLockedByTime) {
-      alert("عذراً، تم قفل رصد الحضور لهذا التمرين بسبب تجاوز المهلة المسموحة (30 دقيقة).");
+    if (isLocked && !isManager) {
+      alert("عذراً، السجل مقفل حالياً.");
       return;
     }
 
-    const entries = Object.entries(localRecords) as [string, { status: AttendanceStatus; excuse?: string; time?: string; date?: string }][];
-    if (entries.length === 0) return alert('يرجى رصد حالات اللاعبين أولاً قبل التثبيت');
+    // تجهيز السجلات
+    const newRecords: AttendanceRecord[] = [];
+    const now = new Date();
+    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    
+    players.forEach(p => {
+      const local = localRecords[p.id];
+      const saved = savedRecords.find(r => r.personId === p.id);
+      
+      let statusToSave: AttendanceStatus | null = null;
+      let excuseToSave = "";
+      
+      if (local !== undefined) {
+        statusToSave = local.status;
+        excuseToSave = local.excuse || "";
+      } else if (saved) {
+        statusToSave = saved.status;
+        excuseToSave = saved.excuse || "";
+      }
 
-    const newRecords: AttendanceRecord[] = entries.map(([pid, data]) => ({
-      id: generateUUID(),
-      personId: pid,
-      sessionId: selectedSessionId,
-      date: data.date || activeSession!.date,
-      time: data.time || (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0')),
-      status: data.status,
-      excuse: data.excuse,
-      isLocked: true
-    }));
+      // ميزة الغياب التلقائي بعد 30 دقيقة
+      if (isTimeExpired && statusToSave === null) {
+        statusToSave = 'غائب';
+      }
+
+      if (statusToSave !== null) {
+        newRecords.push({
+          id: saved?.id || generateUUID(),
+          personId: p.id,
+          sessionId: selectedSessionId,
+          date: activeSession!.date,
+          time: local?.time || saved?.time || timeStr,
+          status: statusToSave as AttendanceStatus,
+          excuse: excuseToSave,
+          isLocked: true
+        });
+      }
+    });
 
     setState(p => ({
       ...p,
       attendance: [
-        ...p.attendance.filter(a => !(a.sessionId === selectedSessionId && localRecords[a.personId])),
+        ...p.attendance.filter(a => a.sessionId !== selectedSessionId),
         ...newRecords
       ],
     }));
     
-    addLog?.('حفظ الحضور', `تم تثبيت سجل حضور تمرين فئة ${activeSession?.category} - ${activeSession?.objective}`, 'success');
+    addLog?.('حفظ الحضور', `تم تثبيت سجل حضور تمرين فئة ${activeSession?.category}`, 'success');
     setLocalRecords({});
-    alert('تم حفظ وتثبيت سجل الحضور بنجاح في قاعدة البيانات.');
+    alert('تم حفظ وتثبيت سجل الحضور بنجاح.');
+  };
+
+  const toggleLock = async () => {
+    if (!isManager || !activeSession) return;
+    const newLockStatus = !activeSession.isLocked;
+    
+    setState(p => ({
+      ...p,
+      sessions: p.sessions.map(s => s.id === selectedSessionId ? { ...s, isLocked: newLockStatus } : s)
+    }));
+
+    await supabase.from('sessions').update({ isLocked: newLockStatus }).eq('id', selectedSessionId);
+    addLog?.('قفل السجل', `${newLockStatus ? 'تم قفل' : 'تم إلغاء قفل'} سجل حضور التمرين`, 'warning');
   };
 
   // Printable Report Modal for Attendance
@@ -234,6 +280,15 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
            </select>
         </div>
         <div className="flex gap-3">
+          {isManager && selectedSessionId && (
+            <button 
+              onClick={toggleLock}
+              className={`px-8 py-5 rounded-2xl font-black text-lg shadow-sm transition-all flex items-center gap-2 border-2 ${activeSession?.isLocked ? 'bg-red-50 text-red-600 border-red-600' : 'bg-emerald-50 text-emerald-600 border-emerald-600'}`}
+            >
+              {activeSession?.isLocked ? <Lock size={24} /> : <Unlock size={24} />}
+              {activeSession?.isLocked ? 'إلغاء قفل السجل' : 'قفل السجل إدارياً'}
+            </button>
+          )}
           <button 
             onClick={() => setShowPrintView(true)}
             disabled={!selectedSessionId}
@@ -244,7 +299,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
           {!isViewer && (
             <button 
               onClick={saveAttendance} 
-              disabled={!selectedSessionId || isLockedByTime}
+              disabled={!selectedSessionId || (isLocked && !isManager)}
               className="bg-[#001F3F] text-white px-10 py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-black disabled:opacity-30 transition-all flex items-center gap-2 border-b-4 border-black"
             >
               <Save size={24} /> تثبيت الرصد النهائي
@@ -253,18 +308,20 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
         </div>
       </div>
 
-      {isLockedByTime && (
+      {isLocked && (
         <div className="bg-red-50 p-6 rounded-[2.5rem] border-4 border-red-900 flex items-center gap-4 shadow-lg animate-in slide-in-from-top duration-500">
            <div className="p-4 bg-red-900 text-white rounded-2xl"><Lock size={32}/></div>
            <div>
               <h3 className="text-xl font-black text-red-900">نظام الرقابة المركزي: السجل مقفل</h3>
-              <p className="text-xs font-black text-red-700 mt-1 uppercase">مضى أكثر من 30 دقيقة على موعد الحصة التدريبية. لا يمكن تعديل أو إضافة رصد جديد حفاظاً على النزاهة.</p>
+              <p className="text-xs font-black text-red-700 mt-1 uppercase">
+                {activeSession?.isLocked ? 'تم قفل هذا السجل يدوياً من قبل الإدارة.' : 'مضى أكثر من 30 دقيقة على موعد الحصة التدريبية. لا يمكن لغير "المدير" تعديل أو إضافة رصد جديد.'}
+              </p>
            </div>
         </div>
       )}
 
       {activeSession && (
-        <div className={`bg-white rounded-[2.5rem] shadow-sm border-2 border-slate-900 overflow-hidden relative transition-all ${isLockedByTime ? 'opacity-70 pointer-events-none grayscale-[0.5]' : ''}`}>
+        <div className={`bg-white rounded-[2.5rem] shadow-sm border-2 border-slate-900 overflow-hidden relative transition-all ${isLocked && !isManager ? 'opacity-70 pointer-events-none grayscale-[0.5]' : ''}`}>
           <div className="p-6 border-b-2 border-slate-900 bg-slate-100 flex justify-between items-center">
              <div className="flex items-center gap-4">
                <div className="w-14 h-14 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center font-black text-2xl text-[#001F3F] shadow-md uppercase">K</div>
@@ -273,10 +330,10 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                  <p className="text-[10px] font-black text-[#001F3F] uppercase tracking-widest">{activeSession.category} • {activeSession.date} • {activeSession.time}</p>
                </div>
              </div>
-             {!isLockedByTime && !isViewer && (
+             {(!isLocked || isManager) && !isViewer && (
                <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl border border-emerald-200">
                   <ShieldCheck size={18}/>
-                  <span className="text-[10px] font-black uppercase tracking-tighter">رصد متاح حالياً</span>
+                  <span className="text-[10px] font-black uppercase tracking-tighter">رصد متاح {isManager && '(وضع المدير)'}</span>
                </div>
              )}
           </div>
@@ -295,12 +352,26 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                 {players.map(p => {
                   const saved = savedRecords.find(r => r.personId === p.id);
                   const local = localRecords[p.id];
-                  const currentStatus = local?.status || saved?.status;
-                  const currentTime = local?.time || saved?.time;
-                  const currentExcuse = local?.excuse !== undefined ? local.excuse : (saved?.excuse || '');
                   
-                  // الحماية الجديدة: إذا كان إداري فئة وكانت الحالة مرصودة مسبقاً (محلياً أو سحابياً)، يتم تعطيل الأزرار.
-                  // يتم السماح للمدير فقط بالتعديل.
+                  let currentStatus: AttendanceStatus | null = null;
+                  let currentTime = "--:--";
+                  let currentExcuse = "";
+
+                  if (local !== undefined) {
+                    currentStatus = local.status;
+                    currentTime = local.time || "--:--";
+                    currentExcuse = local.excuse || "";
+                  } else if (saved) {
+                    currentStatus = saved.status;
+                    currentTime = saved.time || "--:--";
+                    currentExcuse = saved.excuse || "";
+                  }
+
+                  // تطبيق حالة الغياب التلقائي في العرض بعد 30 دقيقة
+                  if (isTimeExpired && currentStatus === null) {
+                    currentStatus = 'غائب' as any;
+                  }
+                  
                   const isAlreadyMarked = (saved && saved.status) || (local && local.status);
                   const isDisabledForUser = !isManager && isAlreadyMarked;
 
@@ -319,7 +390,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                           {['حاضر', 'متأخر', 'غائب', 'غياب بعذر'].map(st => (
                             <button 
                               key={st} 
-                              disabled={isDisabledForUser || isViewer}
+                              disabled={(isLocked && !isManager) || isDisabledForUser || isViewer}
                               onClick={() => handleSetStatus(p.id, st as AttendanceStatus)}
                               className={`px-4 py-2 rounded-lg text-[9px] font-black border-2 transition-all ${currentStatus === st ? 
                                 `bg-slate-900 text-white border-slate-900 scale-105 z-10 shadow-lg` 
@@ -335,9 +406,9 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                       </td>
                       <td className="px-6 py-5">
                         <input 
-                          disabled={isDisabledForUser || isViewer}
+                          disabled={(isLocked && !isManager) || isDisabledForUser || isViewer}
                           type="text" 
-                          placeholder="اكتب العذر أو الملاحظة هنا..." 
+                          placeholder="" 
                           value={currentExcuse}
                           onChange={e => handleSetExcuse(p.id, e.target.value)}
                           className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2 text-[10px] font-black w-full outline-none focus:border-[#001F3F] text-slate-900 placeholder:text-slate-400 disabled:bg-slate-50 disabled:cursor-not-allowed" 

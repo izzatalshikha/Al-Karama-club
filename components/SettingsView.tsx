@@ -85,7 +85,8 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
   const deleteUser = async (id: string, name: string) => {
     if (name.toUpperCase() === 'IZZAT') return alert('لا يمكن حذف الحساب الجذري للنظام.');
     if (confirm(`هل أنت متأكد من حذف حساب ${name}؟`)) {
-      await supabase.from('users').delete().eq('id', id);
+      // تم التعديل إلى app_users لضمان حذف الحساب سحابياً بشكل صحيح
+      await supabase.from('app_users').delete().eq('id', id);
       setState(p => ({ ...p, users: p.users.filter(u => u.id !== id) }));
       addLog?.('حذف مستخدم', `تم حذف حساب المستخدم: ${name}`, 'error');
     }

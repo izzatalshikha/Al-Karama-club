@@ -25,6 +25,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const restrictedCat = currentUser?.restrictedCategory;
   const isManager = currentUser?.role === 'مدير';
   const isViewer = currentUser?.role === 'مشاهد';
+  const isCatAdmin = currentUser?.role === 'إداري فئة';
 
   const [formData, setFormData] = useState<Partial<Match>>({ 
     matchType: 'دوري', 
@@ -43,15 +44,67 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     }
   }, [isAddOpen, state.globalCategoryFilter, state.categories, restrictedCat]);
 
+  // تحديث تلقائي لدقائق اللاعبين عند تغيير الوقت الضائع لتجنب الخطأ اليدوي
+  useEffect(() => {
+    if (activeMatch && !isViewer) {
+      const newLineup = { ...activeMatch.lineup };
+      let hasChanged = false;
+      const st1 = parseInt(activeMatch.stoppageTime1 || '0') || 0;
+      const st2 = parseInt(activeMatch.stoppageTime2 || '0') || 0;
+
+      // تحديث دقائق الأساسيين والبدلاء بناءً على الوقت الضائع الجديد
+      newLineup.subs.forEach((s, idx) => {
+        if (s.substitutionMinute && s.replacedPlayerId) {
+          const minute = parseInt(s.substitutionMinute) || 0;
+          let subMins = 0;
+          if (minute <= 45) {
+            subMins = (45 - minute) + st1 + 45 + st2;
+          } else {
+            subMins = (90 - minute) + st2;
+          }
+          if (s.minutesPlayed !== subMins.toString()) {
+            s.minutesPlayed = subMins.toString();
+            hasChanged = true;
+          }
+
+          // تحديث اللاعب المستبدل أيضاً
+          const starterIdx = newLineup.starters.findIndex(st => st.playerId === s.replacedPlayerId);
+          if (starterIdx !== -1) {
+            let stMins = 0;
+            if (minute <= 45) {
+              stMins = minute;
+            } else {
+              stMins = 45 + st1 + (minute - 45);
+            }
+            if (newLineup.starters[starterIdx].minutesPlayed !== stMins.toString()) {
+              newLineup.starters[starterIdx].minutesPlayed = stMins.toString();
+              hasChanged = true;
+            }
+          }
+        }
+      });
+
+      if (hasChanged) {
+        setActiveMatch(prev => prev ? { ...prev, lineup: newLineup } : null);
+      }
+    }
+  }, [activeMatch?.stoppageTime1, activeMatch?.stoppageTime2]);
+
+  // تقييد العرض بناءً على الفئة لإداري الفئة
   const filteredMatches = useMemo(() => {
-    return state.matches.filter(m => (restrictedCat ? m.category === restrictedCat : (state.globalCategoryFilter === 'الكل' || m.category === state.globalCategoryFilter)))
-      .sort((a,b) => b.date.localeCompare(a.date));
+    return state.matches.filter(m => {
+      if (restrictedCat) return m.category === restrictedCat;
+      return (state.globalCategoryFilter === 'الكل' || m.category === state.globalCategoryFilter);
+    }).sort((a,b) => b.date.localeCompare(a.date));
   }, [state.matches, state.globalCategoryFilter, restrictedCat]);
 
   const handleAddMatch = (e: React.FormEvent) => {
     e.preventDefault();
     if (isViewer) return;
-    if (!formData.opponent || !formData.date || !formData.time || !formData.category) return;
+    
+    // منع إداري الفئة من تجاوز فئته المخصصة
+    const finalCategory = restrictedCat || formData.category;
+    if (!formData.opponent || !formData.date || !formData.time || !finalCategory) return;
 
     const newMatch: Match = {
       id: generateUUID(),
@@ -60,7 +113,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       pitch: formData.pitch || 'ملعب الكرامة',
       date: formData.date,
       time: formData.time,
-      category: formData.category,
+      category: finalCategory,
       advancePayment: '0',
       isCompleted: false,
       ourScore: '0',
@@ -125,20 +178,29 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     if (!activeMatch || isViewer) return;
     const newLineup = { ...activeMatch.lineup };
     const minute = parseInt(subMinute) || 0;
-    
-    // اللاعب الخارج لعب حتى دقيقة التبديل فقط
+    const st1 = parseInt(activeMatch.stoppageTime1 || '0') || 0;
+    const st2 = parseInt(activeMatch.stoppageTime2 || '0') || 0;
+
     const starterIdx = newLineup.starters.findIndex(s => s.playerId === replacedPlayerId);
     if (starterIdx !== -1) {
-      newLineup.starters[starterIdx].minutesPlayed = subMinute;
+      if (minute <= 45) {
+        newLineup.starters[starterIdx].minutesPlayed = minute.toString();
+      } else {
+        const starterMins = 45 + st1 + (minute - 45);
+        newLineup.starters[starterIdx].minutesPlayed = starterMins.toString();
+      }
     }
 
-    // اللاعب الداخل لعب الوقت المتبقي + وقت بدل ضائع الشوط الثاني (إذا كان التبديل بعد الشوط الأول)
-    const st2 = parseInt(activeMatch.stoppageTime2 || '0') || 0;
-    const remainingTime = (90 - minute) + st2;
+    let subMins = 0;
+    if (minute <= 45) {
+      subMins = (45 - minute) + st1 + 45 + st2;
+    } else {
+      subMins = (90 - minute) + st2;
+    }
     
     newLineup.subs[subIndex].replacedPlayerId = replacedPlayerId;
     newLineup.subs[subIndex].substitutionMinute = subMinute;
-    newLineup.subs[subIndex].minutesPlayed = remainingTime.toString();
+    newLineup.subs[subIndex].minutesPlayed = subMins.toString();
 
     setActiveMatch({ ...activeMatch, lineup: newLineup });
   };
@@ -300,7 +362,17 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                 <button onClick={() => setIsAddOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
              </div>
              <form onSubmit={handleAddMatch} className="p-8 space-y-5">
-                <div><label className={labelClass}>الفئة</label><select className={fieldClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{state.categories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div>
+                  <label className={labelClass}>الفئة</label>
+                  <select 
+                    disabled={!!restrictedCat}
+                    className={fieldClass} 
+                    value={formData.category} 
+                    onChange={e => setFormData({...formData, category: e.target.value})}
+                  >
+                    {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
                 <div><label className={labelClass}>الخصم</label><input required type="text" className={fieldClass} value={formData.opponent || ''} onChange={e => setFormData({...formData, opponent: e.target.value})} /></div>
                 <div><label className={labelClass}>الملعب</label><input type="text" className={fieldClass} value={formData.pitch || ''} onChange={e => setFormData({...formData, pitch: e.target.value})} /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -428,7 +500,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                    setActiveMatch({...activeMatch, events: evs});
                                 }}>
                                    <option value="">-- لاعب --</option>
-                                   {state.people.filter(p => p.category === activeMatch.category).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                                   {state.people.filter(p => p.category === activeMatch.category).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
                                 </select>
                                 <input type="number" className="w-10 text-[9px] font-black border p-1 rounded text-center" value={ev.minute} onChange={e => {
                                    const evs = [...activeMatch.events];

@@ -62,6 +62,7 @@ export interface TrainingSession {
   pitch?: string;
   objective: string;
   isCompleted?: boolean;
+  isLocked?: boolean;
 }
 
 export interface MatchEvent {
