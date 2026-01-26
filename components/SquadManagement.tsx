@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   UserPlus, Trash2, Search, X, Shield, Award, Layers, Home, Plus, AlertCircle, Calendar,
   MapPin, Hash, UserCheck, ChevronLeft, FolderPlus, Filter, Settings2, BookOpen, Globe, CreditCard, Map,
-  Briefcase, Printer, FileSpreadsheet, Eye, FileText, Users, ChevronRight
+  Briefcase, Printer, FileSpreadsheet, Eye, FileText, Users, ChevronRight, HeartPulse, Gavel, StickyNote
 } from 'lucide-react';
 import { AppState, Person, Role, Category } from '../types';
 import ClubLogo from './ClubLogo';
@@ -85,10 +85,10 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         contractValue: formData.contractValue || undefined,
         coachingCertificate: formData.coachingCertificate || undefined,
         academicDegree: formData.academicDegree || undefined,
-        medicalHistory: undefined,
-        injuries: undefined,
-        penalties: undefined,
-        notes: undefined
+        medicalHistory: formData.medicalHistory || undefined,
+        injuries: formData.injuries || undefined,
+        penalties: formData.penalties || undefined,
+        notes: formData.notes || undefined
       };
 
       setState(p => ({ ...p, people: [...p.people, newPerson] }));
@@ -99,7 +99,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   };
 
   const baseFiltered = state.people.filter(p => {
-    // تقييد الفئة للإداري المخصص
     const matchCat = restrictedCat ? p.category === restrictedCat : (localCategoryFilter === 'الكل' ? true : p.category === localCategoryFilter);
     const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                       (p.number?.toString().includes(searchTerm));
@@ -112,8 +111,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
   const fieldClass = "w-full bg-white border-2 border-slate-900 rounded-xl py-2.5 px-4 font-black text-slate-900 outline-none focus:ring-4 focus:ring-orange-600/10 focus:border-orange-600 transition-all placeholder:text-slate-500 text-sm";
   const labelClass = "text-[10px] font-black text-slate-900 mr-2 uppercase block mb-1.5";
+  const textAreaClass = "w-full bg-white border-2 border-slate-900 rounded-xl py-2.5 px-4 font-black text-slate-900 outline-none focus:ring-4 focus:ring-orange-600/10 focus:border-orange-600 transition-all placeholder:text-slate-400 text-xs min-h-[80px] resize-none";
 
-  // Full Category Report (Print View)
   if (showFullReportView) {
     const activeCategory = restrictedCat || localCategoryFilter;
     const reportList = baseFiltered.sort((a,b) => (a.number || 0) - (b.number || 0));
@@ -249,7 +248,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         <div className="flex p-1.5 bg-slate-100 border-2 border-slate-900 rounded-2xl w-fit mx-auto md:mx-0">
           <button 
             onClick={() => setActiveSubTab('players')}
-            className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black text-sm transition-all ${activeSubTab === 'players' ? 'bg-[#001F3F] text-white shadow-md scale-105' : 'text-slate-500 hover:text-slate-900'}`}
+            className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black text-sm transition-all ${activeSubTab === 'players' ? 'bg-[#001F3F] text-white shadow-md scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
           >
             اللاعبين
             <span className={`px-2 py-0.5 rounded-md text-[10px] ${activeSubTab === 'players' ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
@@ -258,7 +257,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
           </button>
           <button 
             onClick={() => setActiveSubTab('staff')}
-            className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black text-sm transition-all ${activeSubTab === 'staff' ? 'bg-[#001F3F] text-white shadow-md scale-105' : 'text-slate-500 hover:text-slate-900'}`}
+            className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black text-sm transition-all ${activeSubTab === 'staff' ? 'bg-[#001F3F] text-white shadow-md scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
           >
             الكوادر الفنية والإدارية
             <span className={`px-2 py-0.5 rounded-md text-[10px] ${activeSubTab === 'staff' ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
@@ -415,6 +414,46 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   <div className="space-y-1">
                     <label className="text-[11px] font-black text-orange-600 block mb-1.5 uppercase tracking-tighter">رقم القميص</label>
                     <input type="number" value={formData.number || ''} onChange={e => setFormData({...formData, number: parseInt(e.target.value)})} className="w-full bg-[#001F3F] text-white border-none rounded-xl py-2 px-4 font-black text-2xl text-center outline-none h-14 shadow-2xl" />
+                  </div>
+                </div>
+              </div>
+
+              {/* القسم الجديد: السجل الصحي والإداري */}
+              <div className="space-y-6">
+                <h4 className="text-[12px] font-black text-red-600 flex items-center gap-2 border-r-4 border-slate-900 pr-3 uppercase">السجل الصحي والإداري</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-900 flex items-center gap-2">
+                      <HeartPulse size={14} className="text-red-500" /> السجل الطبي والإصابات
+                    </label>
+                    <textarea 
+                      value={formData.injuries || formData.medicalHistory || ''} 
+                      onChange={e => setFormData({...formData, injuries: e.target.value, medicalHistory: e.target.value})} 
+                      className={textAreaClass}
+                      placeholder="سجل العمليات، الإصابات العضلية، الحساسية، الوضع الصحي الحالي..."
+                    ></textarea>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-900 flex items-center gap-2">
+                      <Gavel size={14} className="text-orange-500" /> سجل العقوبات والانضباط
+                    </label>
+                    <textarea 
+                      value={formData.penalties || ''} 
+                      onChange={e => setFormData({...formData, penalties: e.target.value})} 
+                      className={textAreaClass}
+                      placeholder="العقوبات الإدارية، الخصومات المالية، لفت النظر، قرارات لجنة الانضباط..."
+                    ></textarea>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-900 flex items-center gap-2">
+                      <StickyNote size={14} className="text-[#001F3F]" /> ملاحظات إدارية عامة
+                    </label>
+                    <textarea 
+                      value={formData.notes || ''} 
+                      onChange={e => setFormData({...formData, notes: e.target.value})} 
+                      className={textAreaClass}
+                      placeholder="أي معلومات إضافية تخص سلوك اللاعب، وضعه التعليمي، مهارات اجتماعية..."
+                    ></textarea>
                   </div>
                 </div>
               </div>

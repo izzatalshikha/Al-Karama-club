@@ -99,6 +99,7 @@ export interface Match {
       substitutionMinute?: string;
       replacedPlayerId?: string;
     }[];
+    reserves?: { playerId: string; name: string; number: string }[];
     staff: { role: string; name: string }[];
     captain: string;
   };
