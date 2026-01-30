@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Users, Calendar, Trophy, Clock, MapPin, AlertCircle, ChevronLeft, ShieldAlert, Filter, Printer, FileText, ClipboardCheck, Zap, Activity, TrendingUp, Search, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Users, Calendar, Trophy, Clock, MapPin, AlertCircle, ChevronLeft, ShieldAlert, Filter, Printer, FileText, ClipboardCheck, Zap, Activity, TrendingUp, Search, X, BellRing, AlertTriangle } from 'lucide-react';
 import { AppState, Person } from '../types';
 
 interface DashboardProps {
@@ -13,18 +13,51 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, onSessionClick, onPlayerClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  
+  // حساب الوقت الحالي والتاريخ بدقة
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+  
+  // حساب تاريخ الغد
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
   const globalFilter = state.globalCategoryFilter;
   const restrictedCat = state.currentUser?.restrictedCategory;
 
+  // منطق تصفية المباريات القادمة (مع الإخفاء التلقائي بعد مرور الوقت)
   const upcomingMatches = state.matches
-    .filter(m => (globalFilter === 'الكل' || m.category === globalFilter) && m.date >= todayStr && !m.isCompleted)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter(m => {
+      const matchCat = (globalFilter === 'الكل' || m.category === globalFilter);
+      if (!matchCat || m.isCompleted) return false;
+      
+      // إخفاء إذا كان التاريخ قديماً
+      if (m.date < todayStr) return false;
+      // إخفاء إذا كان اليوم ولكن الوقت قد مضى
+      if (m.date === todayStr && m.time < currentTime) return false;
+      
+      return true;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
 
+  // منطق تصفية التمارين القادمة (مع الإخفاء التلقائي بعد مرور الوقت)
   const upcomingSessions = state.sessions
-    .filter(s => (globalFilter === 'الكل' || s.category === globalFilter) && s.date >= todayStr && !s.isCompleted)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter(s => {
+      const sessCat = (globalFilter === 'الكل' || s.category === globalFilter);
+      if (!sessCat || s.isCompleted) return false;
+      
+      if (s.date < todayStr) return false;
+      if (s.date === todayStr && s.time < currentTime) return false;
+      
+      return true;
+    })
+    .sort((a, b) => a.date.localeCompare(a.date) || a.time.localeCompare(b.time));
+
+  // التحقق من وجود أنشطة غداً للتنبيه
+  const hasMatchTomorrow = state.matches.some(m => m.date === tomorrowStr && !m.isCompleted && (globalFilter === 'الكل' || m.category === globalFilter));
+  const hasSessionTomorrow = state.sessions.some(s => s.date === tomorrowStr && !s.isCompleted && (globalFilter === 'الكل' || s.category === globalFilter));
 
   const searchResults = searchTerm.length > 1 
     ? state.people.filter(p => p.name.includes(searchTerm) || p.number?.toString() === searchTerm).slice(0, 5)
@@ -72,6 +105,36 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
            </div>
          )}
       </div>
+
+      {/* شريط تنبيهات الأنشطة غداً - ميزة جديدة مطلوبة */}
+      {(hasMatchTomorrow || hasSessionTomorrow) && (
+        <div className="bg-white border-4 border-orange-600 rounded-[2rem] p-6 shadow-xl animate-in slide-in-from-top-4 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group">
+           <div className="absolute top-0 right-0 w-24 h-24 bg-orange-600/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
+           <div className="flex items-center gap-4 relative z-10">
+              <div className="bg-orange-600 p-4 rounded-2xl text-white animate-bounce shadow-lg">
+                 <BellRing size={28} />
+              </div>
+              <div className="text-right">
+                 <h3 className="text-xl md:text-2xl font-black text-[#001F3F]">تنبيه الأنشطة المجدولة لغدٍ</h3>
+                 <div className="flex flex-wrap gap-2 mt-2">
+                    {hasMatchTomorrow && (
+                      <span className="bg-orange-600 text-white px-4 py-1.5 rounded-xl font-black text-[10px] uppercase flex items-center gap-2 border-b-4 border-orange-900 shadow-md">
+                        <Trophy size={14}/> يوجد مباراة غداً
+                      </span>
+                    )}
+                    {hasSessionTomorrow && (
+                      <span className="bg-[#001F3F] text-white px-4 py-1.5 rounded-xl font-black text-[10px] uppercase flex items-center gap-2 border-b-4 border-black shadow-md">
+                        <Calendar size={14}/> يوجد تمرين غداً
+                      </span>
+                    )}
+                 </div>
+              </div>
+           </div>
+           <p className="text-[11px] font-black text-slate-500 max-w-xs leading-relaxed hidden md:block italic">
+              "يرجى مراجعة قائمة الأجندة أدناه لمعرفة تفاصيل التوقيت والخصم أو أهداف الجلسة التدريبية."
+           </p>
+        </div>
+      )}
 
       {/* 2. Top Header & Category Filter - Responsive */}
       <div className="dark-solid-panel p-4 md:p-8 flex flex-col md:flex-row justify-between items-center no-print gap-4">
@@ -151,43 +214,48 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
           <div className="solid-panel p-6 md:p-10 !shadow-none md:!shadow-[8px_8px_0px_0px_#001F3F]">
              <div className="flex justify-between items-center mb-6">
                <h3 className="text-lg md:text-2xl font-black text-[#001F3F] flex items-center gap-2">
-                 <Trophy size={20} className="text-orange-600" /> المباريات القادمة
+                 <Trophy size={20} className="text-orange-600" /> المباريات القادمة (أجندة حية)
                </h3>
                <span className="bg-emerald-100 text-emerald-700 text-[8px] font-black px-3 py-1 rounded-full border border-emerald-700">مجدولة</span>
              </div>
              <div className="grid grid-cols-1 gap-3">
                {upcomingMatches.slice(0, 4).map(m => (
-                 <button key={m.id} onClick={() => onMatchClick(m.id)} className="text-right p-4 rounded-xl bg-slate-50 border-2 border-slate-900 active:border-orange-600 flex flex-col gap-1 relative overflow-hidden transition-all active:scale-[0.98]">
-                    <div className="absolute top-0 right-0 w-1.5 h-full bg-orange-600"></div>
+                 <button key={m.id} onClick={() => onMatchClick(m.id)} className={`text-right p-4 rounded-xl bg-slate-50 border-2 border-slate-900 active:border-orange-600 flex flex-col gap-1 relative overflow-hidden transition-all active:scale-[0.98] ${m.date === tomorrowStr ? 'ring-2 ring-orange-500' : ''}`}>
+                    <div className={`absolute top-0 right-0 w-1.5 h-full ${m.date === tomorrowStr ? 'bg-orange-600' : 'bg-slate-400'}`}></div>
                     <div className="flex justify-between items-center w-full">
-                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{m.matchType}</p>
-                       <span className="text-[8px] font-black text-slate-500">{m.date}</span>
+                       <p className={`text-[8px] font-black uppercase tracking-widest ${m.date === tomorrowStr ? 'text-orange-600' : 'text-slate-400'}`}>
+                          {m.date === tomorrowStr ? 'مواجهة الغد' : m.matchType}
+                       </p>
+                       <span className="text-[8px] font-black text-slate-500">{m.date} - {m.time}</span>
                     </div>
                     <h4 className="font-black text-sm text-slate-900">الكرامة × {m.opponent}</h4>
                  </button>
                ))}
-               {upcomingMatches.length === 0 && <div className="py-8 text-center text-[10px] font-black opacity-30 italic">لا توجد مباريات</div>}
+               {upcomingMatches.length === 0 && <div className="py-8 text-center text-[10px] font-black opacity-30 italic border-2 border-dashed border-slate-200 rounded-xl">لا توجد مباريات قادمة حالياً</div>}
              </div>
           </div>
 
           <div className="solid-panel p-6 md:p-10 !shadow-none md:!shadow-[8px_8px_0px_0px_#001F3F]">
              <div className="flex justify-between items-center mb-6">
                <h3 className="text-lg md:text-2xl font-black text-[#001F3F] flex items-center gap-2">
-                 <Calendar size={20} className="text-[#001F3F]" /> التمارين المجدولة
+                 <Calendar size={20} className="text-[#001F3F]" /> التمارين المجدولة (أجندة حية)
                </h3>
                <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-3 py-1 rounded-full border border-blue-700">أجندة</span>
              </div>
              <div className="grid grid-cols-1 gap-3">
                {upcomingSessions.slice(0, 4).map(s => (
-                 <button key={s.id} onClick={() => onSessionClick(s.id)} className="text-right p-4 rounded-xl bg-slate-50 border-2 border-slate-900 active:border-blue-900 flex flex-col gap-1 relative overflow-hidden transition-all active:scale-[0.98]">
-                    <div className="absolute top-0 right-0 w-1.5 h-full bg-blue-900"></div>
+                 <button key={s.id} onClick={() => onSessionClick(s.id)} className={`text-right p-4 rounded-xl bg-slate-50 border-2 border-slate-900 active:border-blue-900 flex flex-col gap-1 relative overflow-hidden transition-all active:scale-[0.98] ${s.date === tomorrowStr ? 'ring-2 ring-blue-900' : ''}`}>
+                    <div className={`absolute top-0 right-0 w-1.5 h-full ${s.date === tomorrowStr ? 'bg-blue-900' : 'bg-slate-400'}`}></div>
                     <div className="flex justify-between items-center w-full">
-                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{s.category}</p>
+                       <p className={`text-[8px] font-black uppercase tracking-widest ${s.date === tomorrowStr ? 'text-blue-900' : 'text-slate-400'}`}>
+                          {s.date === tomorrowStr ? 'تمرين الغد' : s.category}
+                       </p>
                        <span className="text-[8px] font-black text-slate-500">{s.time}</span>
                     </div>
                     <h4 className="font-black text-sm text-slate-900">{s.objective}</h4>
                  </button>
                ))}
+               {upcomingSessions.length === 0 && <div className="py-8 text-center text-[10px] font-black opacity-30 italic border-2 border-dashed border-slate-200 rounded-xl">لا توجد تمارين مجدولة حالياً</div>}
              </div>
           </div>
         </div>
