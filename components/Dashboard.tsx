@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Users, Calendar, Trophy, Clock, MapPin, AlertCircle, ChevronLeft, ShieldAlert, Filter, Printer, FileText, ClipboardCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, Calendar, Trophy, Clock, MapPin, AlertCircle, ChevronLeft, ShieldAlert, Filter, Printer, FileText, ClipboardCheck, Zap, Activity, TrendingUp, Search, X } from 'lucide-react';
 import { AppState, Person } from '../types';
 
 interface DashboardProps {
@@ -8,9 +8,11 @@ interface DashboardProps {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onMatchClick: (id: string) => void;
   onSessionClick: (id: string) => void;
+  onPlayerClick?: (player: Person) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, onSessionClick }) => {
+const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, onSessionClick, onPlayerClick }) => {
+  const [searchTerm, setSearchTerm] = useState('');
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   const globalFilter = state.globalCategoryFilter;
@@ -24,150 +26,169 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
     .filter(s => (globalFilter === 'الكل' || s.category === globalFilter) && s.date >= todayStr && !s.isCompleted)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // نظام فحص العقود (أقل من 3 أشهر = 90 يوماً)
-  const expiringContracts = state.people.filter(p => {
-    // فلترة العقود بناءً على الفئة أيضاً
-    const isOurCategory = globalFilter === 'الكل' || p.category === globalFilter;
-    if (!isOurCategory || !p.contractEnd) return false;
-    
-    const end = new Date(p.contractEnd);
-    const diffTime = end.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= 90;
-  });
+  const searchResults = searchTerm.length > 1 
+    ? state.people.filter(p => p.name.includes(searchTerm) || p.number?.toString() === searchTerm).slice(0, 5)
+    : [];
 
   const stats = [
-    { label: 'الكوادر المسجلة', value: state.people.filter(p => globalFilter === 'الكل' || p.category === globalFilter).length, icon: Users, color: 'blue' },
-    { label: 'المواجهات القادمة', value: upcomingMatches.length, icon: Trophy, color: 'emerald' },
-    { label: 'التمارين المجدولة', value: upcomingSessions.length, icon: Calendar, color: 'orange' },
+    { label: 'الكوادر', value: state.people.filter(p => globalFilter === 'الكل' || p.category === globalFilter).length, icon: Users, color: '#001F3F', textColor: '#FF6B00' },
+    { label: 'المواجهات', value: upcomingMatches.length, icon: Trophy, color: '#FF6B00', textColor: '#FFFFFF' },
+    { label: 'التمارين', value: upcomingSessions.length, icon: Calendar, color: '#FFFFFF', textColor: '#001F3F' },
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      {/* Category Filter Dropdown - يظهر فقط للمدير والمشاهد العام */}
-      {!restrictedCat && (
-        <div className="bg-white p-5 rounded-[2rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row justify-between items-center no-print">
-          <h3 className="text-md font-black text-slate-900 flex items-center gap-3">
-            <Filter size={20} className="text-[#001F3F]" /> تصفية البيانات في لوحة التحكم
-          </h3>
-          <div className="flex items-center gap-3 mt-3 md:mt-0">
-            <label className="text-[10px] font-black text-slate-500 uppercase">عرض بيانات فئة:</label>
+    <div className="space-y-4 md:space-y-8 animate-in fade-in duration-700 px-2 md:px-0">
+      {/* 1. Global Search - New Feature */}
+      <div className="relative z-[60] no-print">
+         <div className="solid-panel !rounded-3xl p-1 flex items-center border-4 border-[#001F3F] overflow-hidden">
+            <div className="p-4"><Search size={24} className="text-[#001F3F]" /></div>
+            <input 
+              type="text" 
+              placeholder="بحث عالمي سريع عن لاعب أو موظف..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="flex-1 bg-transparent py-4 font-black text-lg outline-none text-[#001F3F]"
+            />
+            {searchTerm && <button onClick={() => setSearchTerm('')} className="p-4"><X size={20}/></button>}
+         </div>
+         {searchResults.length > 0 && (
+           <div className="absolute top-full left-0 right-0 mt-2 bg-white border-4 border-[#001F3F] rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-top-2">
+              {searchResults.map(p => (
+                <button 
+                  key={p.id} 
+                  onClick={() => { onPlayerClick?.(p); setSearchTerm(''); }}
+                  className="w-full p-4 flex items-center justify-between border-b border-slate-100 hover:bg-slate-50 text-right"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-[#001F3F] text-white rounded-xl flex items-center justify-center font-black">#{p.number || '0'}</div>
+                    <div className="text-right">
+                      <p className="font-black text-[#001F3F]">{p.name}</p>
+                      <p className="text-[10px] font-black text-orange-600 uppercase">{p.role} | {p.category}</p>
+                    </div>
+                  </div>
+                  <ChevronLeft size={18} className="text-slate-300"/>
+                </button>
+              ))}
+           </div>
+         )}
+      </div>
+
+      {/* 2. Top Header & Category Filter - Responsive */}
+      <div className="dark-solid-panel p-4 md:p-8 flex flex-col md:flex-row justify-between items-center no-print gap-4">
+        <div className="flex items-center gap-4 w-full md:w-auto">
+           <div className="bg-white p-3 rounded-2xl shadow-xl">
+              <Zap size={24} className="text-[#001F3F] animate-pulse" />
+           </div>
+           <div>
+              <h2 className="text-xl md:text-3xl font-black text-white uppercase tracking-tighter">لوحة التحكم</h2>
+              <p className="text-[8px] md:text-[10px] font-black text-orange-400 uppercase mt-0.5">Football Intelligence System</p>
+           </div>
+        </div>
+
+        {!restrictedCat && (
+          <div className="flex items-center gap-3 bg-white/5 p-2 rounded-xl border border-white/10 w-full md:w-auto">
+            <span className="text-[9px] font-black text-white/60 mr-2 uppercase shrink-0">التصفية:</span>
             <select 
               value={globalFilter}
               onChange={e => setState(p => ({ ...p, globalCategoryFilter: e.target.value as any }))}
-              className="bg-slate-100 border-2 border-slate-900 rounded-xl py-2 px-4 font-black text-[12px] text-slate-900 outline-none h-11 appearance-none cursor-pointer hover:bg-white transition-colors min-w-[150px]"
+              className="flex-1 bg-[#FF6B00] border-2 border-white rounded-lg py-1.5 px-4 font-black text-[10px] text-white outline-none cursor-pointer"
             >
               <option value="الكل">جميع الفئات</option>
               {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-        </div>
-      )}
-
-      {/* Quick Report Center - NEW SECTION */}
-      <div className="bg-slate-900 p-8 rounded-[3rem] border-4 border-orange-600 shadow-xl no-print">
-         <div className="flex items-center gap-4 mb-6">
-            <Printer className="text-orange-400" size={28}/>
-            <h3 className="text-xl font-black text-white uppercase tracking-tight">مركز التقارير المركزية السريعة</h3>
-         </div>
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white/10 p-5 rounded-2xl border border-white/10 flex flex-col items-center text-center space-y-3">
-               <FileText className="text-emerald-400" size={32}/>
-               <p className="text-white font-black text-sm uppercase">كشوفات الفئات</p>
-               <p className="text-[9px] text-slate-400">طباعة القوائم الكاملة للاعبين والكوادر والبيانات الثبوتية</p>
-            </div>
-            <div className="bg-white/10 p-5 rounded-2xl border border-white/10 flex flex-col items-center text-center space-y-3">
-               <ClipboardCheck className="text-blue-400" size={32}/>
-               <p className="text-white font-black text-sm uppercase">تقارير الانضباط</p>
-               <p className="text-[9px] text-slate-400">طباعة سجلات الحضور الشهرية والغيابات والالتزام بالتمارين</p>
-            </div>
-            <div className="bg-white/10 p-5 rounded-2xl border border-white/10 flex flex-col items-center text-center space-y-3">
-               <Trophy className="text-orange-400" size={32}/>
-               <p className="text-white font-black text-sm uppercase">أجندة المباريات</p>
-               <p className="text-[9px] text-slate-400">طباعة جداول المواجهات القادمة ونتائج الموسم للفئات</p>
-            </div>
-         </div>
+        )}
       </div>
 
-      {/* Contract Expiry Alert Section */}
-      {expiringContracts.length > 0 && (
-        <div className="bg-red-50 border-4 border-red-900 rounded-[2.5rem] p-6 shadow-xl animate-pulse no-print">
-           <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-red-900 text-white rounded-2xl shadow-lg"><ShieldAlert size={28} /></div>
-              <h3 className="text-xl font-black text-red-900 uppercase">تنبيهات إدارية: عقود توشك على الانتهاء</h3>
-           </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {expiringContracts.map(p => {
-                const end = new Date(p.contractEnd!);
-                const diffDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                return (
-                  <div key={p.id} className="bg-white border-2 border-red-900 p-4 rounded-2xl flex justify-between items-center shadow-sm">
-                    <div>
-                      <p className="font-black text-slate-900 text-sm">{p.name}</p>
-                      <p className="text-[10px] font-black text-red-600 uppercase">متبقي: {diffDays} يوم</p>
-                    </div>
-                    <span className="bg-red-900 text-white text-[9px] font-black px-3 py-1 rounded-lg">{p.category}</span>
-                  </div>
-                );
-              })}
-           </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* 3. KPIs - Grid Layout Optimized for Mobile */}
+      <div className="grid grid-cols-3 md:grid-cols-3 gap-3 md:gap-6">
         {stats.map((s, i) => (
-          <div key={i} className="bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-slate-900 flex flex-col items-center hover:bg-slate-50 transition-all group">
-             <div className={`p-4 rounded-2xl mb-4 transition-transform group-hover:scale-110 ${s.color === 'blue' ? 'bg-blue-100 text-blue-900 border border-blue-900' : s.color === 'emerald' ? 'bg-emerald-100 text-emerald-900 border border-emerald-900' : 'bg-orange-100 text-orange-900 border border-orange-900'}`}>
-               <s.icon size={30} />
+          <div key={i} className="group relative" style={{ color: s.textColor }}>
+             <div className="p-4 md:p-10 rounded-2xl md:rounded-[2.5rem] border-2 border-[#001F3F] flex flex-col items-center shadow-md transition-transform active:scale-95" style={{ backgroundColor: s.color }}>
+                <div className="p-2 md:p-5 rounded-xl md:rounded-3xl mb-1 md:mb-4 border-2 border-current">
+                   <s.icon size={18} className="md:w-[32px] md:h-[32px]" />
+                </div>
+                <h3 className="text-[7px] md:text-[11px] font-black uppercase tracking-widest opacity-80">{s.label}</h3>
+                <p className="text-xl md:text-5xl font-black mt-0.5 md:mt-2">{s.value}</p>
              </div>
-             <h3 className="text-slate-900 text-[10px] font-black uppercase tracking-widest">{s.label}</h3>
-             <p className="text-4xl font-black text-slate-900 mt-2">{s.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-8 rounded-[3rem] shadow-sm border-2 border-slate-900">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-3">
-              <Trophy size={20} className="text-blue-900" /> الأجندة التنافسية
-            </h3>
-            <span className="text-[9px] bg-blue-100 text-blue-900 px-3 py-1 rounded-full font-black uppercase border-2 border-blue-900">القادمة</span>
-          </div>
-          <div className="space-y-4">
-            {upcomingMatches.length > 0 ? upcomingMatches.map(m => (
-              <button key={m.id} onClick={() => onMatchClick(m.id)} className="w-full text-right p-5 rounded-2xl bg-slate-100 border-2 border-slate-900 hover:bg-white transition-all group flex items-center justify-between shadow-sm">
-                <div>
-                  <h4 className="font-black text-sm text-slate-900">الكرامة × {m.opponent}</h4>
-                  <p className="text-[10px] font-black text-slate-900 mt-1 uppercase tracking-wider">{m.date} | {m.time} - {m.category}</p>
-                </div>
-                <ChevronLeft size={20} className="text-slate-900 group-hover:-translate-x-1 transition-transform" />
-              </button>
-            )) : (
-              <p className="py-10 text-center text-slate-900 font-black italic text-xs uppercase opacity-30 tracking-widest">لا توجد مباريات قادمة</p>
-            )}
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
+        {/* Alerts & Quick Actions */}
+        <div className="lg:col-span-4 space-y-6">
+           <div className="bg-[#FF6B00] p-6 rounded-3xl border-4 border-[#001F3F] text-white">
+              <h3 className="text-md font-black mb-4 flex items-center gap-2">
+                 <Activity size={20}/> العمليات السريعة
+              </h3>
+              <div className="grid grid-cols-1 gap-2">
+                 <button className="w-full bg-[#001F3F] p-4 rounded-xl flex items-center justify-between font-black text-xs active:bg-black transition-all">
+                    <span>كشف الحضور (A4)</span>
+                    <FileText size={18} className="text-orange-400" />
+                 </button>
+                 <button className="w-full bg-[#001F3F] p-4 rounded-xl flex items-center justify-between font-black text-xs active:bg-black transition-all">
+                    <span>أجندة المباريات</span>
+                    <Trophy size={18} className="text-orange-400" />
+                 </button>
+              </div>
+           </div>
+
+           <div className="solid-panel p-6 border-4 border-slate-900 bg-white text-[#001F3F]">
+              <h3 className="text-sm font-black mb-4 flex items-center gap-2">
+                <ShieldAlert size={18} className="text-red-600"/> مراقبة الأحمال (Alerts)
+              </h3>
+              <div className="space-y-3">
+                 <div className="text-[9px] font-bold p-3 bg-red-50 border-r-4 border-red-600 rounded-lg">
+                    تنبيه: 3 لاعبين من فئة {globalFilter === 'الكل' ? 'الشباب' : globalFilter} تجاوزوا 180 دقيقة لعب هذا الأسبوع.
+                 </div>
+              </div>
+           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[3rem] shadow-sm border-2 border-slate-900">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-3">
-              <Calendar size={20} className="text-orange-600" /> برنامج التمارين
-            </h3>
-            <span className="text-[9px] bg-orange-100 text-orange-900 px-3 py-1 rounded-full font-black uppercase border-2 border-orange-900">المجدولة</span>
+        {/* Agendas */}
+        <div className="lg:col-span-8 space-y-6">
+          <div className="solid-panel p-6 md:p-10 !shadow-none md:!shadow-[8px_8px_0px_0px_#001F3F]">
+             <div className="flex justify-between items-center mb-6">
+               <h3 className="text-lg md:text-2xl font-black text-[#001F3F] flex items-center gap-2">
+                 <Trophy size={20} className="text-orange-600" /> المباريات القادمة
+               </h3>
+               <span className="bg-emerald-100 text-emerald-700 text-[8px] font-black px-3 py-1 rounded-full border border-emerald-700">مجدولة</span>
+             </div>
+             <div className="grid grid-cols-1 gap-3">
+               {upcomingMatches.slice(0, 4).map(m => (
+                 <button key={m.id} onClick={() => onMatchClick(m.id)} className="text-right p-4 rounded-xl bg-slate-50 border-2 border-slate-900 active:border-orange-600 flex flex-col gap-1 relative overflow-hidden transition-all active:scale-[0.98]">
+                    <div className="absolute top-0 right-0 w-1.5 h-full bg-orange-600"></div>
+                    <div className="flex justify-between items-center w-full">
+                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{m.matchType}</p>
+                       <span className="text-[8px] font-black text-slate-500">{m.date}</span>
+                    </div>
+                    <h4 className="font-black text-sm text-slate-900">الكرامة × {m.opponent}</h4>
+                 </button>
+               ))}
+               {upcomingMatches.length === 0 && <div className="py-8 text-center text-[10px] font-black opacity-30 italic">لا توجد مباريات</div>}
+             </div>
           </div>
-          <div className="space-y-4">
-            {upcomingSessions.length > 0 ? upcomingSessions.map(s => (
-              <button key={s.id} onClick={() => onSessionClick(s.id)} className="w-full text-right p-5 rounded-2xl bg-slate-100 border-2 border-slate-900 hover:bg-white transition-all group flex items-center justify-between shadow-sm">
-                <div>
-                  <h4 className="font-black text-sm text-slate-900">{s.objective}</h4>
-                  <p className="text-[10px] font-black text-slate-900 mt-1 uppercase tracking-wider">{s.date} | {s.time} - {s.category}</p>
-                </div>
-                <ChevronLeft size={20} className="text-slate-900 group-hover:-translate-x-1 transition-transform" />
-              </button>
-            )) : (
-              <p className="py-10 text-center text-slate-900 font-black italic text-xs uppercase opacity-30 tracking-widest">لا توجد تمارين قادمة</p>
-            )}
+
+          <div className="solid-panel p-6 md:p-10 !shadow-none md:!shadow-[8px_8px_0px_0px_#001F3F]">
+             <div className="flex justify-between items-center mb-6">
+               <h3 className="text-lg md:text-2xl font-black text-[#001F3F] flex items-center gap-2">
+                 <Calendar size={20} className="text-[#001F3F]" /> التمارين المجدولة
+               </h3>
+               <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-3 py-1 rounded-full border border-blue-700">أجندة</span>
+             </div>
+             <div className="grid grid-cols-1 gap-3">
+               {upcomingSessions.slice(0, 4).map(s => (
+                 <button key={s.id} onClick={() => onSessionClick(s.id)} className="text-right p-4 rounded-xl bg-slate-50 border-2 border-slate-900 active:border-blue-900 flex flex-col gap-1 relative overflow-hidden transition-all active:scale-[0.98]">
+                    <div className="absolute top-0 right-0 w-1.5 h-full bg-blue-900"></div>
+                    <div className="flex justify-between items-center w-full">
+                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{s.category}</p>
+                       <span className="text-[8px] font-black text-slate-500">{s.time}</span>
+                    </div>
+                    <h4 className="font-black text-sm text-slate-900">{s.objective}</h4>
+                 </button>
+               ))}
+             </div>
           </div>
         </div>
       </div>

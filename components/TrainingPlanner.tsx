@@ -195,7 +195,6 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
         }).sort((a,b) => b.date.localeCompare(a.date))
       });
     } else if (reportType === 'discipline') {
-      // تحديث: كشف الانضباط يشمل الكادر الآن
       const catMembers = state.people.filter(p => p.category === selectedCatForReport);
       
       const disciplinaryStats = catMembers.map(p => {
@@ -285,125 +284,160 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   if (showPrintView && printData) {
     return (
       <div className="fixed inset-0 bg-white z-[600] overflow-y-auto p-4 sm:p-12 dir-rtl text-right print:p-0">
-        <div className="max-w-[210mm] mx-auto border-4 border-slate-900 p-10 print:border-2 print:p-8 bg-white min-h-[297mm] shadow-none">
-           <div className="no-print flex justify-between items-center mb-10 border-b pb-4">
+        {/* هيكل التقرير المصمم ليدعم عدة صفحات A4 تلقائياً */}
+        <div className="max-w-[210mm] mx-auto bg-white min-h-screen">
+           <div className="no-print flex justify-between items-center mb-10 border-b pb-4 p-4">
               <button onClick={() => setShowPrintView(false)} className="flex items-center gap-2 font-black text-slate-500 hover:text-red-600 transition-all"><ChevronRight/> إغلاق المعاينة</button>
               <button onClick={() => window.print()} className="bg-[#001F3F] text-white px-10 py-4 rounded-2xl font-black flex items-center gap-3 shadow-2xl"><Printer size={20}/> تصدير PDF بمقاس A4</button>
            </div>
 
-           <div className="flex justify-between items-center border-b-4 border-slate-900 pb-8 mb-10 print:border-b-2">
-              <div className="flex items-center gap-4">
-                 <ClubLogo size={100} />
-                 <div>
-                    <h2 className="text-3xl font-black text-[#001F3F]">نادي الكرامة الرياضي</h2>
-                    <p className="text-md font-black text-orange-600">مكتب كرة القدم المركزي - قسم الإحصاء</p>
-                 </div>
-              </div>
-              <div className="text-left font-black">
-                 <p className="text-2xl uppercase tracking-tighter">{printData.title}</p>
-                 <p className="text-sm text-slate-500">الفترة: {printData.period}</p>
-                 <p className="text-[10px] mt-2">الإصدار: {new Date().toLocaleDateString('ar-SY')}</p>
-              </div>
-           </div>
+           <div className="border-4 border-slate-900 p-10 print:border-2 print:p-6 mb-8">
+             <div className="flex justify-between items-center border-b-4 border-slate-900 pb-8 mb-10 print:border-b-2">
+                <div className="flex items-center gap-4">
+                   <ClubLogo size={100} />
+                   <div>
+                      <h2 className="text-3xl font-black text-[#001F3F]">نادي الكرامة الرياضي</h2>
+                      <p className="text-md font-black text-orange-600">مكتب كرة القدم المركزي - قسم الإحصاء</p>
+                   </div>
+                </div>
+                <div className="text-left font-black">
+                   <p className="text-2xl uppercase tracking-tighter">{printData.title}</p>
+                   <p className="text-sm text-slate-500">الفترة: {printData.period}</p>
+                   <p className="text-[10px] mt-2">الإصدار: {new Date().toLocaleDateString('ar-SY')}</p>
+                </div>
+             </div>
 
-           {printData.type === 'discipline' ? (
-              <div className="space-y-8">
-                <h4 className="text-lg font-black border-r-4 border-red-600 pr-3 flex items-center gap-2">
-                   <Gavel size={20}/> سجل الغيابات والانضباط (الكوادر واللاعبين)
-                </h4>
-                <table className="w-full text-right border-collapse border-2 border-slate-900">
-                  <thead>
-                    <tr className="bg-slate-100 border-b-2 border-slate-900 text-[10px] font-black uppercase">
-                      <th className="p-4 border-l border-slate-900">الهوية</th>
-                      <th className="p-4 border-l border-slate-900">الاسم الكامل</th>
-                      <th className="p-4 border-l border-slate-900">الصفة</th>
-                      <th className="p-4 border-l border-slate-900 text-center">تأخير</th>
-                      <th className="p-4 border-l border-slate-900 text-center">غياب</th>
-                      <th className="p-4 text-center">الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printData.stats.map((p: any, idx: number) => (
-                      <tr key={idx} className="border-b border-slate-300 text-sm font-black transition-colors hover:bg-slate-50">
-                        <td className="p-4 border-l border-slate-300 text-center text-[10px] text-slate-400">{p.federalId}</td>
-                        <td className="p-4 border-l border-slate-300">{p.name}</td>
-                        <td className="p-4 border-l border-slate-300 text-[10px] opacity-70">{p.role}</td>
-                        <td className="p-4 border-l border-slate-300 text-center text-orange-600">{p.lates}</td>
-                        <td className="p-4 border-l border-slate-300 text-center text-red-600">{p.absences}</td>
-                        <td className="p-4 text-center bg-slate-50 font-black">{p.totalOffenses}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-           ) : printData.type === 'matches_custom' ? (
-              <div className="space-y-12">
-                 <div className="bg-slate-50 p-6 border-2 border-slate-900 rounded-[2rem] flex justify-between items-center">
-                    <div className="text-center flex-1 border-l border-slate-200">
-                       <p className="text-[10px] font-black text-slate-400 uppercase">المباريات</p>
-                       <p className="text-3xl font-black">{printData.matches.length}</p>
-                    </div>
-                    <div className="text-center flex-1 border-l border-slate-200">
-                       <p className="text-[10px] font-black text-emerald-600 uppercase">الأهداف</p>
-                       <p className="text-3xl font-black text-emerald-700">{printData.playerStats.reduce((a: any, b: any) => a + b.goals, 0)}</p>
-                    </div>
-                    <div className="text-center flex-1">
-                       <p className="text-[10px] font-black text-blue-600 uppercase">المشاركين</p>
-                       <p className="text-3xl font-black text-blue-700">{printData.playerStats.filter((p: any) => p.apps > 0).length}</p>
-                    </div>
-                 </div>
-                 <table className="w-full text-right border-collapse border-2 border-slate-900">
+             {printData.type === 'discipline' ? (
+                <div className="space-y-8 overflow-visible">
+                  <h4 className="text-lg font-black border-r-4 border-red-600 pr-3 flex items-center gap-2">
+                     <Gavel size={20}/> سجل الغيابات والانضباط (الكوادر واللاعبين)
+                  </h4>
+                  <table className="w-full text-right border-collapse border-2 border-slate-900">
                     <thead>
-                       <tr className="bg-slate-100 border-b-2 border-slate-900 text-[9px] font-black uppercase">
-                          <th className="p-3 border-l border-slate-900">اللاعب</th>
-                          <th className="p-3 border-l border-slate-900 text-center">الرقم</th>
-                          <th className="p-3 border-l border-slate-900 text-center">مباريات</th>
-                          <th className="p-3 border-l border-slate-900 text-center">دقائق</th>
-                          <th className="p-3 border-l border-slate-900 text-center text-emerald-600">أهداف</th>
-                          <th className="p-3 border-l border-slate-900 text-center text-blue-600">تمريرات</th>
-                          <th className="p-3 border-l border-slate-900 text-center text-yellow-600">🟨</th>
-                          <th className="p-3 text-center text-red-600">🟥</th>
-                       </tr>
+                      <tr className="bg-slate-100 border-b-2 border-slate-900 text-[10px] font-black uppercase">
+                        <th className="p-4 border-l border-slate-900">الهوية</th>
+                        <th className="p-4 border-l border-slate-900">الاسم الكامل</th>
+                        <th className="p-4 border-l border-slate-900">الصفة</th>
+                        <th className="p-4 border-l border-slate-900 text-center">تأخير</th>
+                        <th className="p-4 border-l border-slate-900 text-center">غياب</th>
+                        <th className="p-4 text-center">الإجمالي</th>
+                      </tr>
                     </thead>
                     <tbody>
-                       {printData.playerStats.map((p: any) => (
-                          <tr key={p.id} className="border-b border-slate-300 text-xs font-black">
-                             <td className="p-3 border-l border-slate-300">{p.name}</td>
-                             <td className="p-3 border-l border-slate-300 text-center text-slate-400">#{p.number}</td>
-                             <td className="p-3 border-l border-slate-300 text-center">{p.apps}</td>
-                             <td className="p-3 border-l border-slate-300 text-center">{p.totalMins} د</td>
-                             <td className="p-3 border-l border-slate-300 text-center text-emerald-700">{p.goals || '-'}</td>
-                             <td className="p-3 border-l border-slate-300 text-center text-blue-700">{p.assists || '-'}</td>
-                             <td className="p-3 border-l border-slate-300 text-center text-yellow-600">{p.yellows || '-'}</td>
-                             <td className="p-3 text-center text-red-600">{p.reds || '-'}</td>
-                          </tr>
-                       ))}
+                      {printData.stats.map((p: any, idx: number) => (
+                        <tr key={idx} className="border-b border-slate-300 text-sm font-black transition-colors hover:bg-slate-50">
+                          <td className="p-4 border-l border-slate-300 text-center text-[10px] text-slate-400">{p.federalId}</td>
+                          <td className="p-4 border-l border-slate-300">{p.name}</td>
+                          <td className="p-4 border-l border-slate-300 text-[10px] opacity-70">{p.role}</td>
+                          <td className="p-4 border-l border-slate-300 text-center text-orange-600">{p.lates}</td>
+                          <td className="p-4 border-l border-slate-300 text-center text-red-600">{p.absences}</td>
+                          <td className="p-4 text-center bg-slate-50 font-black">{p.totalOffenses}</td>
+                        </tr>
+                      ))}
                     </tbody>
-                 </table>
-              </div>
-           ) : (
-              <div className="space-y-10">
-                 {/* ... (Existing Category/Player views optimized for A4) ... */}
-                 <div className="grid grid-cols-3 gap-6">
-                    <div className="bg-slate-50 p-6 border-2 border-slate-900 text-center rounded-2xl">
-                       <p className="text-[10px] font-black text-slate-400 uppercase">الحصص</p>
-                       <p className="text-3xl font-black">{printData.stats.totalSessions || 0}</p>
-                    </div>
-                    {/* ... other stats ... */}
-                 </div>
-              </div>
-           )}
+                  </table>
+                </div>
+             ) : printData.type === 'matches_custom' ? (
+                <div className="space-y-12 overflow-visible">
+                   <div className="bg-slate-50 p-6 border-2 border-slate-900 rounded-[2rem] flex justify-between items-center mb-8">
+                      <div className="text-center flex-1 border-l border-slate-200">
+                         <p className="text-[10px] font-black text-slate-400 uppercase">المباريات</p>
+                         <p className="text-3xl font-black">{printData.matches.length}</p>
+                      </div>
+                      <div className="text-center flex-1 border-l border-slate-200">
+                         <p className="text-[10px] font-black text-emerald-600 uppercase">الأهداف</p>
+                         <p className="text-3xl font-black text-emerald-700">{printData.playerStats.reduce((a: any, b: any) => a + b.goals, 0)}</p>
+                      </div>
+                      <div className="text-center flex-1">
+                         <p className="text-[10px] font-black text-blue-600 uppercase">المشاركين</p>
+                         <p className="text-3xl font-black text-blue-700">{printData.playerStats.filter((p: any) => p.apps > 0).length}</p>
+                      </div>
+                   </div>
+                   <table className="w-full text-right border-collapse border-2 border-slate-900">
+                      <thead>
+                         <tr className="bg-slate-100 border-b-2 border-slate-900 text-[9px] font-black uppercase">
+                            <th className="p-3 border-l border-slate-900">اللاعب</th>
+                            <th className="p-3 border-l border-slate-900 text-center">الرقم</th>
+                            <th className="p-3 border-l border-slate-900 text-center">مباريات</th>
+                            <th className="p-3 border-l border-slate-900 text-center">دقائق</th>
+                            <th className="p-3 border-l border-slate-900 text-center text-emerald-600">أهداف</th>
+                            <th className="p-3 border-l border-slate-900 text-center text-blue-600">تمريرات</th>
+                            <th className="p-3 border-l border-slate-900 text-center text-yellow-600">🟨</th>
+                            <th className="p-3 text-center text-red-600">🟥</th>
+                         </tr>
+                      </thead>
+                      <tbody>
+                         {printData.playerStats.map((p: any) => (
+                            <tr key={p.id} className="border-b border-slate-300 text-xs font-black">
+                               <td className="p-3 border-l border-slate-300">{p.name}</td>
+                               <td className="p-3 border-l border-slate-300 text-center text-slate-400">#{p.number}</td>
+                               <td className="p-3 border-l border-slate-300 text-center">{p.apps}</td>
+                               <td className="p-3 border-l border-slate-300 text-center">{p.totalMins} د</td>
+                               <td className="p-3 border-l border-slate-300 text-center text-emerald-700">{p.goals || '-'}</td>
+                               <td className="p-3 border-l border-slate-300 text-center text-blue-700">{p.assists || '-'}</td>
+                               <td className="p-3 border-l border-slate-300 text-center text-yellow-600">{p.yellows || '-'}</td>
+                               <td className="p-3 text-center text-red-600">{p.reds || '-'}</td>
+                            </tr>
+                         ))}
+                      </tbody>
+                   </table>
+                </div>
+             ) : (
+                <div className="space-y-10 overflow-visible">
+                   <div className="grid grid-cols-3 gap-6 mb-8">
+                      <div className="bg-slate-50 p-6 border-2 border-slate-900 text-center rounded-2xl">
+                         <p className="text-[10px] font-black text-slate-400 uppercase">الحصص</p>
+                         <p className="text-3xl font-black">{printData.stats.totalSessions || 0}</p>
+                      </div>
+                      <div className="bg-slate-50 p-6 border-2 border-slate-900 text-center rounded-2xl">
+                         <p className="text-[10px] font-black text-blue-600 uppercase">المعدل العام</p>
+                         <p className="text-3xl font-black text-blue-700">%{printData.stats.attendanceRate || 0}</p>
+                      </div>
+                      <div className="bg-slate-50 p-6 border-2 border-slate-900 text-center rounded-2xl">
+                         <p className="text-[10px] font-black text-orange-600 uppercase">اللاعبين</p>
+                         <p className="text-3xl font-black text-orange-700">{printData.stats.playersCount || 0}</p>
+                      </div>
+                   </div>
+                   
+                   <table className="w-full text-right border-collapse border-2 border-slate-900">
+                      <thead>
+                         <tr className="bg-slate-100 border-b-2 border-slate-900 text-[10px] font-black uppercase">
+                            <th className="p-4 border-l border-slate-900">الاسم الكامل</th>
+                            <th className="p-4 border-l border-slate-900 text-center">الرقم</th>
+                            <th className="p-4 border-l border-slate-900 text-center">نسبة الالتزام</th>
+                            <th className="p-4 border-l border-slate-900 text-center">إنذارات</th>
+                            <th className="p-4 text-center">طرد</th>
+                         </tr>
+                      </thead>
+                      <tbody>
+                         {printData.playerList?.map((p: any, idx: number) => (
+                            <tr key={idx} className="border-b border-slate-300 text-sm font-black">
+                               <td className="p-4 border-l border-slate-300">{p.name}</td>
+                               <td className="p-4 border-l border-slate-300 text-center text-slate-400">#{p.number}</td>
+                               <td className="p-4 border-l border-slate-300 text-center font-bold">%{p.attRate}</td>
+                               <td className="p-4 border-l border-slate-300 text-center text-yellow-600">{p.yellows || 0}</td>
+                               <td className="p-4 text-center text-red-600">{p.reds || 0}</td>
+                            </tr>
+                         ))}
+                      </tbody>
+                   </table>
+                </div>
+             )}
 
-           <div className="mt-24 flex justify-around items-start opacity-0 print:opacity-100">
-              <div className="text-center space-y-12">
-                 <p className="font-black text-sm">توقيع مدرب الفئة</p>
-                 <p className="text-[10px]">..........................</p>
-              </div>
-              <div className="text-center space-y-12">
-                 <p className="font-black text-sm">مدير مكتب كرة القدم</p>
-                 <p className="font-black text-xs text-blue-900">عزت عامر الشيخة</p>
-                 <p className="text-[10px]">..........................</p>
-              </div>
+             <div className="mt-24 flex justify-around items-start opacity-0 print:opacity-100">
+                <div className="text-center space-y-12">
+                   <p className="font-black text-sm">توقيع مدرب الفئة</p>
+                   <p className="text-[10px]">..........................</p>
+                </div>
+                <div className="text-center space-y-12">
+                   <p className="font-black text-sm">مدير مكتب كرة القدم</p>
+                   <p className="font-black text-xs text-blue-900">عزت عامر الشيخة</p>
+                   <p className="text-[10px]">..........................</p>
+                </div>
+             </div>
+           </div>
+           <div className="mt-10 pt-4 text-center hidden print:block border-t border-slate-100">
+              <p className="text-[8px] font-black text-slate-400">وثيقة رسمية صادرة عن النظام الإلكتروني لنادي الكرامة الرياضي - مكتب كرة القدم</p>
            </div>
         </div>
       </div>

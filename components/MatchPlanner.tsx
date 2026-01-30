@@ -224,7 +224,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     setActiveMatch({ ...activeMatch, lineup: { ...activeMatch.lineup, subs: newSubs } });
   };
 
-  // وظائف قائمة الاحتياط الجديدة
   const addReserve = () => {
     if (!activeMatch || isViewer) return;
     const currentReserves = activeMatch.lineup.reserves || [];
@@ -301,7 +300,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       <div className="fixed inset-0 bg-white z-[500] overflow-y-auto p-12 text-right dir-rtl">
         <div className="max-w-5xl mx-auto border-4 border-slate-900 p-12 print:border-2">
            <div className="no-print flex justify-between items-center mb-10 border-b pb-4">
-              <button onClick={() => setShowPrintView(false)} className="flex items-center gap-2 font-black text-slate-500"><ChevronRight/> العودة للأجندة</button>
+              <button onClick={() => setShowPrintView(false)} className="flex items-center gap-2 font-black text-slate-900"><ChevronRight/> العودة للأجندة</button>
               <button onClick={() => window.print()} className="bg-[#001F3F] text-white px-8 py-3 rounded-xl font-black flex items-center gap-2 shadow-xl"><Printer size={18}/> طباعة PDF</button>
            </div>
            <div className="flex justify-between items-center border-b-4 border-slate-900 pb-8 mb-10">
@@ -324,7 +323,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
               </thead>
               <tbody>
                  {filteredMatches.map(m => (
-                    <tr key={m.id} className="border-b border-slate-200 text-sm font-black">
+                    <tr key={m.id} className="border-b border-slate-200 text-sm font-black text-slate-900">
                        <td className="p-4 border-l">{m.date} - {m.time}</td>
                        <td className="p-4 border-l">{m.opponent}</td>
                        <td className="p-4 border-l text-center">{m.isCompleted ? `${m.ourScore} - ${m.opponentScore}` : 'لم تلعب'}</td>
@@ -357,12 +356,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
           <div key={m.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-slate-900 relative border-b-8 transition-all ${m.isCompleted ? 'border-emerald-600' : 'hover:border-orange-600'}`}>
              <div className="flex justify-between items-start mb-6">
                 <span className="bg-orange-600 text-white text-[9px] font-black px-3 py-1 rounded-lg uppercase">{m.matchType}</span>
-                <span className="text-[10px] font-black text-slate-400">{m.date} - {m.category}</span>
+                <span className="text-[10px] font-black text-slate-900">{m.date} - {m.category}</span>
              </div>
              <div className="text-center mb-6">
-                <p className="text-3xl font-black">{m.ourScore} - {m.opponentScore}</p>
-                <p className="text-sm font-black mt-2">{m.opponent}</p>
-                <p className="text-[10px] font-black text-slate-400 mt-2 flex items-center justify-center gap-1"><MapPin size={10}/> {m.pitch}</p>
+                <p className="text-3xl font-black text-slate-900">{m.ourScore} - {m.opponentScore}</p>
+                <p className="font-black text-sm text-slate-700 mt-2">{m.opponent}</p>
+                <p className="text-[10px] font-black text-slate-900 mt-2 flex items-center justify-center gap-1"><MapPin size={10} className="text-orange-600"/> {m.pitch}</p>
              </div>
              <div className="flex flex-col gap-2">
                 <button onClick={() => setActiveMatch(m)} className="w-full bg-[#001F3F] text-white py-3 rounded-xl font-black text-xs">التشكيل والتقرير</button>
@@ -378,10 +377,10 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[300] p-4 no-print">
           <div className="bg-white rounded-[2.5rem] w-full max-w-lg border-[6px] border-slate-900">
              <div className="p-6 bg-slate-100 border-b-2 border-slate-900 flex justify-between items-center">
-                <h3 className="font-black">جدولة مباراة</h3>
+                <h3 className="font-black text-slate-900">جدولة مباراة</h3>
                 <button onClick={() => setIsAddOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
              </div>
-             <form onSubmit={handleAddMatch} className="p-8 space-y-5">
+             <form onSubmit={handleAddMatch} className="p-8 space-y-5 text-right" dir="rtl">
                 <div>
                   <label className={labelClass}>الفئة</label>
                   <select 
@@ -391,6 +390,20 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     onChange={e => setFormData({...formData, category: e.target.value})}
                   >
                     {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>نوع المباراة</label>
+                  <select 
+                    className={fieldClass} 
+                    value={formData.matchType} 
+                    onChange={e => setFormData({...formData, matchType: e.target.value as MatchType})}
+                  >
+                    <option value="دوري">دوري</option>
+                    <option value="كأس">كأس</option>
+                    <option value="ودية">ودية</option>
+                    <option value="بطولة ودية">بطولة ودية</option>
+                    <option value="مباراة دولية">مباراة دولية</option>
                   </select>
                 </div>
                 <div><label className={labelClass}>الخصم</label><input required type="text" className={fieldClass} value={formData.opponent || ''} onChange={e => setFormData({...formData, opponent: e.target.value})} /></div>
@@ -407,7 +420,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
       {activeMatch && (
         <div className="fixed inset-0 bg-slate-950/98 backdrop-blur-2xl z-[400] overflow-y-auto no-print">
-           <div className="max-w-7xl mx-auto p-4 lg:p-12 min-h-screen">
+           <div className="max-w-7xl mx-auto p-4 lg:p-12 min-h-screen text-right" dir="rtl">
               <div className="bg-white rounded-[4rem] border-[10px] border-slate-900 p-8 lg:p-12 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/5 rounded-full -mr-32 -mt-32"></div>
                 <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-900/5 rounded-full -ml-48 -mb-48"></div>
@@ -418,8 +431,8 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                      <div>
                         <h2 className="text-4xl font-black text-slate-900 tracking-tighter">الكرامة <span className="text-orange-600">×</span> {activeMatch.opponent}</h2>
                         <div className="flex gap-3 mt-3">
-                           <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-4 py-1.5 rounded-full border border-slate-200 uppercase tracking-widest flex items-center gap-2">
-                             <Calendar size={14}/> {activeMatch.date}
+                           <span className="bg-slate-100 text-slate-900 text-[10px] font-black px-4 py-1.5 rounded-full border border-slate-900 uppercase tracking-widest flex items-center gap-2">
+                             <Calendar size={14} className="text-orange-600"/> {activeMatch.date}
                            </span>
                            <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-4 py-1.5 rounded-full border border-orange-100 uppercase tracking-widest flex items-center gap-2">
                              <MapPin size={14}/> {activeMatch.pitch}
@@ -442,7 +455,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 relative">
                    <div className="lg:col-span-8 space-y-12">
                       <section>
-                         <div className="flex items-center gap-4 mb-8">
+                         <div className="flex items-center gap-4 mb-8 border-r-4 border-orange-600 pr-4">
                             <div className="bg-orange-600 p-3 rounded-2xl shadow-lg text-white"><Users size={28}/></div>
                             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">التشكيلة الأساسية (Starting XI)</h3>
                          </div>
@@ -457,16 +470,16 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                      <div className="w-14 h-14 bg-slate-900 text-white rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-lg group-hover:bg-orange-600 transition-colors border-2 border-white">
                                        {s.number || person?.number || (idx + 1)}
                                      </div>
-                                     <button type="button" onClick={() => toggleCaptain(s.playerId)} className={`p-3 rounded-[1.2rem] border-2 transition-all ${activeMatch.lineup.captain === s.playerId ? 'bg-orange-600 text-white border-orange-900 scale-110 shadow-2xl shadow-orange-600/30' : 'bg-slate-50 text-slate-300 border-slate-100 hover:border-slate-300'}`}>
+                                     <button type="button" onClick={() => toggleCaptain(s.playerId)} className={`p-3 rounded-[1.2rem] border-2 transition-all ${activeMatch.lineup.captain === s.playerId ? 'bg-orange-600 text-white border-orange-900 scale-110 shadow-2xl shadow-orange-600/30' : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-slate-300'}`}>
                                         <Crown size={18}/>
                                      </button>
                                   </div>
 
                                   <div className="flex-1 space-y-1">
-                                     <label className="text-[9px] font-black text-slate-400 uppercase block tracking-widest">مركز اللاعب #{idx+1}</label>
-                                     <select className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-3 font-black text-sm outline-none focus:border-slate-900 appearance-none cursor-pointer" value={s.playerId} onChange={e => updateActiveMatchLineup(idx, e.target.value, true)}>
+                                     <label className="text-[10px] font-black text-slate-900 uppercase block tracking-widest mb-1.5 border-r-2 border-orange-600 pr-2">مركز اللاعب #{idx+1}</label>
+                                     <select className="w-full bg-slate-50 border-2 border-slate-400 rounded-xl p-3 font-black text-sm text-slate-900 outline-none focus:border-orange-600 appearance-none cursor-pointer" value={s.playerId} onChange={e => updateActiveMatchLineup(idx, e.target.value, true)}>
                                         <option value="">-- اختر لاعب --</option>
-                                        {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
+                                        {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
                                      </select>
                                      {person && (
                                        <div className="flex gap-1 mt-2 flex-wrap">
@@ -480,9 +493,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                   <div className="flex items-center justify-between pt-4 border-t-2 border-slate-100 mt-2">
                                      <div className="flex items-center gap-2">
                                         <Timer size={14} className="text-emerald-600"/>
-                                        <span className="text-[10px] font-black text-slate-400 uppercase">دقائق المشاركة</span>
+                                        <span className="text-[10px] font-black text-slate-900 uppercase">دقائق المشاركة</span>
                                      </div>
-                                     <input type="number" className="w-16 bg-emerald-50 border-2 border-emerald-100 rounded-lg px-2 py-1 text-center font-black text-emerald-700 text-xs focus:border-emerald-500" value={s.minutesPlayed || '90'} onChange={e => updateMinutes(idx, e.target.value, true)} />
+                                     <input type="number" className="w-16 bg-white border-2 border-emerald-600 rounded-lg px-2 py-1 text-center font-black text-emerald-700 text-xs focus:ring-2 focus:ring-emerald-200" value={s.minutesPlayed || '90'} onChange={e => updateMinutes(idx, e.target.value, true)} />
                                   </div>
                                </div>
                             )})}
@@ -490,7 +503,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                       </section>
 
                       <section>
-                         <div className="flex justify-between items-center mb-10">
+                         <div className="flex justify-between items-center mb-10 border-r-4 border-blue-900 pr-4">
                             <div className="flex items-center gap-4">
                                <div className="bg-blue-900 p-3 rounded-2xl shadow-lg text-white"><TrendingUp size={28}/></div>
                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">البدلاء والتبديلات الذكية</h3>
@@ -501,35 +514,35 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          </div>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {activeMatch.lineup.subs.map((s, idx) => (
-                               <div key={idx} className="bg-slate-50 p-6 rounded-[2.5rem] border-4 border-slate-200 relative shadow-inner group hover:border-blue-900 transition-all flex flex-col space-y-4">
+                               <div key={idx} className="bg-slate-50 p-6 rounded-[2.5rem] border-4 border-slate-300 relative shadow-inner group hover:border-blue-900 transition-all flex flex-col space-y-4">
                                   <div className="flex justify-between items-center">
-                                     <span className="text-[10px] font-black text-blue-900 bg-blue-50 px-3 py-1 rounded-full border border-blue-100 uppercase flex items-center gap-1"><LogIn size={10}/> البديل #{idx+1}</span>
+                                     <span className="text-[11px] font-black text-blue-900 bg-blue-50 px-3 py-1 rounded-full border border-blue-900 uppercase flex items-center gap-1"><LogIn size={10}/> البديل #{idx+1}</span>
                                      <button onClick={() => removeSub(idx)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-600 hover:text-white transition-all"><X size={14}/></button>
                                   </div>
                                   
                                   <div className="space-y-3">
                                      <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">اللاعب البديل</label>
-                                        <select className="w-full bg-white border-2 border-slate-200 rounded-xl p-2.5 font-black text-xs focus:border-blue-900 transition-all" value={s.playerId} onChange={e => updateSub(idx, e.target.value)}>
+                                        <label className="text-[10px] font-black text-slate-900 uppercase mb-1 block pr-2 border-r-2 border-blue-900">اللاعب البديل</label>
+                                        <select className="w-full bg-white border-2 border-slate-400 rounded-xl p-2.5 font-black text-xs text-slate-900 focus:border-blue-900 transition-all" value={s.playerId} onChange={e => updateSub(idx, e.target.value)}>
                                            <option value="">-- اختر لاعب --</option>
-                                           {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
+                                           {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
                                         </select>
                                      </div>
                                      <div>
-                                        <label className="text-[9px] font-black text-red-500 uppercase mb-1 block">بدلاً من (الخروج)</label>
-                                        <select className="w-full bg-white border-2 border-red-100 rounded-xl p-2.5 font-black text-xs focus:border-red-600 transition-all" value={s.replacedPlayerId || ''} onChange={e => handleSubstitutionCalculation(idx, e.target.value, s.substitutionMinute || '0')}>
+                                        <label className="text-[10px] font-black text-red-700 uppercase mb-1 block pr-2 border-r-2 border-red-700">بدلاً من (الخروج)</label>
+                                        <select className="w-full bg-white border-2 border-slate-400 rounded-xl p-2.5 font-black text-xs text-slate-900 focus:border-red-600 transition-all" value={s.replacedPlayerId || ''} onChange={e => handleSubstitutionCalculation(idx, e.target.value, s.substitutionMinute || '0')}>
                                            <option value="">-- اختر لاعب --</option>
-                                           {activeMatch.lineup.starters.map(st => <option key={st.playerId} value={st.playerId}>{st.name} (#{st.number})</option>)}
+                                           {activeMatch.lineup.starters.map(st => <option key={st.playerId} value={st.playerId} className="text-slate-900">{st.name} (#{st.number})</option>)}
                                         </select>
                                      </div>
                                   </div>
 
-                                  <div className="flex items-center justify-between pt-3 border-t border-slate-200 mt-2">
+                                  <div className="flex items-center justify-between pt-3 border-t-2 border-slate-200 mt-2">
                                      <div className="flex items-center gap-3">
-                                        <div className="bg-white border-2 border-slate-200 p-2 rounded-lg flex items-center gap-2">
-                                           <Clock size={12} className="text-slate-400"/>
-                                           <input type="number" className="w-10 bg-transparent font-black text-center text-xs focus:outline-none" value={s.substitutionMinute || ''} placeholder="0" onChange={e => handleSubstitutionCalculation(idx, s.replacedPlayerId || '', e.target.value)} />
-                                           <span className="text-[9px] font-black text-slate-400">د</span>
+                                        <div className="bg-white border-2 border-slate-400 p-2 rounded-lg flex items-center gap-2">
+                                           <Clock size={12} className="text-blue-900"/>
+                                           <input type="number" className="w-10 bg-transparent font-black text-center text-xs text-slate-900 focus:outline-none" value={s.substitutionMinute || ''} placeholder="0" onChange={e => handleSubstitutionCalculation(idx, s.replacedPlayerId || '', e.target.value)} />
+                                           <span className="text-[10px] font-black text-slate-900">د</span>
                                         </div>
                                      </div>
                                      <div className="bg-[#001F3F] text-white px-4 py-1.5 rounded-lg flex items-center justify-center font-black text-[10px] shadow-md shrink-0 border-b-2 border-black">
@@ -541,9 +554,8 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          </div>
                       </section>
 
-                      {/* قسم قائمة الاحتياط الجديدة (عدد لامحدود) */}
                       <section className="mt-12">
-                         <div className="flex justify-between items-center mb-10">
+                         <div className="flex justify-between items-center mb-10 border-r-4 border-slate-900 pr-4">
                             <div className="flex items-center gap-4">
                                <div className="bg-slate-700 p-3 rounded-2xl shadow-lg text-white"><UserCircle size={28}/></div>
                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">قائمة الاحتياط الإضافية (خارج الـ 18)</h3>
@@ -556,21 +568,21 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                             {(activeMatch.lineup.reserves || []).map((r, idx) => (
                                <div key={idx} className="bg-slate-100 p-5 rounded-[2rem] border-2 border-slate-300 relative group hover:border-slate-800 transition-all flex flex-col space-y-3">
                                   <div className="flex justify-between items-center">
-                                     <span className="text-[9px] font-black text-slate-500 uppercase">لاعب احتياط #{idx+1}</span>
+                                     <span className="text-[10px] font-black text-slate-900 uppercase">لاعب احتياط #{idx+1}</span>
                                      <button onClick={() => removeReserve(idx)} className="bg-red-50 text-red-600 p-1.5 rounded-full hover:bg-red-600 hover:text-white transition-all"><X size={12}/></button>
                                   </div>
-                                  <select className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 font-black text-xs focus:border-slate-800 transition-all" value={r.playerId} onChange={e => updateReserve(idx, e.target.value)}>
+                                  <select className="w-full bg-white border-2 border-slate-400 rounded-xl p-3 font-black text-xs text-slate-900 focus:border-slate-800 transition-all" value={r.playerId} onChange={e => updateReserve(idx, e.target.value)}>
                                      <option value="">-- اختر لاعب من الفئة --</option>
-                                     {getAvailablePlayers(r.playerId).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
+                                     {getAvailablePlayers(r.playerId).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
                                   </select>
-                                  <div className="flex justify-end opacity-50">
-                                     <span className="text-[9px] font-black">رقم اللاعب: {r.number || '--'}</span>
+                                  <div className="flex justify-end">
+                                     <span className="text-[10px] font-black text-slate-900">رقم اللاعب: {r.number || '--'}</span>
                                   </div>
                                </div>
                             ))}
                             {(!activeMatch.lineup.reserves || activeMatch.lineup.reserves.length === 0) && (
                                <div className="col-span-full py-10 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                                  <p className="text-slate-400 font-black italic text-xs">لا توجد أسماء مضافة لقائمة الاحتياط حالياً</p>
+                                  <p className="text-slate-900 font-black italic text-xs">لا توجد أسماء مضافة لقائمة الاحتياط حالياً</p>
                                </div>
                             )}
                          </div>
@@ -585,12 +597,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          </h3>
                          <div className="flex justify-center items-center gap-6 mb-12">
                             <div className="flex flex-col items-center gap-2">
-                               <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">الكرامة</p>
+                               <p className="text-[10px] font-black text-white uppercase tracking-widest opacity-70">الكرامة</p>
                                <input type="number" className="w-24 h-24 bg-white text-slate-900 rounded-[2.5rem] text-center font-black text-5xl border-8 border-orange-600 shadow-2xl transition-transform focus:scale-110 outline-none" value={activeMatch.ourScore} onChange={e => setActiveMatch({...activeMatch, ourScore: e.target.value})} />
                             </div>
                             <span className="text-6xl font-black text-orange-600 mt-6">:</span>
                             <div className="flex flex-col items-center gap-2">
-                               <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">الخصم</p>
+                               <p className="text-[10px] font-black text-white uppercase tracking-widest opacity-70">الخصم</p>
                                <input type="number" className="w-24 h-24 bg-white text-slate-900 rounded-[2.5rem] text-center font-black text-5xl border-8 border-slate-300 shadow-2xl transition-transform focus:scale-110 outline-none" value={activeMatch.opponentScore} onChange={e => setActiveMatch({...activeMatch, opponentScore: e.target.value})} />
                             </div>
                          </div>
@@ -598,11 +610,11 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          <div className="space-y-6 pt-10 border-t border-white/10">
                             <div className="grid grid-cols-2 gap-4">
                                <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                                  <label className="text-[9px] font-black text-orange-400 block mb-2 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> الشوط الأول (+)</label>
+                                  <label className="text-[11px] font-black text-orange-400 block mb-2 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> الشوط الأول (+)</label>
                                   <input type="number" className="w-full bg-slate-800 border-2 border-slate-700 rounded-xl py-2 px-3 text-white font-black text-center text-xl" value={activeMatch.stoppageTime1 || '0'} onChange={e => setActiveMatch({...activeMatch, stoppageTime1: e.target.value})} />
                                </div>
                                <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                                  <label className="text-[9px] font-black text-orange-400 block mb-2 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> الشوط الثاني (+)</label>
+                                  <label className="text-[11px] font-black text-orange-400 block mb-2 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> الشوط الثاني (+)</label>
                                   <input type="number" className="w-full bg-slate-800 border-2 border-slate-700 rounded-xl py-2 px-3 text-white font-black text-center text-xl" value={activeMatch.stoppageTime2 || '0'} onChange={e => setActiveMatch({...activeMatch, stoppageTime2: e.target.value})} />
                                </div>
                             </div>
@@ -626,29 +638,37 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                             
                             {activeMatch.events.sort((a,b) => (parseInt(a.minute)||0) - (parseInt(b.minute)||0)).map((ev, i) => (
                                <div key={ev.id} className="flex items-center gap-4 relative z-10 animate-in slide-in-from-right-4 duration-300">
-                                  <div className="text-[10px] font-black text-slate-400 w-8 text-left">{ev.minute}'</div>
+                                  <div className="text-[12px] font-black text-slate-900 w-8 text-left">{ev.minute}'</div>
                                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-md border-2 border-white ${ev.type === 'goal' ? 'bg-emerald-500 text-white' : ev.type === 'yellow' ? 'bg-yellow-400 text-slate-900' : ev.type === 'red' ? 'bg-red-600 text-white' : 'bg-blue-500 text-white'}`}>
                                     {ev.type === 'goal' ? '⚽' : ev.type === 'yellow' ? '🟨' : ev.type === 'red' ? '🟥' : '👟'}
                                   </div>
-                                  <div className="flex-1 bg-slate-50 p-3 rounded-2xl border-2 border-slate-100 group">
+                                  <div className="flex-1 bg-slate-50 p-3 rounded-2xl border-2 border-slate-300 group">
                                      <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[8px] font-black text-slate-400 uppercase">{ev.type === 'goal' ? 'هدف سجله:' : ev.type === 'yellow' ? 'إنذار لـ:' : ev.type === 'red' ? 'طرد لـ:' : 'تمريرة من:'}</span>
+                                        <span className="text-[10px] font-black text-slate-900 uppercase">{ev.type === 'goal' ? 'هدف سجله:' : ev.type === 'yellow' ? 'إنذار لـ:' : ev.type === 'red' ? 'طرد لـ:' : 'تمريرة من:'}</span>
                                         <button onClick={() => removeEvent(ev.id)} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
                                      </div>
-                                     <select className="w-full text-[11px] font-black bg-transparent outline-none cursor-pointer" value={ev.player} onChange={e => {
-                                        const evs = [...activeMatch.events];
-                                        const idxInOrig = evs.findIndex(x => x.id === ev.id);
-                                        evs[idxInOrig].player = e.target.value;
-                                        setActiveMatch({...activeMatch, events: evs});
-                                     }}>
-                                        <option value="">-- اختر اللاعب --</option>
-                                        {state.people.filter(p => p.category === activeMatch.category).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
-                                     </select>
+                                     <div className="flex gap-2">
+                                       <select className="flex-1 text-[11px] font-black bg-transparent outline-none cursor-pointer border-b-2 border-slate-900 text-slate-900" value={ev.player} onChange={e => {
+                                          const evs = [...activeMatch.events];
+                                          const idxInOrig = evs.findIndex(x => x.id === ev.id);
+                                          evs[idxInOrig].player = e.target.value;
+                                          setActiveMatch({...activeMatch, events: evs});
+                                       }}>
+                                          <option value="">-- اختر اللاعب --</option>
+                                          {state.people.filter(p => p.category === activeMatch.category).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
+                                       </select>
+                                       <input type="number" placeholder="د" className="w-12 bg-white border-2 border-slate-400 rounded px-1 py-0.5 text-center text-[11px] font-black text-slate-900" value={ev.minute} onChange={e => {
+                                          const evs = [...activeMatch.events];
+                                          const idxInOrig = evs.findIndex(x => x.id === ev.id);
+                                          evs[idxInOrig].minute = e.target.value;
+                                          setActiveMatch({...activeMatch, events: evs});
+                                       }} />
+                                     </div>
                                   </div>
                                </div>
                             ))}
                             {activeMatch.events.length === 0 && (
-                               <p className="text-center py-10 text-[10px] font-black text-slate-300 italic relative z-10 bg-white">لا توجد أحداث مسجلة حتى الآن</p>
+                               <p className="text-center py-10 text-[11px] font-black text-slate-900 italic relative z-10 bg-white border-2 border-dashed border-slate-200 rounded-xl">لا توجد أحداث مسجلة حتى الآن</p>
                             )}
                          </div>
                       </section>

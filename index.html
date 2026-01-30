@@ -10,70 +10,42 @@
   <style>
     body {
       font-family: 'Tajawal', sans-serif;
-      background-color: #f8fafc;
-      color: #0f172a; /* Slate-900 */
+      background-color: #000F21;
+      color: #FFFFFF;
     }
+    
+    /* Solid Panel Style - No Blur */
+    .solid-panel {
+      background-color: #ffffff;
+      border: 2px solid #001F3F;
+      border-radius: 2rem;
+      box-shadow: 8px 8px 0px 0px #001F3F;
+    }
+
+    .dark-solid-panel {
+      background-color: #001F3F;
+      border: 2px solid #FF6B00;
+      border-radius: 2rem;
+      box-shadow: 8px 8px 0px 0px #FF6B00;
+    }
+
     @media print {
-      /* تحسين جودة الطباعة وألوان PDF */
       * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      
-      .no-print {
-        display: none !important;
-      }
-      
-      .print-only {
-        display: block !important;
-      }
-
-      body {
-        background: white !important;
-        margin: 0;
-        padding: 0;
-      }
-
-      /* إعادة ضبط الحاويات لضمان ظهور كامل المحتوى المطبوع */
-      html, body, #root, main, section {
-        height: auto !important;
-        overflow: visible !important;
-        position: static !important;
-        background: white !important;
-      }
-
-      /* إعدادات الصفحة */
-      @page {
-        size: A4 portrait;
-        margin: 1.5cm;
-      }
-
-      /* تحسين الجداول للطباعة */
-      table {
-        page-break-inside: auto;
-        width: 100% !important;
-      }
-      tr {
-        page-break-inside: avoid;
-        page-break-after: auto;
-      }
-      
-      .report-card {
-        border: 2px solid #000 !important;
-        box-shadow: none !important;
-        border-radius: 1rem !important;
-      }
+      .no-print { display: none !important; }
+      body { background: white !important; color: black !important; margin: 0; padding: 0; }
+      @page { size: A4 portrait; margin: 1cm; }
+      .solid-panel { border: 2px solid #000 !important; box-shadow: none !important; color: black !important; }
     }
-    .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-      background: #f1f1f1;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #001F3F;
-      border-radius: 10px;
-    }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #000F21; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #FF6B00; border-radius: 10px; }
+    
+    /* Animation Fixes */
+    .glow-orange { box-shadow: 0 0 20px rgba(255, 107, 0, 0.2); }
   </style>
 <script type="importmap">
 {

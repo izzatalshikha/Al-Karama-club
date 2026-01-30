@@ -44,7 +44,8 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
         username: userFormData.username!.trim(),
         role: userFormData.role as UserRole,
         password: userFormData.password!,
-        restrictedCategory: userFormData.role === 'إداري فئة' ? userFormData.restrictedCategory : undefined
+        // تحديث: السماح بـ restrictedCategory لكل من إداري الفئة والمشاهد المخصص
+        restrictedCategory: (userFormData.role === 'إداري فئة' || userFormData.role === 'مشاهد') ? userFormData.restrictedCategory : undefined
       };
       setState(prev => ({ ...prev, users: [...prev.users, newUser] }));
       addLog?.('إنشاء حساب مستخدم', `تم إنشاء مستخدم جديد بنجاح: ${newUser.username} برتبة ${newUser.role}`, 'success');
@@ -83,9 +84,8 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
   };
 
   const deleteUser = async (id: string, name: string) => {
-    if (name.toUpperCase() === 'IZZAT') return alert('لا يمكن حذف الحساب الجذري للنظام.');
+    if (name.toUpperCase() === 'IZZAT' || name === 'عزت عامر الشيخة') return alert('لا يمكن حذف الحساب الجذري للنظام.');
     if (confirm(`هل أنت متأكد من حذف حساب ${name}؟`)) {
-      // تم التعديل إلى app_users لضمان حذف الحساب سحابياً بشكل صحيح
       await supabase.from('app_users').delete().eq('id', id);
       setState(p => ({ ...p, users: p.users.filter(u => u.id !== id) }));
       addLog?.('حذف مستخدم', `تم حذف حساب المستخدم: ${name}`, 'error');
@@ -131,7 +131,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
                       <p className="text-[10px] font-black text-slate-300">PASS: {user.password ? '****' : 'N/A'}</p>
                       <div className="flex gap-2">
                          <button onClick={() => { setEditingUserId(user.id); setUserFormData(user); setIsUserModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={16}/></button>
-                         {user.username.toUpperCase() !== 'IZZAT' && (
+                         {(user.username.toUpperCase() !== 'IZZAT' && user.username !== 'عزت عامر الشيخة') && (
                            <button onClick={() => deleteUser(user.id, user.username)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
                          )}
                       </div>
@@ -218,12 +218,12 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
                       {roles.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                  </div>
-                 {userFormData.role === 'إداري فئة' && (
+                 {(userFormData.role === 'إداري فئة' || userFormData.role === 'مشاهد') && (
                     <div>
-                      <label className={labelClass}>الفئة المخصصة</label>
-                      <select required className={fieldClass}
+                      <label className={labelClass}>الفئة المخصصة (اتركها فارغة للمشاهد العام)</label>
+                      <select className={fieldClass}
                         value={userFormData.restrictedCategory} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value })}>
-                        <option value="">-- اختر الفئة --</option>
+                        <option value="">{userFormData.role === 'مشاهد' ? 'رؤية كل الفئات' : '-- اختر الفئة --'}</option>
                         {state.categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
                     </div>
@@ -233,7 +233,9 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
               <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-100 flex items-start gap-3">
                  <ShieldAlert className="text-blue-600 shrink-0" size={20}/>
                  <p className="text-[10px] font-black text-blue-900 leading-relaxed uppercase">
-                    تنبيه: "إداري الفئة" سيقتصر وصوله فقط على البيانات الخاصة بفئته المحددة أعلاه، ولن يتمكن من تعديل الحضور بعد رصده للمرة الأولى.
+                    {userFormData.role === 'مشاهد' 
+                      ? 'ملاحظة: "المشاهد المخصص" سيرى فقط بيانات الفئة المختارة، بينما "المشاهد" بدون فئة سيرى كافة بيانات النادي.'
+                      : 'تنبيه: "إداري الفئة" سيقتصر وصوله فقط على البيانات الخاصة بفئته المحددة، ولن يتمكن من تعديل الحضور بعد رصده للمرة الأولى.'}
                  </p>
               </div>
 

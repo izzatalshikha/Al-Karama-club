@@ -14,6 +14,18 @@ export interface AppNotification {
   isRead?: boolean;
 }
 
+export interface PlayerEvaluation {
+  id: string;
+  playerId: string;
+  date: string;
+  physical: number; // 1-10
+  tactical: number;
+  technical: number;
+  mental: number;
+  speed: number;
+  coachNote?: string;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -40,6 +52,7 @@ export interface Person {
   notes?: string;
   coachingCertificate?: string;
   academicDegree?: string;
+  evaluations?: PlayerEvaluation[];
 }
 
 export interface AttendanceRecord {
@@ -85,9 +98,9 @@ export interface Match {
   isCompleted: boolean;
   ourScore: string;
   opponentScore: string;
-  stoppageTime?: string; // للحفاظ على التوافق القديم
-  stoppageTime1?: string; // وقت ضائع شوط أول
-  stoppageTime2?: string; // وقت ضائع شوط ثاني
+  stoppageTime?: string; 
+  stoppageTime1?: string; 
+  stoppageTime2?: string; 
   events: MatchEvent[];
   lineup: {
     starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
@@ -106,6 +119,17 @@ export interface Match {
   notes?: string;
 }
 
+export interface WarehouseItem {
+  id: string;
+  name: string;
+  category: Category | 'المخزن العام';
+  quantity: number;
+  unit: 'قطعة' | 'طقم' | 'كرة' | 'حذاء' | 'أخرى';
+  condition: 'جديد' | 'مستعمل' | 'تالف';
+  lastUpdated: string;
+  notes?: string;
+}
+
 export interface AppUser {
   id: string;
   username: string;
@@ -119,6 +143,7 @@ export interface AppState {
   attendance: AttendanceRecord[];
   sessions: TrainingSession[];
   matches: Match[];
+  warehouse: WarehouseItem[];
   users: AppUser[];
   categories: Category[];
   currentUser: AppUser | null;
