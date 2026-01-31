@@ -4,7 +4,7 @@ import {
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Bell, RefreshCw, User, CloudCheck, CloudOff, Cloud, Map, Sparkles, Archive, BarChart3, Package
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { AppUser, AppState, Person, AppNotification, Match, WarehouseItem } from './types';
+import { AppUser, AppState, Person, AppNotification, Match, WarehouseItem, TrainingSession, AttendanceRecord } from './types';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -47,10 +47,11 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
   
+  // نظام منع تداخل البيانات (Sync Lock Engine)
   const syncManager = useRef({
-    lastLocalUpdate: 0,
     isPushing: false,
-    pendingFetch: false
+    lastPushTime: 0,
+    isInitialLoad: true
   });
 
   const [state, setState] = useState<AppState>(() => {
@@ -97,12 +98,9 @@ const App: React.FC = () => {
     });
   };
 
-  const fetchData = useCallback(async (force = false) => {
-    const now = Date.now();
-    if (!state.currentUser) return;
-    if (!force && (syncManager.current.isPushing || (now - syncManager.current.lastLocalUpdate < 5000))) {
-      return;
-    }
+  const fetchData = useCallback(async () => {
+    // منع الجلب إذا كان هناك عملية رفع جارية لتجنب مسح البيانات المحلية الجديدة
+    if (!state.currentUser || syncManager.current.isPushing) return;
     
     setIsSyncing(true);
     setSyncStatus('syncing');
@@ -112,6 +110,7 @@ const App: React.FC = () => {
       const mtchQuery = supabase.from('matches').select('*');
       const usrsQuery = supabase.from('app_users').select('*');
       const wrhsQuery = supabase.from('warehouse').select('*');
+      const attnQuery = supabase.from('attendance').select('*');
 
       if (state.currentUser.restrictedCategory) {
         pplQuery.eq('category', state.currentUser.restrictedCategory);
@@ -125,129 +124,95 @@ const App: React.FC = () => {
         pplQuery,
         sessQuery,
         mtchQuery,
-        supabase.from('attendance').select('*'),
+        attnQuery,
         usrsQuery,
         wrhsQuery
       ]);
 
-      if (ppl.error || mtch.error) throw new Error("فشل الاتصال بقاعدة البيانات");
+      if (ppl.error || mtch.error) throw new Error("Connection Error");
 
-      setState(prev => {
-        const cloudPeople = (ppl.data && ppl.data.length > 0) ? ppl.data : prev.people;
-        const cloudSessions = (sess.data && sess.data.length > 0) ? sess.data : prev.sessions;
-        const cloudMatches = (mtch.data && mtch.data.length > 0) ? mtch.data : prev.matches;
-        const cloudWarehouse = (wrhs.data && wrhs.data.length > 0) ? wrhs.data : prev.warehouse;
-        const cloudAttendance = (attn.data && attn.data.length > 0) ? attn.data : prev.attendance;
-        const cloudUsers = (usrs.data && usrs.data.length > 0) ? usrs.data : prev.users;
-
-        return {
-          ...prev,
-          categories: (cats.data && cats.data.length > 0) ? cats.data.map(c => c.name) : prev.categories,
-          people: cloudPeople,
-          sessions: cloudSessions.map((s: any) => ({
-             ...s,
-             isLocked: !!s.isCompleted
-          })),
-          matches: cloudMatches.map((m: any) => ({
-            ...m,
-            pitch: m.pitch || m.location || '' 
-          })),
-          warehouse: cloudWarehouse,
-          attendance: cloudAttendance,
-          users: cloudUsers
-        };
-      });
+      setState(prev => ({
+        ...prev,
+        categories: (cats.data && cats.data.length > 0) ? cats.data.map(c => c.name) : prev.categories,
+        people: ppl.data || prev.people,
+        sessions: (sess.data || prev.sessions).map((s: any) => ({ ...s, isLocked: !!s.isCompleted })),
+        matches: (mtch.data || prev.matches).map((m: any) => ({ ...m, pitch: m.pitch || m.location || '' })),
+        warehouse: wrhs.data || prev.warehouse,
+        attendance: attn.data || prev.attendance,
+        users: usrs.data || prev.users
+      }));
       setSyncStatus('synced');
     } catch (error: any) {
       setSyncStatus('error');
-      console.error("Sync Error:", error);
+      console.error("Fetch Error:", error);
     } finally {
       setIsSyncing(false);
+      syncManager.current.isInitialLoad = false;
     }
   }, [state.currentUser]);
 
-  useEffect(() => {
-    if (!state.currentUser) return;
-    fetchData(true);
-
-    const tables = ['people', 'sessions', 'matches', 'attendance', 'app_users', 'warehouse'];
-    const channels = tables.map(table => 
-      supabase
-        .channel(`public:${table}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table }, () => fetchData())
-        .subscribe()
-    );
-
-    return () => { channels.forEach(c => supabase.removeChannel(c)); };
-  }, [state.currentUser, fetchData]);
-
-  const pushData = useCallback(async (updatedState: AppState) => {
+  const pushData = async (updatedState: AppState) => {
     if (!updatedState.currentUser) return;
 
     syncManager.current.isPushing = true;
     setSyncStatus('syncing');
     try {
-      const mappedMatches = updatedState.matches.map(m => {
-        const base: any = {
-          id: m.id,
-          category: m.category,
-          matchType: m.matchType,
-          opponent: m.opponent,
-          date: m.date,
-          time: m.time,
-          advancePayment: m.advancePayment || '0',
-          isCompleted: !!m.isCompleted,
-          ourScore: m.ourScore || '0',
-          opponentScore: m.opponentScore || '0',
-          events: m.events || [],
-          lineup: m.lineup || {},
-          notes: m.notes || '',
-          stoppageTime1: m.stoppageTime1 || '0',
-          stoppageTime2: m.stoppageTime2 || '0'
-        };
-        if (m.pitch !== undefined) base.pitch = m.pitch;
-        return base;
-      });
-
-      const mappedSessions = updatedState.sessions.map(s => ({
-        id: s.id,
-        category: s.category,
-        date: s.date,
-        time: s.time,
-        pitch: s.pitch || '',
-        objective: s.objective || '',
-        isCompleted: !!s.isCompleted
+      const mappedMatches = updatedState.matches.map(m => ({
+        ...m,
+        advancePayment: m.advancePayment || '0',
+        ourScore: m.ourScore || '0',
+        opponentScore: m.opponentScore || '0'
       }));
 
-      if (updatedState.people.length > 0) await supabase.from('people').upsert(sanitize(updatedState.people), { onConflict: 'id' });
-      if (mappedSessions.length > 0) await supabase.from('sessions').upsert(sanitize(mappedSessions), { onConflict: 'id' });
-      if (mappedMatches.length > 0) await supabase.from('matches').upsert(sanitize(mappedMatches), { onConflict: 'id' });
-      if (updatedState.attendance.length > 0) await supabase.from('attendance').upsert(sanitize(updatedState.attendance), { onConflict: 'id' });
-      if (updatedState.users.length > 0) await supabase.from('app_users').upsert(sanitize(updatedState.users), { onConflict: 'id' });
-      if (updatedState.warehouse.length > 0) await supabase.from('warehouse').upsert(sanitize(updatedState.warehouse), { onConflict: 'id' });
+      // تحديث الجداول بشكل متسلسل ومضمون لضمان عدم حدوث تعارض
+      const tasks = [];
+      if (updatedState.people.length > 0) tasks.push(supabase.from('people').upsert(sanitize(updatedState.people), { onConflict: 'id' }));
+      if (updatedState.sessions.length > 0) tasks.push(supabase.from('sessions').upsert(sanitize(updatedState.sessions), { onConflict: 'id' }));
+      if (mappedMatches.length > 0) tasks.push(supabase.from('matches').upsert(sanitize(mappedMatches), { onConflict: 'id' }));
+      if (updatedState.attendance.length > 0) tasks.push(supabase.from('attendance').upsert(sanitize(updatedState.attendance), { onConflict: 'id' }));
+      if (updatedState.users.length > 0) tasks.push(supabase.from('app_users').upsert(sanitize(updatedState.users), { onConflict: 'id' }));
+      if (updatedState.warehouse.length > 0) tasks.push(supabase.from('warehouse').upsert(sanitize(updatedState.warehouse), { onConflict: 'id' }));
+
+      await Promise.all(tasks);
 
       setSyncStatus('synced');
-      syncManager.current.lastLocalUpdate = Date.now();
+      syncManager.current.lastPushTime = Date.now();
     } catch (error: any) {
       setSyncStatus('error');
-      addLog('خطأ في الرفع السحابي', error.message, 'error');
-      console.error("Critical Push Error:", error);
+      addLog('خطأ مزامنة', error.message, 'error');
     } finally {
-      syncManager.current.isPushing = false;
-    }
-  }, [addLog]);
-
-  const updateStateAndSync = async (updater: (prev: AppState) => AppState) => {
-    syncManager.current.lastLocalUpdate = Date.now();
-    let nextState: AppState | null = null;
-    setState(prev => {
-      nextState = updater(prev);
-      return nextState;
-    });
-    if (nextState) {
-      await pushData(nextState);
+      // نترك القفل مفعلاً لمجرد ثوانٍ بسيطة للسماح للسحاب بالاستقرار
+      setTimeout(() => {
+        syncManager.current.isPushing = false;
+      }, 2500);
     }
   };
+
+  const updateStateAndSync = (updater: (prev: AppState) => AppState) => {
+    setState(prev => {
+      const next = updater(prev);
+      pushData(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!state.currentUser) return;
+    fetchData();
+
+    // الاستماع الفوري للتغييرات في السحاب (Realtime)
+    const channel = supabase.channel('cloud-sync-channel')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        const timeSinceLastPush = Date.now() - syncManager.current.lastPushTime;
+        // لا نقوم بالجلب إذا كنا نحن من قمنا بالإرسال مؤخراً (لمنع مسح البيانات الجديدة)
+        if (!syncManager.current.isPushing && timeSinceLastPush > 3000) {
+          fetchData();
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [state.currentUser, fetchData]);
 
   const handleLogout = () => {
     setState(prev => ({ ...prev, currentUser: null }));
@@ -258,21 +223,19 @@ const App: React.FC = () => {
     try {
       const trimmedUser = usernameInput.trim();
       const trimmedPass = passwordInput.trim();
-      const isManagerName = trimmedUser.toUpperCase() === 'IZZAT' || trimmedUser === 'عزت' || trimmedUser.includes('عزت عامر');
-      const isManagerPass = trimmedPass === '123';
-      if (isManagerName && isManagerPass) {
+      if ((trimmedUser.toUpperCase() === 'IZZAT' || trimmedUser === 'عزت') && trimmedPass === '123') {
         const bootstrapUser: AppUser = { id: 'root-izzat', username: 'عزت عامر الشيخة', role: 'مدير' };
         setState(prev => ({ ...prev, currentUser: bootstrapUser }));
         return bootstrapUser;
       }
       const { data, error } = await supabase.from('app_users').select('*').ilike('username', trimmedUser).maybeSingle(); 
-      if (error) throw new Error("حدث خطأ تقني في قاعدة البيانات.");
-      if (!data) throw new Error("لا يوجد مستخدم بهذا الاسم في قاعدة البيانات");
+      if (error) throw new Error("Technical Error");
+      if (!data) throw new Error("User not found");
       if (data.password === trimmedPass) {
         const loggedUser: AppUser = { id: data.id, username: data.username, role: data.role as any, restrictedCategory: data.restrictedCategory };
         setState(prev => ({ ...prev, currentUser: loggedUser }));
         return loggedUser;
-      } else { throw new Error("كلمة المرور المدخلة غير صحيحة."); }
+      } else { throw new Error("Invalid Password"); }
     } catch (err: any) { throw err; }
   };
 
@@ -360,7 +323,7 @@ const App: React.FC = () => {
                  {syncStatus === 'synced' ? <CloudCheck size={18} /> : <Cloud size={18} />}
                  <span className="text-[10px] font-black uppercase tracking-tighter">{syncStatus === 'synced' ? 'مؤمن سحابياً' : 'جاري المزامنة...'}</span>
               </div>
-              <button onClick={() => fetchData(true)} className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-[#FF6B00] transition-all">
+              <button onClick={() => fetchData()} className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-[#FF6B00] transition-all">
                 <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
               </button>
             </div>
