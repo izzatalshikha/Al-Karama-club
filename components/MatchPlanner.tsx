@@ -3,11 +3,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Trophy, MapPin, Clock, Plus, X, Shield, Award, Calendar, 
   ChevronLeft, Trash2, Target, AlertTriangle, UserPlus, 
-  Printer, FileText, Users, Save, ShieldAlert, BookOpen, Info, Timer, LogOut, LogIn, Crown, Map, ChevronRight, CheckCircle, Zap, TrendingUp, Activity, UserCircle
+  Printer, FileText, Users, Save, ShieldAlert, BookOpen, Info, Timer, LogOut, LogIn, Crown, Map, ChevronRight, CheckCircle, Zap, TrendingUp, Activity, UserCircle, Sparkles, Loader2, BrainCircuit, Lock, Unlock
 } from 'lucide-react';
 import { AppState, Match, MatchType, MatchEvent, Person } from '../types';
 import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
+import { GoogleGenAI } from "@google/genai";
 
 interface MatchPlannerProps {
   state: AppState;
@@ -19,71 +20,22 @@ interface MatchPlannerProps {
 const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSelectedId, addLog }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeMatch, setActiveMatch] = useState<Match | null>(null);
-  const [showPrintView, setShowPrintView] = useState(false);
   
   const currentUser = state.currentUser;
   const restrictedCat = currentUser?.restrictedCategory;
   const isManager = currentUser?.role === 'مدير';
   const isViewer = currentUser?.role === 'مشاهد';
-  const isCatAdmin = currentUser?.role === 'إداري فئة';
 
   const [formData, setFormData] = useState<Partial<Match>>({ 
     matchType: 'دوري', 
     category: restrictedCat || (state.globalCategoryFilter === 'الكل' ? state.categories[0] : state.globalCategoryFilter),
-    pitch: 'ملعب الكرامة'
+    pitch: 'ملعب الكرامة',
+    date: new Date().toISOString().split('T')[0],
+    time: '16:00',
+    opponent: '',
+    ourScore: '0',
+    opponentScore: '0'
   });
-
-  useEffect(() => {
-    if (isAddOpen) {
-      setFormData(prev => ({
-        ...prev,
-        category: restrictedCat || (state.globalCategoryFilter === 'الكل' ? state.categories[0] : state.globalCategoryFilter)
-      }));
-    }
-  }, [isAddOpen, state.globalCategoryFilter, state.categories, restrictedCat]);
-
-  useEffect(() => {
-    if (activeMatch && !isViewer) {
-      const newLineup = { ...activeMatch.lineup };
-      let hasChanged = false;
-      const st1 = parseInt(activeMatch.stoppageTime1 || '0') || 0;
-      const st2 = parseInt(activeMatch.stoppageTime2 || '0') || 0;
-
-      newLineup.subs.forEach((s) => {
-        if (s.substitutionMinute && s.replacedPlayerId) {
-          const minute = parseInt(s.substitutionMinute) || 0;
-          let subMins = 0;
-          if (minute <= 45) {
-            subMins = (45 - minute) + st1 + 45 + st2;
-          } else {
-            subMins = (90 - minute) + st2;
-          }
-          if (s.minutesPlayed !== subMins.toString()) {
-            s.minutesPlayed = subMins.toString();
-            hasChanged = true;
-          }
-
-          const starterIdx = newLineup.starters.findIndex(st => st.playerId === s.replacedPlayerId);
-          if (starterIdx !== -1) {
-            let stMins = 0;
-            if (minute <= 45) {
-              stMins = minute;
-            } else {
-              stMins = 45 + st1 + (minute - 45);
-            }
-            if (newLineup.starters[starterIdx].minutesPlayed !== stMins.toString()) {
-              newLineup.starters[starterIdx].minutesPlayed = stMins.toString();
-              hasChanged = true;
-            }
-          }
-        }
-      });
-
-      if (hasChanged) {
-        setActiveMatch(prev => prev ? { ...prev, lineup: newLineup } : null);
-      }
-    }
-  }, [activeMatch?.stoppageTime1, activeMatch?.stoppageTime2]);
 
   const filteredMatches = useMemo(() => {
     return state.matches.filter(m => {
@@ -92,21 +44,19 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     }).sort((a,b) => b.date.localeCompare(a.date));
   }, [state.matches, state.globalCategoryFilter, restrictedCat]);
 
-  const handleAddMatch = (e: React.FormEvent) => {
+  // وظيفة إنشاء مباراة جديدة
+  const handleCreateMatch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isViewer) return;
-    
-    const finalCategory = restrictedCat || formData.category;
-    if (!formData.opponent || !formData.date || !formData.time || !finalCategory) return;
+    if (!formData.opponent || !formData.date) return;
 
     const newMatch: Match = {
       id: generateUUID(),
+      category: formData.category || state.categories[0],
       matchType: (formData.matchType as MatchType) || 'دوري',
       opponent: formData.opponent,
       pitch: formData.pitch || 'ملعب الكرامة',
       date: formData.date,
-      time: formData.time,
-      category: finalCategory,
+      time: formData.time || '16:00',
       advancePayment: '0',
       isCompleted: false,
       ourScore: '0',
@@ -114,91 +64,23 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       stoppageTime1: '0',
       stoppageTime2: '0',
       events: [],
-      lineup: { 
-        starters: Array(11).fill(null).map(() => ({ playerId: '', name: '', number: '', minutesPlayed: '90' })), 
-        subs: [], 
-        reserves: [],
-        staff: [], 
-        captain: '' 
+      lineup: {
+        starters: Array(11).fill(null).map(() => ({ playerId: '', name: '', number: '', minutesPlayed: '90' })),
+        subs: [],
+        staff: [],
+        captain: ''
       },
       notes: ''
     };
 
-    setState(p => ({ ...p, matches: [newMatch, ...p.matches] }));
-    addLog?.('جدولة مباراة', `تمت جدولة مواجهة ${newMatch.matchType} ضد ${newMatch.opponent}`, 'success');
+    setState(prev => ({ ...prev, matches: [newMatch, ...prev.matches] }));
+    addLog?.('جدولة مباراة', `تمت جدولة مواجهة ضد ${newMatch.opponent}`, 'success');
     setIsAddOpen(false);
-  };
-
-  const updateActiveMatchLineup = (index: number, playerId: string, isStarter: boolean) => {
-    if (!activeMatch || isViewer) return;
-    const person = state.people.find(p => p.id === playerId);
-    if (!person) {
-      const newLineup = { ...activeMatch.lineup };
-      if (isStarter) {
-        newLineup.starters[index] = { ...newLineup.starters[index], playerId: '', name: '', number: '' };
-      }
-      setActiveMatch({ ...activeMatch, lineup: newLineup });
-      return;
-    }
-
-    const newLineup = { ...activeMatch.lineup };
-    if (isStarter) {
-      newLineup.starters[index] = { ...newLineup.starters[index], playerId: person.id, name: person.name, number: person.number?.toString() || '' };
-    }
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
-  };
-
-  const toggleCaptain = (playerId: string) => {
-    if (!activeMatch || !playerId || isViewer) return;
-    const newLineup = { ...activeMatch.lineup };
-    newLineup.captain = newLineup.captain === playerId ? '' : playerId;
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
-  };
-
-  const updateMinutes = (index: number, minutes: string, isStarter: boolean) => {
-    if (!activeMatch || isViewer) return;
-    const newLineup = { ...activeMatch.lineup };
-    if (isStarter) {
-      newLineup.starters[index].minutesPlayed = minutes;
-    } else {
-      newLineup.subs[index].minutesPlayed = minutes;
-    }
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
-  };
-
-  const handleSubstitutionCalculation = (subIndex: number, replacedPlayerId: string, subMinute: string) => {
-    if (!activeMatch || isViewer) return;
-    const newLineup = { ...activeMatch.lineup };
-    const minute = parseInt(subMinute) || 0;
-    const st1 = parseInt(activeMatch.stoppageTime1 || '0') || 0;
-    const st2 = parseInt(activeMatch.stoppageTime2 || '0') || 0;
-
-    const starterIdx = newLineup.starters.findIndex(s => s.playerId === replacedPlayerId);
-    if (starterIdx !== -1) {
-      if (minute <= 45) {
-        newLineup.starters[starterIdx].minutesPlayed = minute.toString();
-      } else {
-        const starterMins = 45 + st1 + (minute - 45);
-        newLineup.starters[starterIdx].minutesPlayed = starterMins.toString();
-      }
-    }
-
-    let subMins = 0;
-    if (minute <= 45) {
-      subMins = (45 - minute) + st1 + 45 + st2;
-    } else {
-      subMins = (90 - minute) + st2;
-    }
-    
-    newLineup.subs[subIndex].replacedPlayerId = replacedPlayerId;
-    newLineup.subs[subIndex].substitutionMinute = subMinute;
-    newLineup.subs[subIndex].minutesPlayed = subMins.toString();
-
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
+    setFormData({ ...formData, opponent: '' });
   };
 
   const addSub = () => {
-    if (!activeMatch || isViewer) return;
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
     setActiveMatch({
       ...activeMatch,
       lineup: {
@@ -209,51 +91,36 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   };
 
   const updateSub = (index: number, playerId: string) => {
-    if (!activeMatch || isViewer) return;
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
     const person = state.people.find(p => p.id === playerId);
     if (!person) return;
-
     const newSubs = [...activeMatch.lineup.subs];
     newSubs[index] = { ...newSubs[index], playerId: person.id, name: person.name, number: person.number?.toString() || '' };
     setActiveMatch({ ...activeMatch, lineup: { ...activeMatch.lineup, subs: newSubs } });
   };
 
+  const handleSubstitutionCalculation = (subIndex: number, replacedPlayerId: string, subMinute: string) => {
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
+    const newLineup = { ...activeMatch.lineup };
+    const minute = parseInt(subMinute) || 0;
+    const starterIdx = newLineup.starters.findIndex(s => s.playerId === replacedPlayerId);
+    if (starterIdx !== -1) {
+      newLineup.starters[starterIdx].minutesPlayed = minute.toString();
+    }
+    newLineup.subs[subIndex].replacedPlayerId = replacedPlayerId;
+    newLineup.subs[subIndex].substitutionMinute = subMinute;
+    newLineup.subs[subIndex].minutesPlayed = (90 - minute).toString();
+    setActiveMatch({ ...activeMatch, lineup: newLineup });
+  };
+
   const removeSub = (index: number) => {
-    if (!activeMatch || isViewer) return;
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
     const newSubs = activeMatch.lineup.subs.filter((_, i) => i !== index);
     setActiveMatch({ ...activeMatch, lineup: { ...activeMatch.lineup, subs: newSubs } });
   };
 
-  const addReserve = () => {
-    if (!activeMatch || isViewer) return;
-    const currentReserves = activeMatch.lineup.reserves || [];
-    setActiveMatch({
-      ...activeMatch,
-      lineup: {
-        ...activeMatch.lineup,
-        reserves: [...currentReserves, { playerId: '', name: '', number: '' }]
-      }
-    });
-  };
-
-  const updateReserve = (index: number, playerId: string) => {
-    if (!activeMatch || isViewer) return;
-    const person = state.people.find(p => p.id === playerId);
-    if (!person) return;
-
-    const newReserves = [...(activeMatch.lineup.reserves || [])];
-    newReserves[index] = { playerId: person.id, name: person.name, number: person.number?.toString() || '' };
-    setActiveMatch({ ...activeMatch, lineup: { ...activeMatch.lineup, reserves: newReserves } });
-  };
-
-  const removeReserve = (index: number) => {
-    if (!activeMatch || isViewer) return;
-    const newReserves = (activeMatch.lineup.reserves || []).filter((_, i) => i !== index);
-    setActiveMatch({ ...activeMatch, lineup: { ...activeMatch.lineup, reserves: newReserves } });
-  };
-
-  const addEvent = (type: MatchEvent['type']) => {
-    if (!activeMatch || isViewer) return;
+  const addMatchEvent = (type: MatchEvent['type']) => {
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
     const newEvent: MatchEvent = {
       id: generateUUID(),
       type,
@@ -261,416 +128,297 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       minute: '',
       note: ''
     };
-    setActiveMatch({ ...activeMatch, events: [...activeMatch.events, newEvent] });
-  };
-
-  const removeEvent = (eventId: string) => {
-    if (!activeMatch || isViewer) return;
     setActiveMatch({
       ...activeMatch,
-      events: activeMatch.events.filter(e => e.id !== eventId)
+      events: [...(activeMatch.events || []), newEvent]
     });
   };
 
-  const saveMatchDetails = () => {
+  const updateMatchEvent = (id: string, field: keyof MatchEvent, value: string) => {
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
+    const newEvents = activeMatch.events.map(e => e.id === id ? { ...e, [field]: value } : e);
+    setActiveMatch({ ...activeMatch, events: newEvents });
+  };
+
+  const removeMatchEvent = (id: string) => {
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
+    const newEvents = activeMatch.events.filter(e => e.id !== id);
+    setActiveMatch({ ...activeMatch, events: newEvents });
+  };
+
+  const updateActiveMatchLineup = (index: number, playerId: string, isStarter: boolean) => {
+    if (!activeMatch || isViewer || activeMatch.isCompleted) return;
+    const person = state.people.find(p => p.id === playerId);
+    const newLineup = { ...activeMatch.lineup };
+    if (isStarter) {
+      if (!person) newLineup.starters[index] = { playerId: '', name: '', number: '', minutesPlayed: '90' };
+      else newLineup.starters[index] = { playerId: person.id, name: person.name, number: person.number?.toString() || '', minutesPlayed: '90' };
+    }
+    setActiveMatch({ ...activeMatch, lineup: newLineup });
+  };
+
+  const saveMatchDetails = (lockStatus: boolean = false) => {
     if (!activeMatch || isViewer) return;
+    const finalLockStatus = isManager ? lockStatus : activeMatch.isCompleted;
     setState(p => ({
       ...p,
-      matches: p.matches.map(m => m.id === activeMatch.id ? { ...activeMatch, isCompleted: true } : m)
+      matches: p.matches.map(m => m.id === activeMatch.id ? { ...activeMatch, isCompleted: finalLockStatus } : m)
     }));
-    addLog?.('تحديث المباراة', `تم حفظ تفاصيل مباراة ${activeMatch.opponent}`, 'info');
     setActiveMatch(null);
   };
 
   const getAvailablePlayers = (currentId: string) => {
     const selectedIds = [
       ...activeMatch!.lineup.starters.map(s => s.playerId),
-      ...activeMatch!.lineup.subs.map(s => s.playerId),
-      ...(activeMatch!.lineup.reserves || []).map(r => r.playerId)
+      ...activeMatch!.lineup.subs.map(s => s.playerId)
     ].filter(id => id && id !== currentId);
-    
     return state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch?.category && !selectedIds.includes(p.id));
   };
 
-  const fieldClass = "w-full bg-slate-50 border-2 border-slate-900 rounded-xl py-3 px-4 font-black text-slate-900 outline-none focus:border-orange-600 transition-all text-sm";
-  const labelClass = "text-[10px] font-black text-[#001F3F] mr-2 uppercase block mb-1.5";
+  const getTeamPlayers = () => {
+    return state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch?.category);
+  };
 
-  if (showPrintView) {
-    return (
-      <div className="fixed inset-0 bg-white z-[500] overflow-y-auto p-12 text-right dir-rtl">
-        <div className="max-w-5xl mx-auto border-4 border-slate-900 p-12 print:border-2">
-           <div className="no-print flex justify-between items-center mb-10 border-b pb-4">
-              <button onClick={() => setShowPrintView(false)} className="flex items-center gap-2 font-black text-slate-900"><ChevronRight/> العودة للأجندة</button>
-              <button onClick={() => window.print()} className="bg-[#001F3F] text-white px-8 py-3 rounded-xl font-black flex items-center gap-2 shadow-xl"><Printer size={18}/> طباعة PDF</button>
-           </div>
-           <div className="flex justify-between items-center border-b-4 border-slate-900 pb-8 mb-10">
-              <div className="flex items-center gap-4">
-                 <ClubLogo size={90} />
-                 <div>
-                    <h2 className="text-3xl font-black text-[#001F3F]">نادي الكرامة الرياضي</h2>
-                    <p className="text-md font-black text-orange-600 uppercase">مكتب كرة القدم المركزي</p>
-                 </div>
-              </div>
-           </div>
-           <table className="w-full text-right border-collapse">
-              <thead>
-                 <tr className="bg-slate-100 border-y-2 border-slate-900 text-xs font-black">
-                    <th className="p-4 border-l">التاريخ</th>
-                    <th className="p-4 border-l">المنافس</th>
-                    <th className="p-4 border-l text-center">النتيجة</th>
-                    <th className="p-4">الملعب</th>
-                 </tr>
-              </thead>
-              <tbody>
-                 {filteredMatches.map(m => (
-                    <tr key={m.id} className="border-b border-slate-200 text-sm font-black text-slate-900">
-                       <td className="p-4 border-l">{m.date} - {m.time}</td>
-                       <td className="p-4 border-l">{m.opponent}</td>
-                       <td className="p-4 border-l text-center">{m.isCompleted ? `${m.ourScore} - ${m.opponentScore}` : 'لم تلعب'}</td>
-                       <td className="p-4">{m.pitch}</td>
-                    </tr>
-                 ))}
-              </tbody>
-           </table>
-        </div>
-      </div>
-    );
-  }
+  const inputStyle = "w-full bg-slate-50 border border-[#001F3F] rounded-xl py-2 px-3 font-bold text-[#001F3F] text-xs shadow-inner transition-all";
+  const labelStyle = "text-[10px] font-black text-[#001F3F] mr-1 uppercase block mb-1";
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row justify-between items-center no-print gap-4">
-        <div>
-           <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
-             <Trophy size={24} className="text-orange-600" /> إدارة أجندة المباريات المركزية
-           </h2>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => setShowPrintView(true)} className="bg-white text-slate-900 border-2 border-slate-900 px-6 py-3 rounded-xl font-black text-sm">طباعة الأجندة</button>
-          {!isViewer && <button onClick={() => setIsAddOpen(true)} className="bg-[#001F3F] text-white px-8 py-3 rounded-xl font-black text-sm">جدولة مواجهة</button>}
-        </div>
+    <div className="space-y-4 md:space-y-6 pb-20 px-1 font-['Tajawal']" dir="rtl">
+      <div className="bg-white p-4 rounded-2xl border-2 border-slate-900 flex justify-between items-center no-print shadow-md">
+        <h2 className="text-sm md:text-xl font-black text-[#001F3F] flex items-center gap-2 uppercase tracking-tighter">
+          <Trophy size={20} className="text-orange-600" /> إدارة المباريات
+        </h2>
+        {!isViewer && <button onClick={() => setIsAddOpen(true)} className="bg-[#001F3F] text-white px-4 py-2 rounded-xl font-black text-[10px] shadow-lg border-b-4 border-black">جدولة مواجهة</button>}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 no-print">
         {filteredMatches.map(m => (
-          <div key={m.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-slate-900 relative border-b-8 transition-all ${m.isCompleted ? 'border-emerald-600' : 'hover:border-orange-600'}`}>
-             <div className="flex justify-between items-start mb-6">
-                <span className="bg-orange-600 text-white text-[9px] font-black px-3 py-1 rounded-lg uppercase">{m.matchType}</span>
-                <span className="text-[10px] font-black text-slate-900">{m.date} - {m.category}</span>
+          <div key={m.id} className={`bg-white p-5 rounded-2xl border-2 border-slate-900 relative shadow-sm border-b-8 transition-all ${m.isCompleted ? 'border-red-600' : 'hover:border-orange-600'}`}>
+             <div className="flex justify-between items-start mb-4">
+                <span className="bg-orange-600 text-white text-[8px] font-black px-2 py-0.5 rounded uppercase">{m.matchType}</span>
+                <span className="text-[10px] font-black text-slate-500 tabular-nums">{m.date}</span>
              </div>
              <div className="text-center mb-6">
-                <p className="text-3xl font-black text-slate-900">{m.ourScore} - {m.opponentScore}</p>
-                <p className="font-black text-sm text-slate-700 mt-2">{m.opponent}</p>
-                <p className="text-[10px] font-black text-slate-900 mt-2 flex items-center justify-center gap-1"><MapPin size={10} className="text-orange-600"/> {m.pitch}</p>
+                <p className="text-2xl font-black text-[#001F3F] tabular-nums">{m.ourScore} - {m.opponentScore}</p>
+                <p className="font-bold text-sm text-slate-800 mt-2">{m.opponent}</p>
              </div>
-             <div className="flex flex-col gap-2">
-                <button onClick={() => setActiveMatch(m)} className="w-full bg-[#001F3F] text-white py-3 rounded-xl font-black text-xs">التشكيل والتقرير</button>
-                {!isViewer && (isManager || restrictedCat === m.category) && (
-                  <button onClick={async () => { if(confirm('حذف المباراة؟')) { await supabase.from('matches').delete().eq('id', m.id); setState(p => ({...p, matches: p.matches.filter(x => x.id !== m.id)})); } }} className="w-full py-2 bg-red-50 text-red-600 rounded-xl font-black text-[10px] border border-red-200">حذف المباراة</button>
+             <div className="flex gap-2">
+                <button onClick={() => setActiveMatch(m)} className="flex-1 bg-[#001F3F] text-white py-3 rounded-xl font-black text-[10px] uppercase shadow-lg">
+                  {m.isCompleted ? 'عرض التقرير' : 'التشكيل والأحداث'}
+                </button>
+                {!isViewer && !m.isCompleted && (
+                  <button onClick={() => { if(confirm('حذف المباراة؟')) setState(p => ({...p, matches: p.matches.filter(x => x.id !== m.id)})); }} className="bg-red-50 text-red-600 p-3 rounded-xl border border-red-200"><Trash2 size={16}/></button>
                 )}
              </div>
           </div>
         ))}
+        {filteredMatches.length === 0 && (
+          <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
+             <Trophy className="mx-auto text-slate-200 mb-4" size={48} />
+             <p className="text-slate-400 font-black italic">لا توجد مباريات مجدولة لهذه الفئة</p>
+          </div>
+        )}
       </div>
 
+      {/* نافذة إضافة مباراة جديدة (إصلاح العطل) */}
       {isAddOpen && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[300] p-4 no-print">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg border-[6px] border-slate-900">
-             <div className="p-6 bg-slate-100 border-b-2 border-slate-900 flex justify-between items-center">
-                <h3 className="font-black text-slate-900">جدولة مباراة</h3>
-                <button onClick={() => setIsAddOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
-             </div>
-             <form onSubmit={handleAddMatch} className="p-8 space-y-5 text-right" dir="rtl">
-                <div>
-                  <label className={labelClass}>الفئة</label>
-                  <select 
-                    disabled={!!restrictedCat}
-                    className={fieldClass} 
-                    value={formData.category} 
-                    onChange={e => setFormData({...formData, category: e.target.value})}
-                  >
-                    {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>نوع المباراة</label>
-                  <select 
-                    className={fieldClass} 
-                    value={formData.matchType} 
-                    onChange={e => setFormData({...formData, matchType: e.target.value as MatchType})}
-                  >
-                    <option value="دوري">دوري</option>
-                    <option value="كأس">كأس</option>
-                    <option value="ودية">ودية</option>
-                    <option value="بطولة ودية">بطولة ودية</option>
-                    <option value="مباراة دولية">مباراة دولية</option>
-                  </select>
-                </div>
-                <div><label className={labelClass}>الخصم</label><input required type="text" className={fieldClass} value={formData.opponent || ''} onChange={e => setFormData({...formData, opponent: e.target.value})} /></div>
-                <div><label className={labelClass}>الملعب</label><input type="text" className={fieldClass} value={formData.pitch || ''} onChange={e => setFormData({...formData, pitch: e.target.value})} /></div>
-                <div className="grid grid-cols-2 gap-4">
-                   <input required type="date" className={fieldClass} value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
-                   <input required type="time" className={fieldClass} value={formData.time || ''} onChange={e => setFormData({...formData, time: e.target.value})} />
-                </div>
-                <button type="submit" className="w-full bg-[#001F3F] text-white py-4 rounded-xl font-black">حفظ الموعد</button>
-             </form>
-          </div>
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[500] p-4 no-print">
+           <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl border-[6px] border-slate-900 overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-6 bg-slate-100 border-b-2 border-slate-900 flex justify-between items-center">
+                 <h3 className="font-black text-slate-900 uppercase">جدولة مواجهة جديدة</h3>
+                 <button onClick={() => setIsAddOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
+              </div>
+              <form onSubmit={handleCreateMatch} className="p-8 space-y-5 text-right">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className={labelStyle}>الفئة</label>
+                       <select required disabled={!!restrictedCat} className={inputStyle} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                          {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
+                       </select>
+                    </div>
+                    <div className="space-y-1">
+                       <label className={labelStyle}>نوع المباراة</label>
+                       <select className={inputStyle} value={formData.matchType} onChange={e => setFormData({...formData, matchType: e.target.value as any})}>
+                          <option value="دوري">دوري</option>
+                          <option value="كأس">كأس</option>
+                          <option value="ودية">ودية</option>
+                          <option value="بطولة ودية">بطولة ودية</option>
+                          <option value="مباراة دولية">مباراة دولية</option>
+                       </select>
+                    </div>
+                 </div>
+                 <div className="space-y-1">
+                    <label className={labelStyle}>اسم الفريق المنافس</label>
+                    <input required type="text" className={inputStyle} value={formData.opponent} onChange={e => setFormData({...formData, opponent: e.target.value})} placeholder="أدخل اسم الخصم..." />
+                 </div>
+                 <div className="space-y-1">
+                    <label className={labelStyle}>الملعب / الموقع</label>
+                    <input type="text" className={inputStyle} value={formData.pitch} onChange={e => setFormData({...formData, pitch: e.target.value})} placeholder="ملعب الكرامة..." />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className={labelStyle}>التاريخ</label>
+                       <input required type="date" className={inputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className={labelStyle}>التوقيت</label>
+                       <input required type="time" className={inputStyle} value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} />
+                    </div>
+                 </div>
+                 <button type="submit" className="w-full bg-[#001F3F] text-white py-5 rounded-2xl font-black shadow-xl hover:bg-black transition-all mt-4 uppercase">حفظ وتثبيت المواجهة</button>
+              </form>
+           </div>
         </div>
       )}
 
       {activeMatch && (
-        <div className="fixed inset-0 bg-slate-950/98 backdrop-blur-2xl z-[400] overflow-y-auto no-print">
-           <div className="max-w-7xl mx-auto p-4 lg:p-12 min-h-screen text-right" dir="rtl">
-              <div className="bg-white rounded-[4rem] border-[10px] border-slate-900 p-8 lg:p-12 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/5 rounded-full -mr-32 -mt-32"></div>
-                <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-900/5 rounded-full -ml-48 -mb-48"></div>
-
-                <header className="relative flex flex-col md:flex-row justify-between items-center mb-12 border-b-8 border-slate-900 pb-10 gap-6">
-                   <div className="flex items-center gap-6">
-                     <div className="bg-[#001F3F] text-white w-24 h-24 rounded-[2rem] flex items-center justify-center font-black text-4xl border-4 border-slate-900 shadow-2xl animate-pulse">K</div>
-                     <div>
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tighter">الكرامة <span className="text-orange-600">×</span> {activeMatch.opponent}</h2>
-                        <div className="flex gap-3 mt-3">
-                           <span className="bg-slate-100 text-slate-900 text-[10px] font-black px-4 py-1.5 rounded-full border border-slate-900 uppercase tracking-widest flex items-center gap-2">
-                             <Calendar size={14} className="text-orange-600"/> {activeMatch.date}
-                           </span>
-                           <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-4 py-1.5 rounded-full border border-orange-100 uppercase tracking-widest flex items-center gap-2">
-                             <MapPin size={14}/> {activeMatch.pitch}
-                           </span>
-                        </div>
-                     </div>
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-[400] overflow-y-auto no-print">
+           <div className="max-w-4xl mx-auto p-2 md:p-8 min-h-screen text-right" dir="rtl">
+              <div className="bg-white rounded-[2rem] border-[4px] border-slate-900 p-4 md:p-8 shadow-2xl relative">
+                
+                <header className="flex flex-col md:flex-row justify-between items-center mb-8 border-b-4 border-slate-900 pb-6 gap-4">
+                   <div className="text-center md:text-right">
+                      <h2 className="text-xl md:text-2xl font-black text-[#001F3F] tracking-tighter uppercase">{activeMatch.opponent} × الكرامة</h2>
+                      <div className="flex gap-2 mt-2 justify-center md:justify-start">
+                         <span className="bg-slate-100 text-[#001F3F] text-[9px] font-black px-2 py-1 rounded-full border border-slate-900">{activeMatch.date}</span>
+                         {activeMatch.isCompleted && <span className="bg-red-50 text-red-600 text-[9px] font-black px-2 py-1 rounded-full border border-red-200 flex items-center gap-1"><Lock size={10}/> مقفل</span>}
+                      </div>
                    </div>
-                   <div className="flex gap-4">
-                      <button onClick={saveMatchDetails} className="bg-emerald-600 text-white px-10 py-5 rounded-[2rem] font-black text-lg shadow-2xl shadow-emerald-900/20 hover:bg-emerald-700 transition-all border-b-8 border-emerald-900 group">
-                        <span className="flex items-center gap-3">
-                          <Save size={24}/> حفظ التقرير الفني
-                        </span>
-                      </button>
-                      <button onClick={() => setActiveMatch(null)} className="bg-white text-slate-900 px-8 py-5 rounded-[2rem] font-black text-lg border-4 border-slate-900 hover:bg-slate-50 transition-all shadow-xl">
-                        <X size={24}/>
-                      </button>
+                   <div className="flex flex-wrap gap-2 justify-center">
+                      {isManager && (
+                        <button onClick={() => saveMatchDetails(!activeMatch.isCompleted)} className={`${activeMatch.isCompleted ? 'bg-red-600' : 'bg-emerald-600'} text-white px-4 py-2 rounded-xl font-black text-[10px] shadow-md flex items-center gap-2 transition-all`}>
+                          {activeMatch.isCompleted ? <Unlock size={16}/> : <Lock size={16}/>} {activeMatch.isCompleted ? 'فتح التعديل' : 'اعتماد وقفل'}
+                        </button>
+                      )}
+                      {!activeMatch.isCompleted && <button onClick={() => saveMatchDetails(false)} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-black text-[10px] shadow-md flex items-center gap-2"><Save size={16}/> حفظ</button>}
+                      <button onClick={() => setActiveMatch(null)} className="bg-slate-100 p-2 rounded-xl border-2 border-slate-300 transition-all hover:bg-red-50 hover:text-red-600"><X size={20}/></button>
                    </div>
                 </header>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 relative">
-                   <div className="lg:col-span-8 space-y-12">
+                <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 ${activeMatch.isCompleted ? 'opacity-80 pointer-events-none' : ''}`}>
+                   <div className="lg:col-span-8 space-y-8">
+                      {/* التشكيلة الأساسية */}
                       <section>
-                         <div className="flex items-center gap-4 mb-8 border-r-4 border-orange-600 pr-4">
-                            <div className="bg-orange-600 p-3 rounded-2xl shadow-lg text-white"><Users size={28}/></div>
-                            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">التشكيلة الأساسية (Starting XI)</h3>
-                         </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {activeMatch.lineup.starters.map((s, idx) => {
-                               const person = state.people.find(p => p.id === s.playerId);
-                               return (
-                               <div key={idx} className="bg-white p-6 rounded-[2.5rem] border-4 border-slate-900 shadow-xl group hover:border-orange-600 transition-all relative overflow-hidden h-[240px] flex flex-col">
-                                  <div className="absolute top-0 right-0 w-2 h-full bg-slate-100 group-hover:bg-orange-600/10 transition-colors"></div>
-                                  
-                                  <div className="flex justify-between items-start mb-4">
-                                     <div className="w-14 h-14 bg-slate-900 text-white rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-lg group-hover:bg-orange-600 transition-colors border-2 border-white">
-                                       {s.number || person?.number || (idx + 1)}
-                                     </div>
-                                     <button type="button" onClick={() => toggleCaptain(s.playerId)} className={`p-3 rounded-[1.2rem] border-2 transition-all ${activeMatch.lineup.captain === s.playerId ? 'bg-orange-600 text-white border-orange-900 scale-110 shadow-2xl shadow-orange-600/30' : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-slate-300'}`}>
-                                        <Crown size={18}/>
-                                     </button>
-                                  </div>
-
-                                  <div className="flex-1 space-y-1">
-                                     <label className="text-[10px] font-black text-slate-900 uppercase block tracking-widest mb-1.5 border-r-2 border-orange-600 pr-2">مركز اللاعب #{idx+1}</label>
-                                     <select className="w-full bg-slate-50 border-2 border-slate-400 rounded-xl p-3 font-black text-sm text-slate-900 outline-none focus:border-orange-600 appearance-none cursor-pointer" value={s.playerId} onChange={e => updateActiveMatchLineup(idx, e.target.value, true)}>
-                                        <option value="">-- اختر لاعب --</option>
-                                        {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
-                                     </select>
-                                     {person && (
-                                       <div className="flex gap-1 mt-2 flex-wrap">
-                                          {activeMatch.events.filter(e => e.player === person.id || e.player === person.name).map(e => (
-                                            <span key={e.id} className="text-[12px]">{e.type === 'goal' ? '⚽' : e.type === 'yellow' ? '🟨' : e.type === 'red' ? '🟥' : '👟'}</span>
-                                          ))}
-                                       </div>
-                                     )}
-                                  </div>
-
-                                  <div className="flex items-center justify-between pt-4 border-t-2 border-slate-100 mt-2">
-                                     <div className="flex items-center gap-2">
-                                        <Timer size={14} className="text-emerald-600"/>
-                                        <span className="text-[10px] font-black text-slate-900 uppercase">دقائق المشاركة</span>
-                                     </div>
-                                     <input type="number" className="w-16 bg-white border-2 border-emerald-600 rounded-lg px-2 py-1 text-center font-black text-emerald-700 text-xs focus:ring-2 focus:ring-emerald-200" value={s.minutesPlayed || '90'} onChange={e => updateMinutes(idx, e.target.value, true)} />
-                                  </div>
-                               </div>
-                            )})}
-                         </div>
-                      </section>
-
-                      <section>
-                         <div className="flex justify-between items-center mb-10 border-r-4 border-blue-900 pr-4">
-                            <div className="flex items-center gap-4">
-                               <div className="bg-blue-900 p-3 rounded-2xl shadow-lg text-white"><TrendingUp size={28}/></div>
-                               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">البدلاء والتبديلات الذكية</h3>
-                            </div>
-                            <button onClick={addSub} className="bg-[#001F3F] text-white px-8 py-4 rounded-[2rem] font-black text-sm flex items-center gap-3 shadow-xl hover:bg-black transition-all border-b-4 border-black">
-                               <Plus size={20}/> إضافة تبديل جديد
-                            </button>
-                         </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {activeMatch.lineup.subs.map((s, idx) => (
-                               <div key={idx} className="bg-slate-50 p-6 rounded-[2.5rem] border-4 border-slate-300 relative shadow-inner group hover:border-blue-900 transition-all flex flex-col space-y-4">
+                         <h3 className="text-sm font-black text-[#001F3F] mb-4 border-r-4 border-orange-600 pr-2 uppercase tracking-tighter">التشكيلة الأساسية (Starting XI)</h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {activeMatch.lineup.starters.map((s, idx) => (
+                               <div key={idx} className="bg-slate-50 p-4 rounded-xl border-2 border-slate-200 shadow-sm flex flex-col gap-2">
                                   <div className="flex justify-between items-center">
-                                     <span className="text-[11px] font-black text-blue-900 bg-blue-50 px-3 py-1 rounded-full border border-blue-900 uppercase flex items-center gap-1"><LogIn size={10}/> البديل #{idx+1}</span>
-                                     <button onClick={() => removeSub(idx)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-600 hover:text-white transition-all"><X size={14}/></button>
-                                  </div>
-                                  
-                                  <div className="space-y-3">
-                                     <div>
-                                        <label className="text-[10px] font-black text-slate-900 uppercase mb-1 block pr-2 border-r-2 border-blue-900">اللاعب البديل</label>
-                                        <select className="w-full bg-white border-2 border-slate-400 rounded-xl p-2.5 font-black text-xs text-slate-900 focus:border-blue-900 transition-all" value={s.playerId} onChange={e => updateSub(idx, e.target.value)}>
-                                           <option value="">-- اختر لاعب --</option>
-                                           {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
-                                        </select>
-                                     </div>
-                                     <div>
-                                        <label className="text-[10px] font-black text-red-700 uppercase mb-1 block pr-2 border-r-2 border-red-700">بدلاً من (الخروج)</label>
-                                        <select className="w-full bg-white border-2 border-slate-400 rounded-xl p-2.5 font-black text-xs text-slate-900 focus:border-red-600 transition-all" value={s.replacedPlayerId || ''} onChange={e => handleSubstitutionCalculation(idx, e.target.value, s.substitutionMinute || '0')}>
-                                           <option value="">-- اختر لاعب --</option>
-                                           {activeMatch.lineup.starters.map(st => <option key={st.playerId} value={st.playerId} className="text-slate-900">{st.name} (#{st.number})</option>)}
-                                        </select>
+                                     <span className="w-8 h-8 bg-[#001F3F] text-white rounded-lg flex items-center justify-center font-black text-xs">#{s.number || (idx+1)}</span>
+                                     <div className="flex items-center gap-1">
+                                        <Timer size={10} className="text-emerald-600"/>
+                                        <input type="number" className="w-10 bg-white border border-slate-300 rounded text-center font-bold text-[9px] p-1" value={s.minutesPlayed || '90'} onChange={e => {
+                                           const nl = {...activeMatch.lineup}; nl.starters[idx].minutesPlayed = e.target.value; setActiveMatch({...activeMatch, lineup: nl});
+                                        }} />
                                      </div>
                                   </div>
-
-                                  <div className="flex items-center justify-between pt-3 border-t-2 border-slate-200 mt-2">
-                                     <div className="flex items-center gap-3">
-                                        <div className="bg-white border-2 border-slate-400 p-2 rounded-lg flex items-center gap-2">
-                                           <Clock size={12} className="text-blue-900"/>
-                                           <input type="number" className="w-10 bg-transparent font-black text-center text-xs text-slate-900 focus:outline-none" value={s.substitutionMinute || ''} placeholder="0" onChange={e => handleSubstitutionCalculation(idx, s.replacedPlayerId || '', e.target.value)} />
-                                           <span className="text-[10px] font-black text-slate-900">د</span>
-                                        </div>
-                                     </div>
-                                     <div className="bg-[#001F3F] text-white px-4 py-1.5 rounded-lg flex items-center justify-center font-black text-[10px] shadow-md shrink-0 border-b-2 border-black">
-                                        إجمالي اللعب: {s.minutesPlayed}د
-                                     </div>
-                                  </div>
-                               </div>
-                            ))}
-                         </div>
-                      </section>
-
-                      <section className="mt-12">
-                         <div className="flex justify-between items-center mb-10 border-r-4 border-slate-900 pr-4">
-                            <div className="flex items-center gap-4">
-                               <div className="bg-slate-700 p-3 rounded-2xl shadow-lg text-white"><UserCircle size={28}/></div>
-                               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">قائمة الاحتياط الإضافية (خارج الـ 18)</h3>
-                            </div>
-                            <button onClick={addReserve} className="bg-slate-800 text-white px-8 py-4 rounded-[2rem] font-black text-sm flex items-center gap-3 shadow-xl hover:bg-black transition-all border-b-4 border-black">
-                               <Plus size={20}/> إضافة لاعب للاحتياط
-                            </button>
-                         </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {(activeMatch.lineup.reserves || []).map((r, idx) => (
-                               <div key={idx} className="bg-slate-100 p-5 rounded-[2rem] border-2 border-slate-300 relative group hover:border-slate-800 transition-all flex flex-col space-y-3">
-                                  <div className="flex justify-between items-center">
-                                     <span className="text-[10px] font-black text-slate-900 uppercase">لاعب احتياط #{idx+1}</span>
-                                     <button onClick={() => removeReserve(idx)} className="bg-red-50 text-red-600 p-1.5 rounded-full hover:bg-red-600 hover:text-white transition-all"><X size={12}/></button>
-                                  </div>
-                                  <select className="w-full bg-white border-2 border-slate-400 rounded-xl p-3 font-black text-xs text-slate-900 focus:border-slate-800 transition-all" value={r.playerId} onChange={e => updateReserve(idx, e.target.value)}>
-                                     <option value="">-- اختر لاعب من الفئة --</option>
-                                     {getAvailablePlayers(r.playerId).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
+                                  <select className={inputStyle} value={s.playerId} onChange={e => updateActiveMatchLineup(idx, e.target.value, true)}>
+                                     <option value="">-- اختر لاعب --</option>
+                                     {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
                                   </select>
-                                  <div className="flex justify-end">
-                                     <span className="text-[10px] font-black text-slate-900">رقم اللاعب: {r.number || '--'}</span>
-                                  </div>
                                </div>
                             ))}
-                            {(!activeMatch.lineup.reserves || activeMatch.lineup.reserves.length === 0) && (
-                               <div className="col-span-full py-10 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                                  <p className="text-slate-900 font-black italic text-xs">لا توجد أسماء مضافة لقائمة الاحتياط حالياً</p>
+                         </div>
+                      </section>
+
+                      {/* أحداث المباراة */}
+                      <section className="bg-white p-5 rounded-2xl border-2 border-[#001F3F] shadow-sm space-y-4">
+                         <div className="flex justify-between items-center">
+                            <h3 className="text-sm font-black text-[#001F3F] uppercase flex items-center gap-2">
+                               <Sparkles size={18} className="text-orange-500"/> أحداث المواجهة (أهداف وبطاقات)
+                            </h3>
+                            <div className="flex gap-1">
+                               <button onClick={() => addMatchEvent('goal')} className="bg-emerald-600 text-white p-1.5 rounded-lg text-[8px] font-black uppercase flex items-center gap-1"><Plus size={10}/> هدف</button>
+                               <button onClick={() => addMatchEvent('yellow')} className="bg-yellow-500 text-white p-1.5 rounded-lg text-[8px] font-black uppercase flex items-center gap-1"><AlertTriangle size={10}/> إنذار</button>
+                               <button onClick={() => addMatchEvent('red')} className="bg-red-600 text-white p-1.5 rounded-lg text-[8px] font-black uppercase flex items-center gap-1"><X size={10}/> طرد</button>
+                            </div>
+                         </div>
+                         <div className="space-y-3">
+                            {activeMatch.events && activeMatch.events.map((ev, idx) => (
+                               <div key={ev.id} className={`p-3 rounded-xl border-2 flex flex-col md:flex-row gap-3 items-center ${ev.type === 'goal' ? 'bg-emerald-50 border-emerald-100' : ev.type === 'yellow' ? 'bg-yellow-50 border-yellow-100' : ev.type === 'red' ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
+                                  <div className="flex items-center gap-2">
+                                     {ev.type === 'goal' && <Trophy className="text-emerald-600" size={16}/>}
+                                     {ev.type === 'assist' && <Zap className="text-blue-600" size={16}/>}
+                                     {ev.type === 'yellow' && <div className="w-3 h-5 bg-yellow-400 rounded-sm"></div>}
+                                     {ev.type === 'red' && <div className="w-3 h-5 bg-red-600 rounded-sm"></div>}
+                                     <span className="text-[10px] font-black text-slate-900 uppercase">{ev.type}</span>
+                                  </div>
+                                  <div className="flex-1 w-full">
+                                     <select className={inputStyle} value={ev.player} onChange={e => updateMatchEvent(ev.id, 'player', e.target.value)}>
+                                        <option value="">-- اللاعب --</option>
+                                        {getTeamPlayers().map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
+                                     </select>
+                                  </div>
+                                  <div className="w-16">
+                                     <input type="number" className={inputStyle + " text-center"} placeholder="دقيقة" value={ev.minute} onChange={e => updateMatchEvent(ev.id, 'minute', e.target.value)} />
+                                  </div>
+                                  <button onClick={() => removeMatchEvent(ev.id)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={14}/></button>
                                </div>
-                            )}
+                            ))}
+                            {(!activeMatch.events || activeMatch.events.length === 0) && <p className="text-center py-4 text-slate-400 font-bold italic text-[10px]">لا توجد أحداث مسجلة للمواجهة.</p>}
+                         </div>
+                      </section>
+
+                      {/* التبديلات اللانهائية */}
+                      <section className="bg-slate-50 p-4 rounded-2xl border-2 border-dashed border-[#001F3F]">
+                         <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-sm font-black text-[#001F3F] uppercase flex items-center gap-2"><TrendingUp size={18} className="text-blue-600"/> التبديلات اللانهائية</h3>
+                            <button onClick={addSub} className="bg-[#001F3F] text-white px-3 py-1.5 rounded-lg font-black text-[9px] flex items-center gap-1 shadow-md hover:bg-black transition-all"><Plus size={12}/> إضافة تبديل</button>
+                         </div>
+                         <div className="space-y-3">
+                            {activeMatch.lineup.subs.map((s, idx) => (
+                               <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col md:flex-row gap-2 items-end md:items-center shadow-sm relative">
+                                  <div className="flex-1 w-full">
+                                     <label className={labelStyle}>البديل</label>
+                                     <select className={inputStyle} value={s.playerId} onChange={e => updateSub(idx, e.target.value)}>
+                                        <option value="">-- دخول لاعب --</option>
+                                        {getAvailablePlayers(s.playerId).map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
+                                     </select>
+                                  </div>
+                                  <div className="flex-1 w-full">
+                                     <label className={labelStyle}>بدلاً من</label>
+                                     <select className={inputStyle} value={s.replacedPlayerId || ''} onChange={e => handleSubstitutionCalculation(idx, e.target.value, s.substitutionMinute || '0')}>
+                                        <option value="">-- خروج لاعب --</option>
+                                        {activeMatch.lineup.starters.map(st => <option key={st.playerId} value={st.playerId}>{st.name}</option>)}
+                                     </select>
+                                  </div>
+                                  <div className="w-16">
+                                     <label className={labelStyle}>دقيقة</label>
+                                     <input type="number" className={inputStyle + " text-center"} value={s.substitutionMinute || ''} placeholder="0" onChange={e => handleSubstitutionCalculation(idx, s.replacedPlayerId || '', e.target.value)} />
+                                  </div>
+                                  <button onClick={() => removeSub(idx)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={14}/></button>
+                               </div>
+                            ))}
                          </div>
                       </section>
                    </div>
 
-                   <div className="lg:col-span-4 space-y-10">
-                      <section className="bg-slate-900 text-white p-10 rounded-[4rem] border-8 border-orange-600 shadow-[0_40px_80px_-15px_rgba(255,107,0,0.3)] relative overflow-hidden">
-                         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16"></div>
-                         <h3 className="text-xl font-black text-center text-orange-400 mb-10 uppercase tracking-widest flex items-center justify-center gap-3">
-                           <Trophy size={28}/> مركز النتائج (Live Score)
-                         </h3>
-                         <div className="flex justify-center items-center gap-6 mb-12">
-                            <div className="flex flex-col items-center gap-2">
-                               <p className="text-[10px] font-black text-white uppercase tracking-widest opacity-70">الكرامة</p>
-                               <input type="number" className="w-24 h-24 bg-white text-slate-900 rounded-[2.5rem] text-center font-black text-5xl border-8 border-orange-600 shadow-2xl transition-transform focus:scale-110 outline-none" value={activeMatch.ourScore} onChange={e => setActiveMatch({...activeMatch, ourScore: e.target.value})} />
-                            </div>
-                            <span className="text-6xl font-black text-orange-600 mt-6">:</span>
-                            <div className="flex flex-col items-center gap-2">
-                               <p className="text-[10px] font-black text-white uppercase tracking-widest opacity-70">الخصم</p>
-                               <input type="number" className="w-24 h-24 bg-white text-slate-900 rounded-[2.5rem] text-center font-black text-5xl border-8 border-slate-300 shadow-2xl transition-transform focus:scale-110 outline-none" value={activeMatch.opponentScore} onChange={e => setActiveMatch({...activeMatch, opponentScore: e.target.value})} />
-                            </div>
+                   <div className="lg:col-span-4 space-y-6">
+                      {/* النتيجة والوقت بدل الضائع (الميزة المحفوظة) */}
+                      <section className="bg-slate-900 text-white p-6 rounded-2xl border-4 border-orange-600 text-center shadow-xl">
+                         <h3 className="text-[10px] font-black text-orange-400 mb-6 uppercase tracking-widest">النتيجة والوقت المضاف</h3>
+                         <div className="flex justify-center items-center gap-4 mb-6">
+                            <input type="number" className="w-14 h-14 bg-white text-slate-900 rounded-xl text-center font-black text-xl outline-none" value={activeMatch.ourScore} onChange={e => setActiveMatch({...activeMatch, ourScore: e.target.value})} />
+                            <span className="text-3xl font-black text-orange-600">:</span>
+                            <input type="number" className="w-14 h-14 bg-white text-slate-900 rounded-xl text-center font-black text-xl outline-none" value={activeMatch.opponentScore} onChange={e => setActiveMatch({...activeMatch, opponentScore: e.target.value})} />
                          </div>
                          
-                         <div className="space-y-6 pt-10 border-t border-white/10">
-                            <div className="grid grid-cols-2 gap-4">
-                               <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                                  <label className="text-[11px] font-black text-orange-400 block mb-2 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> الشوط الأول (+)</label>
-                                  <input type="number" className="w-full bg-slate-800 border-2 border-slate-700 rounded-xl py-2 px-3 text-white font-black text-center text-xl" value={activeMatch.stoppageTime1 || '0'} onChange={e => setActiveMatch({...activeMatch, stoppageTime1: e.target.value})} />
-                               </div>
-                               <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                                  <label className="text-[11px] font-black text-orange-400 block mb-2 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> الشوط الثاني (+)</label>
-                                  <input type="number" className="w-full bg-slate-800 border-2 border-slate-700 rounded-xl py-2 px-3 text-white font-black text-center text-xl" value={activeMatch.stoppageTime2 || '0'} onChange={e => setActiveMatch({...activeMatch, stoppageTime2: e.target.value})} />
-                               </div>
+                         <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/10">
+                            <div>
+                               <label className="text-[8px] font-black text-slate-400 block mb-1 uppercase">وقت إضافي (ش1)</label>
+                               <input type="number" className="w-full bg-white/10 border border-white/20 rounded-lg py-1 px-2 text-center text-white font-bold text-xs" value={activeMatch.stoppageTime1 || ''} onChange={e => setActiveMatch({...activeMatch, stoppageTime1: e.target.value})} placeholder="+0" />
+                            </div>
+                            <div>
+                               <label className="text-[8px] font-black text-slate-400 block mb-1 uppercase">وقت إضافي (ش2)</label>
+                               <input type="number" className="w-full bg-white/10 border border-white/20 rounded-lg py-1 px-2 text-center text-white font-bold text-xs" value={activeMatch.stoppageTime2 || ''} onChange={e => setActiveMatch({...activeMatch, stoppageTime2: e.target.value})} placeholder="+0" />
                             </div>
                          </div>
                       </section>
 
-                      <section className="bg-white p-8 rounded-[4rem] border-4 border-slate-900 shadow-xl">
-                         <div className="flex justify-between items-center mb-8 border-b-2 border-slate-100 pb-4">
-                            <h3 className="font-black text-md text-[#001F3F] uppercase tracking-tighter flex items-center gap-2">
-                               <Zap size={20} className="text-orange-600"/> الخط الزمني للأحداث
-                            </h3>
-                         </div>
-                         <div className="grid grid-cols-2 gap-3 mb-8">
-                            <button onClick={() => addEvent('goal')} className="bg-emerald-600 text-white py-3 rounded-2xl text-[10px] font-black shadow-md hover:bg-black transition-all border-b-4 border-emerald-900">⚽ هدف</button>
-                            <button onClick={() => addEvent('assist')} className="bg-blue-600 text-white py-3 rounded-2xl text-[10px] font-black shadow-md hover:bg-black transition-all border-b-4 border-blue-900">👟 تمريرة</button>
-                            <button onClick={() => addEvent('yellow')} className="bg-yellow-400 text-slate-900 py-3 rounded-2xl text-[10px] font-black shadow-md hover:bg-black transition-all border-b-4 border-yellow-600">🟨 إنذار</button>
-                            <button onClick={() => addEvent('red')} className="bg-red-600 text-white py-3 rounded-2xl text-[10px] font-black shadow-md hover:bg-black transition-all border-b-4 border-red-900">🟥 طرد</button>
-                         </div>
-                         <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2 relative">
-                            <div className="absolute top-0 right-[42px] bottom-0 w-1 bg-slate-100 rounded-full z-0"></div>
-                            
-                            {activeMatch.events.sort((a,b) => (parseInt(a.minute)||0) - (parseInt(b.minute)||0)).map((ev, i) => (
-                               <div key={ev.id} className="flex items-center gap-4 relative z-10 animate-in slide-in-from-right-4 duration-300">
-                                  <div className="text-[12px] font-black text-slate-900 w-8 text-left">{ev.minute}'</div>
-                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-md border-2 border-white ${ev.type === 'goal' ? 'bg-emerald-500 text-white' : ev.type === 'yellow' ? 'bg-yellow-400 text-slate-900' : ev.type === 'red' ? 'bg-red-600 text-white' : 'bg-blue-500 text-white'}`}>
-                                    {ev.type === 'goal' ? '⚽' : ev.type === 'yellow' ? '🟨' : ev.type === 'red' ? '🟥' : '👟'}
-                                  </div>
-                                  <div className="flex-1 bg-slate-50 p-3 rounded-2xl border-2 border-slate-300 group">
-                                     <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[10px] font-black text-slate-900 uppercase">{ev.type === 'goal' ? 'هدف سجله:' : ev.type === 'yellow' ? 'إنذار لـ:' : ev.type === 'red' ? 'طرد لـ:' : 'تمريرة من:'}</span>
-                                        <button onClick={() => removeEvent(ev.id)} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
-                                     </div>
-                                     <div className="flex gap-2">
-                                       <select className="flex-1 text-[11px] font-black bg-transparent outline-none cursor-pointer border-b-2 border-slate-900 text-slate-900" value={ev.player} onChange={e => {
-                                          const evs = [...activeMatch.events];
-                                          const idxInOrig = evs.findIndex(x => x.id === ev.id);
-                                          evs[idxInOrig].player = e.target.value;
-                                          setActiveMatch({...activeMatch, events: evs});
-                                       }}>
-                                          <option value="">-- اختر اللاعب --</option>
-                                          {state.people.filter(p => p.category === activeMatch.category).map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name} (#{p.number})</option>)}
-                                       </select>
-                                       <input type="number" placeholder="د" className="w-12 bg-white border-2 border-slate-400 rounded px-1 py-0.5 text-center text-[11px] font-black text-slate-900" value={ev.minute} onChange={e => {
-                                          const evs = [...activeMatch.events];
-                                          const idxInOrig = evs.findIndex(x => x.id === ev.id);
-                                          evs[idxInOrig].minute = e.target.value;
-                                          setActiveMatch({...activeMatch, events: evs});
-                                       }} />
-                                     </div>
-                                  </div>
-                               </div>
-                            ))}
-                            {activeMatch.events.length === 0 && (
-                               <p className="text-center py-10 text-[11px] font-black text-slate-900 italic relative z-10 bg-white border-2 border-dashed border-slate-200 rounded-xl">لا توجد أحداث مسجلة حتى الآن</p>
-                            )}
-                         </div>
+                      {/* الملاحظات */}
+                      <section className="bg-white p-5 rounded-2xl border-2 border-slate-900 shadow-sm space-y-4">
+                         <h3 className="font-black text-xs text-[#001F3F] flex items-center gap-2"><FileText size={16} className="text-blue-600"/> التقرير الفني</h3>
+                         <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-[10px] text-slate-800 outline-none focus:border-blue-600 min-h-[100px] resize-none" value={activeMatch.notes || ''} onChange={e => setActiveMatch({...activeMatch, notes: e.target.value})} placeholder="اكتب تحليل المباراة..."></textarea>
                       </section>
                    </div>
                 </div>

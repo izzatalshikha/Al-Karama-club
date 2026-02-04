@@ -1,12 +1,17 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { MessageSquare, X, Send, Bot, User, Loader2, Minimize2, BrainCircuit } from 'lucide-react';
+import { AppState } from '../types';
 
-const ChatBot: React.FC = () => {
+interface ChatBotProps {
+  state: AppState;
+}
+
+const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([
-    { role: 'ai', text: 'أهلاً بك! أنا مساعدك الذكي الخاص بنادي الكرامة. كيف يمكنني مساعدتك اليوم في إدارة فريقك أو تحليل البيانات؟' }
+    { role: 'ai', text: 'أهلاً بك! أنا مساعدك الذكي الخاص بنادي الكرامة. لقد قمت الآن بمزامنة كافة بيانات النادي، كيف يمكنني مساعدتك اليوم؟' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +25,41 @@ const ChatBot: React.FC = () => {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen]);
 
+  // توليد سياق البيانات المحدث للذكاء الاصطناعي
+  const dataContext = useMemo(() => {
+    const playersCount = state.people.filter(p => p.role === 'لاعب').length;
+    const staffCount = state.people.filter(p => p.role !== 'لاعب').length;
+    
+    const upcomingMatches = state.matches
+      .filter(m => !m.isCompleted)
+      .slice(0, 5)
+      .map(m => `- ضد ${m.opponent} (${m.category}) بتاريخ ${m.date} في ${m.time} بموقع ${m.pitch}`)
+      .join('\n');
+
+    const upcomingSessions = state.sessions
+      .filter(s => !s.isCompleted)
+      .slice(0, 5)
+      .map(s => `- تمرين ${s.category}: ${s.objective} بتاريخ ${s.date} في ${s.time}`)
+      .join('\n');
+
+    const categoriesList = state.categories.join(', ');
+
+    return `
+      إليك ملخص حي لقاعدة بيانات نادي الكرامة السوري حالياً:
+      - عدد اللاعبين الإجمالي: ${playersCount}
+      - عدد الكوادر الفنية والإدارية: ${staffCount}
+      - الفئات المسجلة: ${categoriesList}
+      
+      المباريات القادمة المجدولة:
+      ${upcomingMatches || 'لا توجد مباريات قادمة حالياً.'}
+      
+      التمارين القادمة المجدولة:
+      ${upcomingSessions || 'لا توجد تمارين مجدولة حالياً.'}
+      
+      المستخدم الحالي: ${state.currentUser?.username} برتبة ${state.currentUser?.role}.
+    `;
+  }, [state]);
+
   const handleSendMessage = async () => {
     if (!input.trim() || loading) return;
 
@@ -30,19 +70,33 @@ const ChatBot: React.FC = () => {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      const systemInstruction = `
+        أنت "مساعد الكرامة الذكي" (Pro Edition). 
+        تعمل كمستشار إداري وفني داخل مكتب كرة القدم لنادي الكرامة الرياضي السوري.
+        لديك وصول كامل للبيانات التالية لاستخدامها في إجاباتك:
+        
+        ${dataContext}
+        
+        قواعد الإجابة:
+        1. كن مهنياً، ودوداً، ومخلصاً لهوية نادي الكرامة.
+        2. استخدم البيانات أعلاه للإجابة بدقة على أسئلة المستخدم حول المواعيد أو أعداد اللاعبين.
+        3. إذا سأل المستخدم عن شيء غير موجود في البيانات، أخبره بلباقة أنك لا تملك هذه المعلومة حالياً.
+        4. شجع دائماً على الروح الرياضية والتميز الفني.
+      `;
+
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
-        contents: `أنت مساعد إداري وفني ذكي تعمل داخل النظام الداخلي لنادي الكرامة الرياضي السوري. 
-        أجب باحترافية، وساعد المستخدم في فهم كيفية استخدام النظام أو تقديم نصائح رياضية.
-        المستخدم يسأل: ${userQuery}`,
+        contents: userQuery,
         config: {
-          thinkingConfig: { thinkingBudget: 32768 }
+          systemInstruction,
+          thinkingConfig: { thinkingBudget: 16000 }
         }
       });
 
-      setMessages(prev => [...prev, { role: 'ai', text: response.text || "عذراً، لم أستطع معالجة طلبك." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: response.text || "عذراً، لم أستطع معالجة طلبك بناءً على البيانات المتاحة." }]);
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'ai', text: "خطأ في الاتصال: " + error.message }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "خطأ في الاتصال بقاعدة البيانات الذكية: " + error.message }]);
     } finally {
       setLoading(false);
     }
@@ -57,7 +111,7 @@ const ChatBot: React.FC = () => {
         >
           <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-600 rounded-full animate-ping"></div>
           <MessageSquare size={28} />
-          <span className="absolute right-full mr-4 bg-slate-900 text-white text-[10px] font-black py-2 px-4 rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">مساعد الكرامة الذكي</span>
+          <span className="absolute right-full mr-4 bg-slate-900 text-white text-[10px] font-black py-2 px-4 rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">مساعد الكرامة الذكي (متصل بالبيانات)</span>
         </button>
       ) : (
         <div className="bg-white w-[380px] h-[550px] rounded-[2.5rem] shadow-2xl border-4 border-slate-900 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
@@ -67,9 +121,9 @@ const ChatBot: React.FC = () => {
                  <Bot size={20} className="text-[#001F3F]" />
               </div>
               <div>
-                <h4 className="text-white font-black text-sm">مساعد الكرامة (Pro)</h4>
+                <h4 className="text-white font-black text-sm">مساعد الكرامة (Data-Linked)</h4>
                 <p className="text-[8px] text-orange-400 font-black uppercase tracking-widest flex items-center gap-1">
-                  <BrainCircuit size={10} /> وضع التفكير العميق نشط
+                  <BrainCircuit size={10} /> الوصول لقاعدة البيانات نشط
                 </p>
               </div>
             </div>
@@ -94,7 +148,7 @@ const ChatBot: React.FC = () => {
               <div className="flex justify-end">
                 <div className="bg-slate-900 text-white p-4 rounded-2xl rounded-tl-none flex items-center gap-2 shadow-sm">
                   <Loader2 className="animate-spin" size={14} />
-                  <span className="text-[10px] font-black animate-pulse">جاري التفكير...</span>
+                  <span className="text-[10px] font-black animate-pulse">جاري تحليل البيانات...</span>
                 </div>
               </div>
             )}
@@ -107,7 +161,7 @@ const ChatBot: React.FC = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="كيف أساعدك..."
+              placeholder="اسأل عن اللاعبين أو المواعيد..."
               className="flex-1 bg-slate-100 border-2 border-slate-200 rounded-xl px-4 py-3 text-xs font-black outline-none focus:border-orange-600 transition-all"
             />
             <button 

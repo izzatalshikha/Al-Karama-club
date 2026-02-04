@@ -91,9 +91,9 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
 
   const globalFilter = state.globalCategoryFilter;
-  const restrictedCat = state.currentUser?.restrictedCategory;
+  const isManager = state.currentUser?.role === 'مدير';
 
-  // جلب *كافة* المباريات القادمة دون استثناء وترتيبها حسب التاريخ
+  // جلب المباريات القادمة بناءً على الفلتر المختار
   const upcomingMatches = useMemo(() => {
     return state.matches
       .filter(m => {
@@ -106,7 +106,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
       .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
   }, [state.matches, globalFilter, todayStr, currentTime]);
 
-  // جلب *كافة* التمارين القادمة دون استثناء وترتيبها حسب التاريخ
+  // جلب التمارين القادمة بناءً على الفلتر المختار
   const upcomingSessions = useMemo(() => {
     return state.sessions
       .filter(s => {
@@ -131,7 +131,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
     if (!quickEditMatch) return;
     setIsSavingEdit(true);
     
-    // محاكاة المزامنة واستخدام تحديث الحالة الأصلي
     setTimeout(() => {
       setState(prev => ({
         ...prev,
@@ -151,19 +150,38 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   return (
     <div className="space-y-6 md:space-y-10 animate-in fade-in duration-700 px-2 md:px-0 pb-20">
       
-      {/* 1. البحث السريع العالمي */}
-      <div className="relative z-[60] no-print max-w-4xl mx-auto">
-         <div className="solid-panel !rounded-[2.5rem] p-1 flex items-center border-4 border-[#001F3F] overflow-hidden shadow-2xl transition-all focus-within:border-orange-600">
-            <div className="p-5"><Search size={28} className="text-[#001F3F]" /></div>
-            <input 
-              type="text" 
-              placeholder="البحث السريع عن ملف لاعب أو إداري..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="flex-1 bg-transparent py-5 font-black text-xl outline-none text-[#001F3F] placeholder:text-slate-300"
-            />
-            {searchTerm && <button onClick={() => setSearchTerm('')} className="p-5 text-slate-400 hover:text-red-500"><X size={24}/></button>}
+      {/* 1. البحث السريع والفلتر الذكي للمدير */}
+      <div className="relative z-[60] no-print max-w-4xl mx-auto space-y-4">
+         <div className="flex flex-col md:flex-row gap-4">
+            {/* مربع البحث */}
+            <div className="flex-1 solid-panel !rounded-[2.5rem] p-1 flex items-center border-4 border-[#001F3F] overflow-hidden shadow-2xl transition-all focus-within:border-orange-600">
+                <div className="p-5"><Search size={28} className="text-[#001F3F]" /></div>
+                <input 
+                type="text" 
+                placeholder="البحث السريع عن ملف لاعب أو إداري..." 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="flex-1 bg-transparent py-4 font-black text-lg md:text-xl outline-none text-[#001F3F] placeholder:text-slate-300"
+                />
+                {searchTerm && <button onClick={() => setSearchTerm('')} className="p-5 text-slate-400 hover:text-red-500"><X size={24}/></button>}
+            </div>
+
+            {/* فلتر المدير المخصص */}
+            {isManager && (
+              <div className="md:w-72 solid-panel !rounded-[2.5rem] p-1 flex items-center border-4 border-orange-600 bg-[#001F3F] overflow-hidden shadow-2xl">
+                 <div className="p-5 text-orange-400"><Filter size={24}/></div>
+                 <select 
+                   value={state.globalCategoryFilter}
+                   onChange={e => setState(prev => ({ ...prev, globalCategoryFilter: e.target.value }))}
+                   className="flex-1 bg-transparent py-4 font-black text-lg text-white outline-none cursor-pointer appearance-none"
+                 >
+                    <option value="الكل" className="text-slate-900">كل الفئات</option>
+                    {state.categories.map(c => <option key={c} value={c} className="text-slate-900">{c}</option>)}
+                 </select>
+              </div>
+            )}
          </div>
+
          {searchResults.length > 0 && (
            <div className="absolute top-full left-0 right-0 mt-3 bg-white border-4 border-[#001F3F] rounded-[2.5rem] shadow-2xl overflow-hidden animate-in slide-in-from-top-4 duration-300">
               {searchResults.map(p => (
@@ -228,14 +246,13 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         ))}
       </div>
 
-      {/* 4. تغذية الأنشطة القادمة (Multi-Activity Grid) */}
+      {/* 4. تغذية الأنشطة القادمة */}
       <div className="space-y-12">
         {/* قسم المباريات القادمة */}
         <section className="space-y-6">
           <div className="flex items-center justify-between border-r-8 border-orange-600 pr-6">
              <div>
-                <h2 className="text-2xl md:text-4xl font-black text-white tracking-tighter uppercase">المباريات القادمة (مباشر)</h2>
-                <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mt-1">رصد التوقيت والنتائج والجاهزية اللوجستية</p>
+                <h2 className="text-2xl md:text-4xl font-black text-white tracking-tighter uppercase">المباريات القادمة</h2>
              </div>
              <div className="bg-[#001F3F] px-6 py-2 rounded-2xl text-white font-black text-xs border-2 border-orange-600 shadow-lg tabular-nums">إجمالي: {upcomingMatches.length}</div>
           </div>
@@ -277,12 +294,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                  </div>
               </div>
             ))}
-            {upcomingMatches.length === 0 && (
-              <div className="col-span-full py-20 text-center bg-white/5 rounded-[4rem] border-4 border-dashed border-white/10 opacity-30 grayscale flex flex-col items-center">
-                 <Trophy size={64} className="text-white mb-4" />
-                 <p className="font-black text-2xl text-white">لا توجد مباريات قادمة في الأجندة</p>
-              </div>
-            )}
           </div>
         </section>
 
@@ -290,8 +301,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         <section className="space-y-6">
           <div className="flex items-center justify-between border-r-8 border-blue-600 pr-6">
              <div>
-                <h2 className="text-2xl md:text-4xl font-black text-white tracking-tighter uppercase">التمارين والأنشطة المجدولة</h2>
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">تتبع الحضور والبرامج التدريبية اليومية</p>
+                <h2 className="text-2xl md:text-4xl font-black text-white tracking-tighter uppercase">التمارين والأنشطة</h2>
              </div>
              <div className="bg-[#001F3F] px-6 py-2 rounded-2xl text-white font-black text-xs border-2 border-blue-600 shadow-lg tabular-nums">إجمالي: {upcomingSessions.length}</div>
           </div>
@@ -327,27 +337,18 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                  </div>
               </div>
             ))}
-            {upcomingSessions.length === 0 && (
-              <div className="col-span-full py-20 text-center bg-white/5 rounded-[4rem] border-4 border-dashed border-white/10 opacity-30 grayscale flex flex-col items-center">
-                 <Calendar size={64} className="text-white mb-4" />
-                 <p className="font-black text-2xl text-white">لا توجد تمارين قادمة مجدولة</p>
-              </div>
-            )}
           </div>
         </section>
       </div>
 
-      {/* نافذة التعديل السريع للمباريات مباشرة من اللوحة */}
+      {/* نافذة التعديل السريع */}
       {quickEditMatch && (
         <div className="fixed inset-0 bg-[#001F3F]/95 backdrop-blur-2xl z-[500] flex items-center justify-center p-4">
            <div className="bg-white rounded-[4rem] w-full max-w-xl border-[10px] border-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
               <div className="bg-[#001F3F] p-10 flex justify-between items-center border-b-8 border-orange-600">
                  <div className="flex items-center gap-5 text-white">
                     <Trophy className="text-orange-600" size={48} />
-                    <div>
-                       <h4 className="font-black text-2xl tracking-tighter uppercase">تعديل مواجهة: {quickEditMatch.opponent}</h4>
-                       <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mt-1">تحديث فوري لبيانات النشاط</p>
-                    </div>
+                    <h4 className="font-black text-2xl tracking-tighter uppercase">تعديل مواجهة: {quickEditMatch.opponent}</h4>
                  </div>
                  <button onClick={() => setQuickEditMatch(null)} className="text-white hover:rotate-90 transition-all hover:bg-white/10 p-2 rounded-full"><X size={36}/></button>
               </div>
@@ -372,24 +373,13 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mr-2">تعديل التاريخ</label>
-                       <input type="date" value={quickEditMatch.date} onChange={e => setQuickEditMatch({...quickEditMatch, date: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-4 font-black text-sm" />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mr-2">تعديل التوقيت</label>
-                       <input type="time" value={quickEditMatch.time} onChange={e => setQuickEditMatch({...quickEditMatch, time: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-4 font-black text-sm" />
-                    </div>
-                 </div>
-
                  <button 
                   type="submit" 
                   disabled={isSavingEdit}
-                  className="w-full bg-[#001F3F] text-white py-6 rounded-[3rem] font-black text-xl flex items-center justify-center gap-4 hover:bg-black transition-all border-b-8 border-black active:translate-y-2 active:border-b-0 shadow-2xl"
+                  className="w-full bg-[#001F3F] text-white py-6 rounded-[3rem] font-black text-xl flex items-center justify-center gap-4 hover:bg-black transition-all border-b-8 border-black shadow-2xl"
                  >
                     {isSavingEdit ? <Loader2 className="animate-spin" size={32}/> : <Save size={32} className="text-orange-600"/>}
-                    تثبيت التعديلات الفورية في النظام
+                    تثبيت التعديلات
                  </button>
               </form>
            </div>

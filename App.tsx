@@ -354,7 +354,7 @@ const App: React.FC = () => {
              </button>
            ))}
         </nav>
-        <ChatBot />
+        <ChatBot state={state} />
       </main>
     </div>
   );

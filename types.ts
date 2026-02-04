@@ -53,6 +53,7 @@ export interface Person {
   coachingCertificate?: string;
   academicDegree?: string;
   evaluations?: PlayerEvaluation[];
+  monthlyReports?: { [key: string]: string }; // ميزة التقارير الشهرية الجديدة
 }
 
 export interface AttendanceRecord {
