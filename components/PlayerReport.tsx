@@ -25,7 +25,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
   const [isSavingReport, setIsSavingReport] = useState(false);
   const [monthlyNotes, setMonthlyNotes] = useState<{ [key: string]: string }>(player?.monthlyReports || {});
   
-  // نظام اختيار الشهر الجديد
+  // نظام اختيار الشهر المتطور
   const months = ["كانون الثاني", "شباط", "آذار", "نيسان", "أيار", "حزيران", "تموز", "آب", "أيلول", "تشرين الأول", "تشرين الثاني", "تشرين الثاني"];
   const currentMonthIndex = new Date().getMonth();
   const [selectedMonth, setSelectedMonth] = useState(months[currentMonthIndex]);
@@ -35,7 +35,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
   const isStaff = player.role !== 'لاعب';
   const isViewer = state.currentUser.role === 'مشاهد';
 
-  // --- حساب إحصائيات المشاركة والأهداف والبطاقات ---
+  // --- حساب إحصائيات المشاركة الرسمية والودية بدقة ---
   const matchStats = useMemo(() => {
     if (isStaff) return { officialMins: 0, friendlyMins: 0, goals: 0, assists: 0, yellows: 0, reds: 0, list: [] };
 
@@ -96,7 +96,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
     };
   }, [state.matches, player, isStaff]);
 
-  // --- ربط إحصائيات الحضور والالتزام ---
+  // --- حساب الالتزام من التمارين ---
   const attendanceData = useMemo(() => {
     const sessions = state.sessions.filter(s => s.category === player.category);
     const sessionIds = sessions.map(s => s.id);
@@ -157,7 +157,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
   return (
     <div className="space-y-6 md:space-y-10 animate-in fade-in duration-500 pb-24 px-2 md:px-0 text-right font-['Tajawal']" dir="rtl">
       
-      <div className="flex flex-row justify-between items-center no-print gap-3">
+      <div className="flex flex-row justify-between items-center no-print gap-3 text-right">
         <button onClick={onBack} className="flex items-center gap-2 text-[#001F3F] font-black bg-white border-2 border-[#001F3F] px-6 py-3 rounded-2xl text-sm shadow-md active:scale-95 transition-all">
           <ChevronRight size={20} /> رجوع للمديرية
         </button>
@@ -166,7 +166,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
         </button>
       </div>
 
-      <div className="solid-panel overflow-hidden relative !shadow-none md:!shadow-[10px_10px_0px_0px_#001F3F] border-4 border-[#001F3F]">
+      <div className="solid-panel overflow-hidden relative !shadow-none md:!shadow-[10px_10px_0px_0px_#001F3F] border-4 border-[#001F3F] text-right">
         <div className="bg-[#001F3F] h-28 md:h-40 relative">
           <div className="absolute -bottom-14 right-8 md:right-16 flex items-end gap-6 md:gap-10">
             <div className="w-28 h-28 md:w-48 md:h-48 bg-white rounded-3xl md:rounded-[3rem] border-[6px] md:border-[10px] border-white flex items-center justify-center font-black text-5xl md:text-8xl text-[#001F3F] uppercase shadow-2xl relative z-10">
@@ -175,9 +175,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
                   #{player.number || '0'}
                </div>
             </div>
-            <div className="mb-4">
+            <div className="mb-4 text-right">
               <h1 className="text-2xl md:text-5xl font-black text-white drop-shadow-lg tracking-tight leading-tight">{player.name}</h1>
-              <div className="flex gap-3 mt-2">
+              <div className="flex gap-3 mt-2 justify-end">
                  <span className="bg-orange-600 text-white text-[10px] md:text-[12px] font-black px-4 md:px-6 py-1.5 rounded-xl border-2 border-white uppercase shadow-lg">{player.role}</span>
                  <span className="bg-blue-600 text-white text-[10px] md:text-[12px] font-black px-4 md:px-6 py-1.5 rounded-xl border-2 border-white uppercase shadow-lg">{player.category}</span>
               </div>
@@ -186,8 +186,8 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
         </div>
         <div className="h-16 md:h-24"></div>
         
-        {/* ملخص الأداء السريع */}
-        <div className="px-6 md:px-16 pb-10 grid grid-cols-2 md:grid-cols-7 gap-3 md:gap-4">
+        {/* ملخص الأداء السريع المتطور */}
+        <div className="px-6 md:px-16 pb-10 grid grid-cols-2 md:grid-cols-7 gap-3 md:gap-4 text-right">
            <div className="bg-slate-50 p-3 md:p-4 rounded-2xl border-2 border-[#001F3F] flex flex-col items-center shadow-sm">
              <Medal className="text-[#001F3F] mb-1" size={18}/>
              <span className="text-[8px] font-black text-slate-900 uppercase">دقائق رسمية</span>
@@ -226,11 +226,11 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 md:gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 md:gap-10 text-right">
         <div className="lg:col-span-2 space-y-8 md:space-y-10">
           
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-[#001F3F] shadow-md">
-             <h3 className="text-lg md:text-2xl font-black text-[#001F3F] mb-8 flex items-center gap-3 border-r-4 border-orange-600 pr-4">
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-[#001F3F] shadow-md text-right">
+             <h3 className="text-lg md:text-2xl font-black text-[#001F3F] mb-8 flex items-center gap-3 border-r-4 border-orange-600 pr-4 justify-end">
                 <Fingerprint className="text-blue-700" size={28}/> البيانات الثبوتية والعائلية الكاملة
              </h3>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -273,9 +273,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
              </div>
           </div>
 
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-[#001F3F] shadow-sm relative overflow-hidden">
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-[#001F3F] shadow-sm relative overflow-hidden text-right">
              <div className="flex justify-between items-center mb-8 relative z-10">
-                <h3 className="text-lg md:text-2xl font-black flex items-center gap-3 text-[#001F3F]">
+                <h3 className="text-lg md:text-2xl font-black flex items-center gap-3 text-[#001F3F] justify-end">
                    <BrainCircuit className="text-blue-900" size={28}/> تقرير المحلل التكتيكي الذكي (AI Analysis)
                 </h3>
                 <button onClick={handleGenerateAiAnalysis} disabled={loadingAi} className="bg-orange-600 text-white px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 active:scale-95 transition-all shadow-lg">
@@ -283,7 +283,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
                 </button>
              </div>
              {aiAnalysis ? (
-               <div className="text-sm md:text-md font-bold text-slate-900 leading-relaxed bg-blue-50 p-6 rounded-[2rem] border-r-8 border-blue-900 shadow-inner whitespace-pre-wrap">
+               <div className="text-sm md:text-md font-bold text-slate-900 leading-relaxed bg-blue-50 p-6 rounded-[2rem] border-r-8 border-blue-900 shadow-inner whitespace-pre-wrap text-right">
                   {aiAnalysis}
                </div>
              ) : (
@@ -293,22 +293,22 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
              )}
           </div>
 
-          {/* التعديل الجديد: قائمة منسدلة للتقارير الشهرية */}
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-blue-900 shadow-sm no-print">
+          {/* التقرير الفني الشهري المستمر - قائمة منسدلة ذكية */}
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-blue-900 shadow-sm no-print text-right">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-r-4 border-blue-600 pr-4">
-                <h3 className="text-lg md:text-2xl font-black text-[#001F3F] flex items-center gap-3">
-                   <CalendarDays className="text-blue-700" size={28}/> التقرير الفني الشهري
+                <h3 className="text-lg md:text-2xl font-black text-[#001F3F] flex items-center gap-3 justify-end">
+                   <CalendarDays className="text-blue-700" size={28}/> التقرير الفني الشهري المستمر
                 </h3>
-                <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex items-center gap-3 w-full md:w-auto justify-end">
                    <div className="relative flex-1 md:w-48">
                       <select 
                         value={selectedMonth} 
                         onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="w-full bg-slate-100 border-2 border-blue-900 rounded-xl py-2 px-4 font-black text-sm text-blue-900 outline-none appearance-none cursor-pointer"
+                        className="w-full bg-slate-100 border-2 border-blue-900 rounded-xl py-2 px-4 font-black text-sm text-blue-900 outline-none appearance-none cursor-pointer text-right"
                       >
                          {months.map((m, idx) => (
                             <option key={m} value={m} disabled={idx > currentMonthIndex}>
-                               {m} {idx > currentMonthIndex ? '(لم يبدأ بعد)' : ''}
+                               {m} {idx > currentMonthIndex ? '(لم يفتح بعد)' : ''}
                             </option>
                          ))}
                       </select>
@@ -320,29 +320,29 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
                         disabled={isSavingReport}
                         className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-black text-[10px] flex items-center gap-2 hover:bg-emerald-700 shadow-md transition-all"
                       >
-                         {isSavingReport ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} حفظ
+                         {isSavingReport ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} حفظ التقرير
                       </button>
                    )}
                 </div>
              </div>
 
-             <div className="bg-slate-50 p-6 rounded-[2rem] border-2 border-slate-200">
-                <label className="text-[10px] font-black text-blue-900 mb-2 block uppercase tracking-widest">محتوى تقرير شهر {selectedMonth}</label>
+             <div className="bg-slate-50 p-6 rounded-[2rem] border-2 border-slate-200 text-right">
+                <label className="text-[10px] font-black text-blue-900 mb-2 block uppercase tracking-widest text-right">محتوى تقرير شهر {selectedMonth}</label>
                 <textarea 
-                   className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 text-xs font-bold text-slate-800 h-40 resize-none outline-none focus:border-blue-600 transition-all shadow-inner"
+                   className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 text-xs font-bold text-slate-800 h-40 resize-none outline-none focus:border-blue-600 transition-all shadow-inner text-right"
                    placeholder={`اكتب ملخص الأداء والتحليل الفني لشهر ${selectedMonth}...`}
                    value={monthlyNotes[selectedMonth] || ''}
                    onChange={(e) => setMonthlyNotes({ ...monthlyNotes, [selectedMonth]: e.target.value })}
                    readOnly={isViewer}
                 ></textarea>
-                <p className="mt-3 text-[9px] font-black text-slate-400 italic flex items-center gap-1">
-                   <Info size={10}/> يتم تخزين التقارير بشكل منفصل لكل شهر لضمان تتبع تطور اللاعب.
+                <p className="mt-3 text-[9px] font-black text-slate-400 italic flex items-center gap-1 justify-end">
+                   <Info size={10}/> التقرير الشهري هو وثيقة أساسية لتقييم تطور اللاعب المستمر.
                 </p>
              </div>
           </div>
 
-          <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border-2 border-[#001F3F] shadow-sm overflow-hidden">
-             <h3 className="text-lg md:text-2xl font-black text-slate-900 mb-8 flex items-center gap-3">
+          <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border-2 border-[#001F3F] shadow-sm overflow-hidden text-right">
+             <h3 className="text-lg md:text-2xl font-black text-slate-900 mb-8 flex items-center gap-3 justify-end">
                <ClipboardList className="text-[#001F3F]" size={28}/> الأجندة الفنية وسجل المباريات المكتملة
              </h3>
              <div className="overflow-x-auto -mx-6 md:mx-0">
@@ -360,9 +360,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
                     {matchStats.list.length > 0 ? matchStats.list.map((m, i) => (
                       <tr key={i} className="border-b border-slate-200 text-[12px] md:text-sm font-black hover:bg-slate-50 transition-colors">
                          <td className="p-4 border-l">
-                            <div className="flex flex-col">
+                            <div className="flex flex-col text-right">
                                <span className="text-[#001F3F] font-bold">{m.opponent}</span>
-                               <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit mt-1.5 border ${m.isOfficial ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-orange-100 text-orange-700 border-orange-300'}`}>{m.type}</span>
+                               <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit mt-1.5 border self-end ${m.isOfficial ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-orange-100 text-orange-700 border-orange-300'}`}>{m.type}</span>
                             </div>
                          </td>
                          <td className="p-4 border-l text-center font-bold text-[#001F3F] tabular-nums">{m.mins} د</td>
@@ -385,9 +385,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
           </div>
         </div>
 
-        <div className="space-y-8">
-          <div className="bg-[#001F3F] p-8 md:p-10 rounded-[3rem] border-4 border-black text-white shadow-2xl relative overflow-hidden">
-             <div className="flex items-center gap-3 mb-8 border-b border-white/10 pb-4">
+        <div className="space-y-8 text-right">
+          <div className="bg-[#001F3F] p-8 md:p-10 rounded-[3rem] border-4 border-black text-white shadow-2xl relative overflow-hidden text-right">
+             <div className="flex items-center gap-3 mb-8 border-b border-white/10 pb-4 justify-end">
                 <ShieldCheck className="text-orange-500" size={24}/>
                 <h3 className="text-sm md:text-lg font-black uppercase tracking-tighter">الوضعية التعاقدية والمالية</h3>
              </div>
@@ -397,7 +397,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
                    <span className="font-black text-sm">{player.birthDate}</span>
                 </div>
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mt-8 space-y-4">
-                   <p className="text-orange-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 mb-4">
+                   <p className="text-orange-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 mb-4 justify-end">
                       <CreditCard size={16}/> وضع التعاقد المالي
                    </p>
                    <div className="flex justify-between text-xs">
@@ -416,33 +416,33 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
              </div>
           </div>
 
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-red-900 shadow-md">
-             <h4 className="text-sm md:text-lg font-black text-red-700 mb-6 flex items-center gap-3">
-                <Gavel className="text-red-700" size={24}/> سجل العقوبات والخصومات
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-red-900 shadow-md text-right">
+             <h4 className="text-sm md:text-lg font-black text-red-700 mb-6 flex items-center gap-3 justify-end">
+                <Gavel className="text-red-700" size={24}/> سجل العقوبات والانضباط (Disciplinary)
              </h4>
-             <div className="p-5 bg-red-50 rounded-2xl border-r-4 border-red-700">
+             <div className="p-5 bg-red-50 rounded-2xl border-r-4 border-red-700 text-right">
                 <p className="text-[13px] font-black text-slate-900 leading-relaxed italic">
                    {player.penalties || "السجل نظيف إدارياً، لا توجد أي عقوبات مسجلة لهذا اللاعب."}
                 </p>
              </div>
           </div>
 
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-slate-900 shadow-md">
-             <h4 className="text-sm md:text-lg font-black text-[#001F3F] mb-6 flex items-center gap-3">
-                <StickyNote className="text-blue-900" size={24}/> ملاحظات المكتب الإداري
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-slate-900 shadow-md text-right">
+             <h4 className="text-sm md:text-lg font-black text-[#001F3F] mb-6 flex items-center gap-3 justify-end">
+                <StickyNote className="text-blue-900" size={24}/> ملاحظات إدارية عامة (Admin Notes)
              </h4>
-             <div className="p-5 bg-slate-50 rounded-2xl border-r-4 border-blue-900">
+             <div className="p-5 bg-slate-50 rounded-2xl border-r-4 border-blue-900 text-right">
                 <p className="text-[13px] font-black text-slate-900 leading-relaxed italic">
                    {player.notes || "لا توجد ملاحظات إدارية إضافية مسجلة."}
                 </p>
              </div>
           </div>
 
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-emerald-900 shadow-md">
-             <h4 className="text-sm md:text-lg font-black text-emerald-800 mb-6 flex items-center gap-3">
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border-2 border-emerald-900 shadow-md text-right">
+             <h4 className="text-sm md:text-lg font-black text-emerald-800 mb-6 flex items-center gap-3 justify-end">
                 <HeartPulse className="text-emerald-600" size={24}/> السجل الطبي الموثق
              </h4>
-             <div className="p-5 bg-emerald-50 rounded-2xl border-r-4 border-emerald-600">
+             <div className="p-5 bg-emerald-50 rounded-2xl border-r-4 border-emerald-600 text-right">
                 <p className="text-[13px] font-black text-slate-900 leading-relaxed italic">
                    {player.medicalHistory || player.injuries || "لا يوجد سجل إصابات سابق موثق في أرشيف النادي."}
                 </p>

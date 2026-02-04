@@ -47,7 +47,7 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
   
-  // نظام منع تداخل البيانات (Sync Lock Engine)
+  // نظام منع تداخل البيانات المطور لمنع اختفاء المباريات
   const syncManager = useRef({
     isPushing: false,
     lastPushTime: 0,
@@ -99,8 +99,9 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async () => {
-    // منع الجلب إذا كان هناك عملية رفع جارية لتجنب مسح البيانات المحلية الجديدة
-    if (!state.currentUser || syncManager.current.isPushing) return;
+    // منع الجلب إذا كان هناك عملية رفع جارية أو تمت مؤخراً جداً
+    const timeSinceLastPush = Date.now() - syncManager.current.lastPushTime;
+    if (!state.currentUser || syncManager.current.isPushing || timeSinceLastPush < 5000) return;
     
     setIsSyncing(true);
     setSyncStatus('syncing');
@@ -155,36 +156,28 @@ const App: React.FC = () => {
     if (!updatedState.currentUser) return;
 
     syncManager.current.isPushing = true;
+    syncManager.current.lastPushTime = Date.now();
     setSyncStatus('syncing');
+    
     try {
-      const mappedMatches = updatedState.matches.map(m => ({
-        ...m,
-        advancePayment: m.advancePayment || '0',
-        ourScore: m.ourScore || '0',
-        opponentScore: m.opponentScore || '0'
-      }));
-
-      // تحديث الجداول بشكل متسلسل ومضمون لضمان عدم حدوث تعارض
       const tasks = [];
       if (updatedState.people.length > 0) tasks.push(supabase.from('people').upsert(sanitize(updatedState.people), { onConflict: 'id' }));
       if (updatedState.sessions.length > 0) tasks.push(supabase.from('sessions').upsert(sanitize(updatedState.sessions), { onConflict: 'id' }));
-      if (mappedMatches.length > 0) tasks.push(supabase.from('matches').upsert(sanitize(mappedMatches), { onConflict: 'id' }));
+      if (updatedState.matches.length > 0) tasks.push(supabase.from('matches').upsert(sanitize(updatedState.matches), { onConflict: 'id' }));
       if (updatedState.attendance.length > 0) tasks.push(supabase.from('attendance').upsert(sanitize(updatedState.attendance), { onConflict: 'id' }));
       if (updatedState.users.length > 0) tasks.push(supabase.from('app_users').upsert(sanitize(updatedState.users), { onConflict: 'id' }));
       if (updatedState.warehouse.length > 0) tasks.push(supabase.from('warehouse').upsert(sanitize(updatedState.warehouse), { onConflict: 'id' }));
 
       await Promise.all(tasks);
-
       setSyncStatus('synced');
-      syncManager.current.lastPushTime = Date.now();
     } catch (error: any) {
       setSyncStatus('error');
       addLog('خطأ مزامنة', error.message, 'error');
     } finally {
-      // نترك القفل مفعلاً لمجرد ثوانٍ بسيطة للسماح للسحاب بالاستقرار
+      // إطالة فترة القفل لضمان عدم حدوث تداخل
       setTimeout(() => {
         syncManager.current.isPushing = false;
-      }, 2500);
+      }, 3000);
     }
   };
 
@@ -200,12 +193,10 @@ const App: React.FC = () => {
     if (!state.currentUser) return;
     fetchData();
 
-    // الاستماع الفوري للتغييرات في السحاب (Realtime)
     const channel = supabase.channel('cloud-sync-channel')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         const timeSinceLastPush = Date.now() - syncManager.current.lastPushTime;
-        // لا نقوم بالجلب إذا كنا نحن من قمنا بالإرسال مؤخراً (لمنع مسح البيانات الجديدة)
-        if (!syncManager.current.isPushing && timeSinceLastPush > 3000) {
+        if (!syncManager.current.isPushing && timeSinceLastPush > 5000) {
           fetchData();
         }
       })

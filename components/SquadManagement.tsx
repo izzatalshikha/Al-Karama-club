@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   UserPlus, Trash2, Search, X, Shield, Award, Layers, Home, Plus, AlertCircle, Calendar,
   MapPin, Hash, UserCheck, ChevronLeft, FolderPlus, Filter, Settings2, BookOpen, Globe, CreditCard, Map,
-  Briefcase, Printer, FileSpreadsheet, Eye, FileText, Users, ChevronRight, HeartPulse, Gavel, StickyNote
+  Briefcase, Printer, FileSpreadsheet, Eye, FileText, Users, ChevronRight, HeartPulse, Gavel, StickyNote,
+  Edit2
 } from 'lucide-react';
 import { AppState, Person, Role, Category } from '../types';
 import ClubLogo from './ClubLogo';
@@ -88,7 +89,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         medicalHistory: formData.medicalHistory || undefined,
         injuries: formData.injuries || undefined,
         penalties: formData.penalties || undefined,
-        notes: formData.notes || undefined
+        notes: formData.notes || undefined,
+        monthlyReports: {}
       };
 
       setState(p => ({ ...p, people: [...p.people, newPerson] }));
@@ -301,7 +303,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 </div>
                 {!isViewer && (
                   <div className="flex gap-2">
-                    <button onClick={() => { setEditingId(person.id); setFormData(person); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-900 hover:bg-[#001F3F] hover:text-white rounded-xl border-2 border-slate-900 transition-all shadow-sm"><Plus size={16}/></button>
+                    {/* Add Edit2 icon for editing person profile */}
+                    <button onClick={() => { setEditingId(person.id); setFormData(person); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-900 hover:bg-[#001F3F] hover:text-white rounded-xl border-2 border-slate-900 transition-all shadow-sm"><Edit2 size={16}/></button>
                     <button onClick={async () => { if(confirm(`هل أنت متأكد من حذف ${person.name}؟`)) { await supabase.from('people').delete().eq('id', person.id); setState(p => ({...p, people: p.people.filter(x => x.id !== person.id)})); addLog?.('حذف عضو', `تم مسح ملف: ${person.name}`, 'error'); } }} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl border-2 border-red-900 transition-all shadow-sm"><Trash2 size={16}/></button>
                   </div>
                 )}
@@ -318,7 +321,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
               <button onClick={() => setIsModalOpen(false)} className="bg-slate-200 p-2.5 rounded-xl text-slate-900 hover:text-red-600 transition-all hover:rotate-90"><X size={22} /></button>
             </div>
             
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10">
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10 text-right">
               <div className="space-y-6">
                 <h4 className="text-[12px] font-black text-[#001F3F] flex items-center gap-2 border-r-4 border-orange-600 pr-3 uppercase">البيانات الشخصية والولادة</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -418,41 +421,41 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 </div>
               </div>
 
-              {/* القسم الجديد: السجل الصحي والإداري */}
+              {/* تفعيل حقول السجل الصحي والإداري */}
               <div className="space-y-6">
-                <h4 className="text-[12px] font-black text-red-600 flex items-center gap-2 border-r-4 border-slate-900 pr-3 uppercase">السجل الصحي والإداري</h4>
+                <h4 className="text-[12px] font-black text-red-600 flex items-center gap-2 border-r-4 border-slate-900 pr-3 uppercase">السجل الصحي والإداري والانضباطي</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-900 flex items-center gap-2">
                       <HeartPulse size={14} className="text-red-500" /> السجل الطبي والإصابات
                     </label>
                     <textarea 
-                      value={formData.injuries || formData.medicalHistory || ''} 
-                      onChange={e => setFormData({...formData, injuries: e.target.value, medicalHistory: e.target.value})} 
+                      value={formData.medicalHistory || ''} 
+                      onChange={e => setFormData({...formData, medicalHistory: e.target.value})} 
                       className={textAreaClass}
-                      placeholder="سجل العمليات، الإصابات العضلية، الحساسية، الوضع الصحي الحالي..."
+                      placeholder="سجل العمليات، الإصابات العضلية، الحساسية..."
                     ></textarea>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-900 flex items-center gap-2">
-                      <Gavel size={14} className="text-orange-500" /> سجل العقوبات والانضباط
+                      <Gavel size={14} className="text-orange-500" /> سجل العقوبات والانضباط (Disciplinary Record)
                     </label>
                     <textarea 
                       value={formData.penalties || ''} 
                       onChange={e => setFormData({...formData, penalties: e.target.value})} 
                       className={textAreaClass}
-                      placeholder="العقوبات الإدارية، الخصومات المالية، لفت النظر، قرارات لجنة الانضباط..."
+                      placeholder="العقوبات الإدارية، الخصومات المالية، لفت النظر..."
                     ></textarea>
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <label className="text-[10px] font-black text-slate-900 flex items-center gap-2">
-                      <StickyNote size={14} className="text-[#001F3F]" /> ملاحظات إدارية عامة
+                      <StickyNote size={14} className="text-[#001F3F]" /> ملاحظات إدارية عامة (Administrative Notes)
                     </label>
                     <textarea 
                       value={formData.notes || ''} 
                       onChange={e => setFormData({...formData, notes: e.target.value})} 
                       className={textAreaClass}
-                      placeholder="أي معلومات إضافية تخص سلوك اللاعب، وضعه التعليمي، مهارات اجتماعية..."
+                      placeholder="أي معلومات إضافية تخص سلوك اللاعب، وضعه التعليمي..."
                     ></textarea>
                   </div>
                 </div>
