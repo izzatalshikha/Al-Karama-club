@@ -14,16 +14,22 @@ export interface AppNotification {
   isRead?: boolean;
 }
 
-export interface PlayerEvaluation {
+export interface TechnicalReport {
   id: string;
-  playerId: string;
+  targetId: string; // ID of Match or Staff Member
+  type: 'match_evaluation' | 'staff_review' | 'player_radar';
+  category: Category;
+  rating: number; // 1-5 stars
+  content: string;
+  author: string;
   date: string;
-  physical: number; // 1-10
-  tactical: number;
-  technical: number;
-  mental: number;
-  speed: number;
-  coachNote?: string;
+  radarData?: {
+    technical: number;
+    physical: number;
+    tactical: number;
+    mental: number;
+    discipline: number;
+  };
 }
 
 export interface Person {
@@ -52,8 +58,7 @@ export interface Person {
   notes?: string;
   coachingCertificate?: string;
   academicDegree?: string;
-  evaluations?: PlayerEvaluation[];
-  monthlyReports?: { [key: string]: string }; // ميزة التقارير الشهرية الجديدة
+  monthlyReports?: { [key: string]: string };
 }
 
 export interface AttendanceRecord {
@@ -99,7 +104,6 @@ export interface Match {
   isCompleted: boolean;
   ourScore: string;
   opponentScore: string;
-  stoppageTime?: string; 
   stoppageTime1?: string; 
   stoppageTime2?: string; 
   events: MatchEvent[];
@@ -113,7 +117,6 @@ export interface Match {
       substitutionMinute?: string;
       replacedPlayerId?: string;
     }[];
-    reserves?: { playerId: string; name: string; number: string }[];
     staff: { role: string; name: string }[];
     captain: string;
   };
@@ -145,6 +148,7 @@ export interface AppState {
   sessions: TrainingSession[];
   matches: Match[];
   warehouse: WarehouseItem[];
+  technicalReports: TechnicalReport[];
   users: AppUser[];
   categories: Category[];
   currentUser: AppUser | null;

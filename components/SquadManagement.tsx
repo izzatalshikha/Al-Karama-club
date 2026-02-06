@@ -15,9 +15,10 @@ interface SquadManagementProps {
   setState: (updater: (prev: AppState) => AppState) => void;
   onOpenReport?: (player: Person) => void;
   addLog?: (m: string, d?: string, t?: any) => void;
+  getSuspension?: (id: string, cat: string) => { isSuspended: boolean, currentYellows: number, hasActiveRed: boolean };
 }
 
-const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOpenReport, addLog }) => {
+const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOpenReport, addLog, getSuspension }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -270,47 +271,60 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 no-print">
-        {displayList.map(person => (
-          <div key={person.id} className="bg-white p-5 rounded-[2rem] shadow-sm border-2 border-slate-900 group relative transition-all hover:shadow-xl border-b-[8px] hover:border-orange-600">
-             <div className="flex justify-between items-start mb-4">
-               <div className="w-12 h-12 bg-slate-100 border-2 border-slate-900 rounded-xl flex items-center justify-center font-black text-slate-900 text-lg shadow-inner group-hover:bg-[#001F3F] group-hover:text-white transition-colors">
-                 {person.name.charAt(0).toUpperCase()}
+        {displayList.map(person => {
+          const susp = getSuspension ? getSuspension(person.id, person.category) : { isSuspended: false, currentYellows: 0, hasActiveRed: false };
+          
+          return (
+            <div key={person.id} className="bg-white p-5 rounded-[2rem] shadow-sm border-2 border-slate-900 group relative transition-all hover:shadow-xl border-b-[8px] hover:border-orange-600">
+               <div className="flex justify-between items-start mb-4">
+                 <div className="w-12 h-12 bg-slate-100 border-2 border-slate-900 rounded-xl flex items-center justify-center font-black text-slate-900 text-lg shadow-inner group-hover:bg-[#001F3F] group-hover:text-white transition-colors">
+                   {person.name.charAt(0).toUpperCase()}
+                 </div>
+                 <div className="flex flex-col items-end">
+                    <span className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wider ${person.role === 'لاعب' ? 'bg-orange-600 text-white shadow-sm' : 'bg-[#001F3F] text-white shadow-sm'}`}>
+                      {person.role}
+                    </span>
+                    <span className="text-[11px] font-black text-slate-900 mt-2 flex items-center gap-1 opacity-70">
+                      <Layers size={12} /> {person.category}
+                    </span>
+                 </div>
                </div>
-               <div className="flex flex-col items-end">
-                  <span className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wider ${person.role === 'لاعب' ? 'bg-orange-600 text-white shadow-sm' : 'bg-[#001F3F] text-white shadow-sm'}`}>
-                    {person.role}
-                  </span>
-                  <span className="text-[11px] font-black text-slate-900 mt-2 flex items-center gap-1 opacity-70">
-                    <Layers size={12} /> {person.category}
-                  </span>
+               
+               <div className="space-y-2">
+                 <h4 className="font-black text-xl text-slate-900 leading-tight group-hover:text-blue-900 transition-colors flex items-center gap-2">
+                    {person.name}
+                    <div className="flex gap-1.5 no-print">
+                       {susp.hasActiveRed && (
+                         <div className="w-2.5 h-4 bg-red-600 rounded-sm shadow-md border border-red-900 animate-pulse" title="موقوف (طرد نشط)"></div>
+                       )}
+                       {susp.currentYellows >= 2 && !susp.hasActiveRed && (
+                         <div className={`w-2.5 h-4 bg-yellow-400 rounded-sm shadow-md border border-yellow-700 ${susp.currentYellows >= 3 ? 'opacity-40' : ''}`} title={`تنبيه إنذارات (${susp.currentYellows})`}></div>
+                       )}
+                    </div>
+                 </h4>
+                 <div className="flex flex-wrap gap-3 pt-1 text-[11px] font-black text-slate-600">
+                   <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100"><MapPin size={12} className="text-orange-600" /> {person.birthPlace}</span>
+                   <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100"><Calendar size={12} className="text-[#001F3F]" /> {calculateAge(person.birthDate)} سنة</span>
+                 </div>
                </div>
-             </div>
-             
-             <div className="space-y-2">
-               <h4 className="font-black text-xl text-slate-900 leading-tight group-hover:text-blue-900 transition-colors">{person.name}</h4>
-               <div className="flex flex-wrap gap-3 pt-1 text-[11px] font-black text-slate-600">
-                 <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100"><MapPin size={12} className="text-orange-600" /> {person.birthPlace}</span>
-                 <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100"><Calendar size={12} className="text-[#001F3F]" /> {calculateAge(person.birthDate)} سنة</span>
-               </div>
-             </div>
 
-             <div className="mt-6 pt-4 border-t-2 border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                   <div className="bg-[#001F3F] text-white w-9 h-9 rounded-xl flex items-center justify-center font-black text-lg border-2 border-black shadow-md">
-                     #{person.number || '00'}
-                   </div>
-                   <button onClick={() => onOpenReport?.(person)} className="text-slate-900 text-xs font-black hover:text-orange-600 underline underline-offset-4 decoration-2 decoration-orange-600/30 hover:decoration-orange-600 transition-all">الملف الفني الشامل</button>
-                </div>
-                {!isViewer && (
-                  <div className="flex gap-2">
-                    {/* Add Edit2 icon for editing person profile */}
-                    <button onClick={() => { setEditingId(person.id); setFormData(person); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-900 hover:bg-[#001F3F] hover:text-white rounded-xl border-2 border-slate-900 transition-all shadow-sm"><Edit2 size={16}/></button>
-                    <button onClick={async () => { if(confirm(`هل أنت متأكد من حذف ${person.name}؟`)) { await supabase.from('people').delete().eq('id', person.id); setState(p => ({...p, people: p.people.filter(x => x.id !== person.id)})); addLog?.('حذف عضو', `تم مسح ملف: ${person.name}`, 'error'); } }} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl border-2 border-red-900 transition-all shadow-sm"><Trash2 size={16}/></button>
+               <div className="mt-6 pt-4 border-t-2 border-slate-100 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                     <div className="bg-[#001F3F] text-white w-9 h-9 rounded-xl flex items-center justify-center font-black text-lg border-2 border-black shadow-md">
+                       #{person.number || '00'}
+                     </div>
+                     <button onClick={() => onOpenReport?.(person)} className="text-slate-900 text-xs font-black hover:text-orange-600 underline underline-offset-4 decoration-2 decoration-orange-600/30 hover:decoration-orange-600 transition-all">الملف الفني الشامل</button>
                   </div>
-                )}
-             </div>
-          </div>
-        ))}
+                  {!isViewer && (
+                    <div className="flex gap-2">
+                      <button onClick={() => { setEditingId(person.id); setFormData(person); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-900 hover:bg-[#001F3F] hover:text-white rounded-xl border-2 border-slate-900 transition-all shadow-sm"><Edit2 size={16}/></button>
+                      <button onClick={async () => { if(confirm(`هل أنت متأكد من حذف ${person.name}؟`)) { await supabase.from('people').delete().eq('id', person.id); setState(p => ({...p, people: p.people.filter(x => x.id !== person.id)})); addLog?.('حذف عضو', `تم مسح ملف: ${person.name}`, 'error'); } }} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl border-2 border-red-900 transition-all shadow-sm"><Trash2 size={16}/></button>
+                    </div>
+                  )}
+               </div>
+            </div>
+          );
+        })}
       </div>
 
       {isModalOpen && !isViewer && (
@@ -421,7 +435,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 </div>
               </div>
 
-              {/* تفعيل حقول السجل الصحي والإداري */}
               <div className="space-y-6">
                 <h4 className="text-[12px] font-black text-red-600 flex items-center gap-2 border-r-4 border-slate-900 pr-3 uppercase">السجل الصحي والإداري والانضباطي</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
