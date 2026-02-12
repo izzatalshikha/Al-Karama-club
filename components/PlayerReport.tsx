@@ -7,7 +7,7 @@ import {
   Hash, ClipboardList, User, Timer, FileText, Briefcase, Sparkles, Loader2, X, BrainCircuit,
   HeartPulse, ShieldAlert, Gavel, Smartphone, CalendarDays, Wallet, Zap, ShieldCheck,
   Medal, Swords, Star, UserPlus, Info, Phone, Fingerprint, Save, Edit3, ChevronDown,
-  Map as MapIcon, BookOpen, School, BadgeCheck
+  Map as MapIcon, BookOpen, School, BadgeCheck, Ruler, Weight
 } from 'lucide-react';
 import { AppState, Person, Match, AttendanceRecord, MatchEvent } from '../types';
 import ClubLogo from './ClubLogo';
@@ -76,19 +76,20 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
   };
 
   const DataRow = ({ icon: Icon, label, value, color = "text-slate-900" }: any) => (
-    <div className="flex justify-between items-center py-5 border-b-2 border-slate-100 last:border-0 group">
+    <div className="flex justify-between items-center py-4 border-b-2 border-slate-100 last:border-0 group transition-colors hover:bg-slate-50 px-2 rounded-lg">
       <div className="flex items-center gap-4">
-        <Icon size={20} className="text-slate-900 drop-shadow-sm group-hover:text-orange-600" />
-        <span className="text-xs font-black text-slate-500 uppercase tracking-tighter drop-shadow-sm">{label}</span>
+        <Icon size={18} className="text-[#001F3F] drop-shadow-sm group-hover:text-orange-600 transition-colors" />
+        <span className="text-[11px] font-black text-slate-500 uppercase tracking-tighter drop-shadow-sm">{label}</span>
       </div>
-      <span className={`text-sm font-black ${color} tabular-nums drop-shadow-sm`}>{value || '---'}</span>
+      <span className={`text-[12px] font-black ${color} tabular-nums drop-shadow-sm text-left`}>{value || '---'}</span>
     </div>
   );
 
   return (
     <div className="space-y-6 md:space-y-12 animate-in fade-in duration-700 pb-24 px-2 md:px-0 text-right font-['Tajawal']" dir="rtl">
+      {/* شريط الإجراءات العلوي */}
       <div className="flex flex-row justify-between items-center no-print gap-4">
-        <button onClick={onBack} className="flex items-center gap-2 text-slate-900 font-black bg-white border-4 border-slate-900 px-8 py-3.5 rounded-2xl text-sm shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all">
+        <button onClick={onBack} className="flex items-center gap-2 text-slate-900 font-black bg-white border-4 border-slate-900 px-8 py-3.5 rounded-2xl text-sm shadow-[6px_6px_0px_0px_rgba(0,31,63,1)] active:shadow-none transition-all">
           <ChevronRight size={20} /> قائمة الفريق
         </button>
         <button onClick={() => window.print()} className="bg-[#001F3F] text-white px-10 py-3.5 rounded-2xl font-black text-sm flex items-center gap-2 shadow-[6px_6px_0px_0px_rgba(255,107,0,1)] border-b-4 border-black hover:bg-black transition-all">
@@ -96,6 +97,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
         </button>
       </div>
 
+      {/* الهيدر الملكي */}
       <div className="bg-white rounded-[4rem] overflow-hidden relative border-4 border-slate-900 shadow-[15px_15px_0px_0px_rgba(0,31,63,1)]">
         <div className="bg-[#001F3F] h-36 md:h-56 relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
@@ -108,15 +110,21 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
             </div>
             <div className="mb-12">
               <h1 className="text-4xl md:text-7xl font-black text-white drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)] tracking-tight leading-none uppercase">{player.name}</h1>
-              <div className="flex gap-4 mt-6">
+              <div className="flex flex-wrap gap-4 mt-6">
                  <span className="bg-orange-600 text-white text-xs md:text-md font-black px-8 py-3 rounded-2xl border-2 border-white uppercase shadow-2xl drop-shadow-sm">{player.role}</span>
                  <span className="bg-blue-600 text-white text-xs md:text-md font-black px-8 py-3 rounded-2xl border-2 border-white uppercase shadow-2xl drop-shadow-sm">{player.category}</span>
+                 {player.position && player.role === 'لاعب' && (
+                    <span className="bg-[#001F3F] text-white text-xs md:text-md font-black px-8 py-3 rounded-2xl border-2 border-orange-600 uppercase shadow-2xl drop-shadow-sm flex items-center gap-2">
+                       <Target size={18} className="text-orange-500" /> {player.position}
+                    </span>
+                 )}
               </div>
             </div>
           </div>
         </div>
         <div className="h-28 md:h-44"></div>
         
+        {/* الإحصائيات السريعة */}
         <div className="px-10 md:px-24 pb-16 grid grid-cols-2 md:grid-cols-7 gap-5 text-right">
            <div className="bg-slate-50 p-6 rounded-[2.5rem] border-4 border-slate-900 flex flex-col items-center shadow-md">
              <Timer className="text-[#001F3F] mb-3" size={36}/>
@@ -152,35 +160,43 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 md:gap-14">
+        {/* العمود الجانبي للبيانات الشخصية */}
         <div className="lg:col-span-1 space-y-10 md:space-y-14">
           <div className="bg-white p-12 rounded-[3.5rem] border-4 border-slate-900 shadow-[10px_10px_0px_0px_rgba(0,31,63,1)]">
             <h3 className="text-md font-black text-slate-900 mb-10 flex items-center gap-4 border-r-8 border-orange-600 pr-4 uppercase drop-shadow-sm">
-              <User size={28} className="text-orange-600" /> البيانات الشخصية الكاملة
+              <User size={28} className="text-orange-600" /> البيانات الشخصية والحيوية
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <DataRow icon={User} label="اسم الأب" value={player.fatherName} />
               <DataRow icon={User} label="اسم الأم" value={player.motherName} />
               <DataRow icon={Calendar} label="تاريخ الميلاد" value={player.birthDate} />
               <DataRow icon={MapPin} label="مكان الولادة" value={player.birthPlace} />
               <DataRow icon={Fingerprint} label="القيد (الخانة)" value={player.khana} />
+              <DataRow icon={Ruler} label="الطول المقاس" value={player.height ? `${player.height} سم` : '---'} />
+              <DataRow icon={Weight} label="الوزن الحالي" value={player.weight ? `${player.weight} كغ` : '---'} />
               <DataRow icon={BadgeCheck} label="الرقم الوطني" value={player.nationalId} />
               <DataRow icon={Hash} label="الرقم الاتحادي" value={player.federalNumber} />
+              <DataRow icon={Globe} label="الرقم الدولي" value={player.internationalId} />
             </div>
           </div>
 
           <div className="bg-[#001F3F] p-12 rounded-[4.5rem] border-4 border-black text-white shadow-[12px_12px_0px_0px_rgba(255,107,0,1)] relative overflow-hidden">
              <h3 className="text-md font-black mb-10 flex items-center gap-4 border-r-8 border-orange-500 pr-4 uppercase drop-shadow-sm">
-                <Briefcase size={28} className="text-orange-500" /> الوضعية التعاقدية والفنية
+                <Briefcase size={28} className="text-orange-500" /> الوضعية التعاقدية والاتصال
              </h3>
-             <div className="space-y-2">
-                <DataRow icon={CalendarDays} label="تاريخ الانضمام" value={player.joinDate} color="text-orange-400" />
+             <div className="space-y-1">
+                <DataRow icon={Target} label="مركز اللعب المعتمد" value={player.position} color="text-orange-400" />
+                <DataRow icon={CalendarDays} label="تاريخ الانضمام" value={player.joinDate} color="text-white" />
                 <DataRow icon={Wallet} label="قيمة العقد السنوية" value={player.contractValue} color="text-emerald-400" />
-                <DataRow icon={Clock} label="نهاية العقد الحالي" value={player.contractEnd} color="text-white" />
+                <DataRow icon={Clock} label="تاريخ انتهاء التعاقد" value={player.contractEnd} color="text-white" />
                 <DataRow icon={ShieldCheck} label="رقم القميص" value={`#${player.number}`} color="text-orange-500" />
+                <DataRow icon={Phone} label="رقم الهاتف الشخصي" value={player.phone} color="text-slate-300" />
+                <DataRow icon={MapIcon} label="العنوان السكني" value={player.address} color="text-slate-300" />
              </div>
           </div>
         </div>
 
+        {/* العمود الرئيسي للمشاركة الفنية والصحة */}
         <div className="lg:col-span-2 space-y-10 md:space-y-14">
           <div className="bg-white p-12 rounded-[4rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(0,31,63,1)] overflow-hidden">
              <div className="flex justify-between items-center mb-10 border-r-8 border-orange-600 pr-6">
@@ -259,6 +275,15 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, player, onBack }) =>
                    {matchStats.yellows >= 3 && <span className="bg-yellow-500 text-white text-xs font-black px-8 py-3 rounded-full border-4 border-yellow-700 shadow-xl">تراكم إنذارات</span>}
                 </div>
              </div>
+          </div>
+
+          <div className="bg-white p-12 rounded-[4rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(0,31,63,1)]">
+             <h4 className="text-lg font-black text-slate-900 mb-10 flex items-center gap-4 border-r-8 border-blue-600 pr-4 uppercase drop-shadow-sm">
+                <StickyNote size={28} className="text-blue-600" /> ملاحظات إدارية وعامة
+             </h4>
+             <p className="text-[15px] font-black text-slate-900 leading-relaxed p-8 bg-slate-50 border-2 border-slate-200 rounded-[2.5rem] shadow-inner min-h-[120px]">
+                {player.notes || "لا توجد ملاحظات إضافية."}
+             </p>
           </div>
         </div>
       </div>

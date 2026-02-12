@@ -26,7 +26,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
     restrictedCategory: ''
   });
 
-  const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد'];
+  const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع'];
 
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();

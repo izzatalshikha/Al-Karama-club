@@ -72,6 +72,19 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
     setEditingSessionId(null);
   };
 
+  const deleteSession = async (id: string, obj: string) => {
+    if (confirm(`هل تريد حذف جلسة "${obj}" نهائياً من السجلات؟`)) {
+        // FIXED: Database deletion first
+        const { error } = await supabase.from('sessions').delete().eq('id', id);
+        if (error) {
+            alert('فشل الحذف من السحابة: ' + error.message);
+            return;
+        }
+        setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== id)}));
+        addLog?.('حذف تمرين', `تم مسح تمرين: ${obj}`, 'error');
+    }
+  };
+
   const toggleSessionComplete = (id: string, currentStatus: boolean) => {
     const session = state.sessions.find(s => s.id === id);
     if (isCatAdmin && session?.category !== restrictedCat) return;
@@ -284,7 +297,6 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   if (showPrintView && printData) {
     return (
       <div className="fixed inset-0 bg-white z-[600] overflow-y-auto p-4 sm:p-12 dir-rtl text-right print:p-0">
-        {/* هيكل التقرير المصمم ليدعم عدة صفحات A4 تلقائياً */}
         <div className="max-w-[210mm] mx-auto bg-white min-h-screen">
            <div className="no-print flex justify-between items-center mb-10 border-b pb-4 p-4">
               <button onClick={() => setShowPrintView(false)} className="flex items-center gap-2 font-black text-slate-500 hover:text-red-600 transition-all"><ChevronRight/> إغلاق المعاينة</button>
@@ -357,12 +369,12 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                       <thead>
                          <tr className="bg-slate-100 border-b-2 border-slate-900 text-[9px] font-black uppercase">
                             <th className="p-3 border-l border-slate-900">اللاعب</th>
-                            <th className="p-3 border-l border-slate-900 text-center">الرقم</th>
-                            <th className="p-3 border-l border-slate-900 text-center">مباريات</th>
-                            <th className="p-3 border-l border-slate-900 text-center">دقائق</th>
-                            <th className="p-3 border-l border-slate-900 text-center text-emerald-600">أهداف</th>
-                            <th className="p-3 border-l border-slate-900 text-center text-blue-600">تمريرات</th>
-                            <th className="p-3 border-l border-slate-900 text-center text-yellow-600">🟨</th>
+                            <th className="p-3 border-l border-slate-300 text-center">الرقم</th>
+                            <th className="p-3 border-l border-slate-300 text-center">مباريات</th>
+                            <th className="p-3 border-l border-slate-300 text-center">دقائق</th>
+                            <th className="p-3 border-l border-slate-300 text-center text-emerald-600">أهداف</th>
+                            <th className="p-3 border-l border-slate-300 text-center text-blue-600">تمريرات</th>
+                            <th className="p-3 border-l border-slate-300 text-center text-yellow-600">🟨</th>
                             <th className="p-3 text-center text-red-600">🟥</th>
                          </tr>
                       </thead>
@@ -403,9 +415,9 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                       <thead>
                          <tr className="bg-slate-100 border-b-2 border-slate-900 text-[10px] font-black uppercase">
                             <th className="p-4 border-l border-slate-900">الاسم الكامل</th>
-                            <th className="p-4 border-l border-slate-900 text-center">الرقم</th>
-                            <th className="p-4 border-l border-slate-900 text-center">نسبة الالتزام</th>
-                            <th className="p-4 border-l border-slate-900 text-center">إنذارات</th>
+                            <th className="p-4 border-l border-slate-300 text-center">الرقم</th>
+                            <th className="p-4 border-l border-slate-300 text-center">نسبة الالتزام</th>
+                            <th className="p-4 border-l border-slate-300 text-center">إنذارات</th>
                             <th className="p-4 text-center">طرد</th>
                          </tr>
                       </thead>
@@ -500,7 +512,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                      {isOwner && (
                        <div className="flex gap-1">
                          <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all"><Edit size={14}/></button>
-                         <button onClick={async () => { if(confirm('حذف التمرين؟')) { await supabase.from('sessions').delete().eq('id', session.id); setState(p => ({...p, sessions: p.sessions.filter(x => x.id !== session.id)})); } }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
+                         <button onClick={() => deleteSession(session.id, session.objective)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
                        </div>
                      )}
                   </div>

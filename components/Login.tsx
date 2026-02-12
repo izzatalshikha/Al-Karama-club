@@ -16,6 +16,16 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
   const [loading, setLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
 
+  // نمط خلفية برمجي بديل للصورة الخارجية
+  const techPattern = {
+    backgroundImage: `
+      radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0),
+      linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px)
+    `,
+    backgroundSize: '24px 24px, 40px 40px, 40px 40px'
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password) {
@@ -30,13 +40,6 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
       const user = await onLoginAttempt(username, password);
       if (user) {
         setLoginSuccess(true);
-        // نترك وقتاً قصيراً لتجربة الحركة الفخمة قبل الانتقال
-        setTimeout(() => {
-          // الانتقال يتم آلياً عبر تغيير الحالة في App.tsx
-        }, 1500);
-      } else {
-        setError('خطأ غير متوقع في التحقق من البيانات.');
-        setLoading(false);
       }
     } catch (err: any) {
       setError(err.message || 'فشل تسجيل الدخول. يرجى المحاولة لاحقاً.');
@@ -46,8 +49,7 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
 
   if (loginSuccess) {
     return (
-      <div className="min-h-screen bg-[#001F3F] flex flex-col items-center justify-center p-6 font-['Tajawal'] relative overflow-hidden" dir="rtl">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+      <div className="min-h-screen bg-[#001F3F] flex flex-col items-center justify-center p-6 font-['Tajawal'] relative overflow-hidden" dir="rtl" style={techPattern}>
         <div className="relative z-10 flex flex-col items-center animate-in zoom-in duration-700">
           <div className="relative">
              <div className="absolute inset-0 bg-orange-500 rounded-full blur-3xl opacity-20 animate-pulse"></div>
@@ -71,7 +73,7 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
   }
 
   return (
-    <div className="min-h-screen bg-[#001F3F] flex flex-col items-center justify-center p-6 font-['Tajawal'] relative overflow-hidden" dir="rtl">
+    <div className="min-h-screen bg-[#001F3F] flex flex-col items-center justify-center p-6 font-['Tajawal'] relative overflow-hidden" dir="rtl" style={techPattern}>
       {/* Decorative Elements */}
       <div className="absolute top-[-15%] right-[-10%] w-[50%] h-[50%] bg-orange-600/10 rounded-full blur-[120px]"></div>
       <div className="absolute bottom-[-15%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px]"></div>

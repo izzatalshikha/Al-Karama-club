@@ -2,8 +2,29 @@
 export type Category = string;
 export type Role = 'لاعب' | 'مدرب' | 'مساعد مدرب' | 'مدرب حراس' | 'مدرب لياقة' | 'إداري' | 'طبيب' | 'معالج' | 'منسق إعلامي' | 'مرافق';
 export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب' | 'غياب بعذر';
-export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد';
+export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد' | 'أمين مستودع';
 export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية' | 'مباراة دولية';
+
+export interface InjuryRecord {
+  id: string;
+  personId: string;
+  type: string;
+  location: string;
+  severity: 'خفيفة' | 'متوسطة' | 'حرجة';
+  startDate: string;
+  expectedReturn: string;
+  status: 'تأهيل' | 'علاج مكثف' | 'تعافى';
+  notes: string;
+}
+
+export interface TacticalPlan {
+  id: string;
+  name: string;
+  category: Category;
+  formation: string;
+  positions: { playerId: string; x: number; y: number; team: 'home' | 'away'; label?: string }[];
+  notes: string;
+}
 
 export interface AppNotification {
   id: string;
@@ -16,10 +37,10 @@ export interface AppNotification {
 
 export interface TechnicalReport {
   id: string;
-  targetId: string; // ID of Match or Staff Member
+  targetId: string;
   type: 'match_evaluation' | 'staff_review' | 'player_radar';
   category: Category;
-  rating: number; // 1-5 stars
+  rating: number;
   content: string;
   author: string;
   date: string;
@@ -49,6 +70,9 @@ export interface Person {
   number?: number;
   phone?: string;
   joinDate: string;
+  height?: string;
+  weight?: string;
+  position?: string;
   contractStart?: string;
   contractEnd?: string;
   contractValue?: string;
@@ -154,4 +178,6 @@ export interface AppState {
   currentUser: AppUser | null;
   notifications: AppNotification[];
   globalCategoryFilter: Category | 'الكل';
+  injuries: InjuryRecord[];
+  tacticalPlans: TacticalPlan[];
 }

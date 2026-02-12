@@ -4,7 +4,7 @@ import {
   Trophy, MapPin, Clock, Plus, X, Shield, Award, Calendar, 
   ChevronLeft, Trash2, Target, AlertTriangle, UserPlus, 
   Printer, FileText, Users, Save, ShieldAlert, BookOpen, Info, Timer, LogOut, LogIn, Crown, Map, ChevronRight, CheckCircle, Zap, TrendingUp, Activity, UserCircle, Sparkles, Loader2, BrainCircuit, Lock, Unlock,
-  Gamepad2, UserCheck, TimerOff, ArrowRightLeft, Medal, ClipboardList
+  Gamepad2, UserCheck, TimerOff, ArrowRightLeft, Medal, ClipboardList, RefreshCw
 } from 'lucide-react';
 import { AppState, Match, MatchType, MatchEvent, Person } from '../types';
 import { generateUUID, supabase } from '../App';
@@ -52,6 +52,32 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     stoppageTime2: '0'
   });
 
+  // إعادة حساب الدقائق تلقائياً عند تغيير الوقت بدل الضائع
+  const recalculateAllMinutes = (currentMatch: Match) => {
+    const stoppage2 = parseInt(currentMatch.stoppageTime2 || '0');
+    const fullTime = 90 + stoppage2;
+    const newLineup = { ...currentMatch.lineup };
+
+    // تحديث الأساسيين
+    newLineup.starters = newLineup.starters.map(s => {
+      if (!s.playerId) return s;
+      const isReplaced = newLineup.subs.find(sub => sub.replacedPlayerId === s.playerId && sub.substitutionMinute);
+      if (isReplaced) {
+        return { ...s, minutesPlayed: isReplaced.substitutionMinute };
+      }
+      return { ...s, minutesPlayed: fullTime.toString() };
+    });
+
+    // تحديث البدلاء
+    newLineup.subs = newLineup.subs.map(sub => {
+      if (!sub.playerId || !sub.substitutionMinute) return sub;
+      const subMin = parseInt(sub.substitutionMinute) || 0;
+      return { ...sub, minutesPlayed: (fullTime - subMin).toString() };
+    });
+
+    return { ...currentMatch, lineup: newLineup };
+  };
+
   const filteredMatches = useMemo(() => {
     return state.matches.filter(m => {
       if (restrictedCat) return m.category === restrictedCat;
@@ -88,7 +114,11 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     setState(prev => ({ ...prev, matches: [newMatch, ...prev.matches] }));
     addLog?.('جدولة مباراة', `تمت جدولة مواجهة ضد ${newMatch.opponent}`, 'success');
     setIsAddOpen(false);
-    setFormData({ ...formData, opponent: '' });
+    setFormData({ 
+      ...formData, 
+      opponent: '', 
+      pitch: 'ملعب الكرامة' 
+    });
   };
 
   const deleteMatch = async (id: string) => {
@@ -96,7 +126,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     if (confirm('🚨 هل أنت متأكد من حذف هذه المباراة نهائياً؟')) {
       const { error } = await supabase.from('matches').delete().eq('id', id);
       if (error) {
-        alert('حدث خطأ أثناء الحذف: ' + error.message);
+        alert('فشل الحذف من السحابة: ' + error.message);
         return;
       }
       setState(prev => ({ ...prev, matches: prev.matches.filter(m => m.id !== id) }));
@@ -115,7 +145,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     if (!activeMatch) return;
     const newLineup = { ...activeMatch.lineup };
     newLineup.subs.splice(index, 1);
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
+    setActiveMatch(recalculateAllMinutes({ ...activeMatch, lineup: newLineup }));
   };
 
   const addEvent = (type: MatchEvent['type']) => {
@@ -142,10 +172,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         alert(`🚨 اللاعب ${player.name} موقوف!`);
         return;
       }
-      const stopTime2 = (parseInt(activeMatch.stoppageTime2 || '0'));
-      newLineup.starters[index] = { playerId: player.id, name: player.name, number: player.number?.toString() || '', minutesPlayed: (90 + stopTime2).toString() };
+      newLineup.starters[index] = { playerId: player.id, name: player.name, number: player.number?.toString() || '', minutesPlayed: '0' };
     }
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
+    setActiveMatch(recalculateAllMinutes({ ...activeMatch, lineup: newLineup }));
   };
 
   const updateSub = (index: number, field: string, value: string) => {
@@ -167,23 +196,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       sub[field] = value;
     }
 
-    // منطق حساب الوقت التلقائي للتبديلات
-    if (sub.substitutionMinute && sub.replacedPlayerId) {
-      const stoppage2 = parseInt(activeMatch.stoppageTime2 || '0');
-      const fullTime = 90 + stoppage2;
-      const subMin = parseInt(sub.substitutionMinute) || 0;
-      
-      // دقائق البديل (الداخل) = الوقت الكلي - دقيقة الدخول
-      sub.minutesPlayed = (fullTime - subMin).toString();
-      
-      // دقائق الأساسي (الخارج) = دقيقة الخروج
-      const starterIdx = newLineup.starters.findIndex(s => s.playerId === sub.replacedPlayerId);
-      if (starterIdx !== -1) {
-        newLineup.starters[starterIdx].minutesPlayed = subMin.toString();
-      }
-    }
-    
-    setActiveMatch({ ...activeMatch, lineup: newLineup });
+    setActiveMatch(recalculateAllMinutes({ ...activeMatch, lineup: newLineup }));
   };
 
   const saveMatch = (complete: boolean = false) => {
@@ -199,12 +212,10 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const inputStyle = "w-full bg-slate-100 border-4 border-slate-900 rounded-2xl py-4 px-6 font-black text-slate-900 shadow-inner focus:border-orange-600 outline-none drop-shadow-sm";
   const labelStyle = "text-xs font-black text-slate-900 mr-2 uppercase block mb-2 tracking-tighter drop-shadow-sm";
 
-  // دالة لتجميع إحصائيات اللاعبين للعرض في التقرير - تم استبدال Map بـ Object لتجنب خطأ التوافقية
   const getPlayerStats = (): PlayerMatchStats[] => {
     if (!activeMatch) return [];
     const statsObj: { [key: string]: PlayerMatchStats } = {};
 
-    // معالجة الأساسيين
     activeMatch.lineup.starters.filter(s => s.playerId).forEach(s => {
       statsObj[s.playerId] = {
         id: s.playerId,
@@ -219,7 +230,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       };
     });
 
-    // معالجة البدلاء
     activeMatch.lineup.subs.filter(s => s.playerId).forEach(s => {
       statsObj[s.playerId] = {
         id: s.playerId,
@@ -234,7 +244,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       };
     });
 
-    // معالجة الأحداث
     activeMatch.events.forEach(ev => {
       const p = statsObj[ev.player];
       if (p) {
@@ -250,7 +259,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
   return (
     <div className="space-y-6 md:space-y-10 pb-24 px-2 font-['Tajawal'] text-right" dir="rtl">
-      {/* Header Panel */}
       <div className="bg-white p-8 rounded-[3rem] border-4 border-slate-900 flex flex-col md:flex-row justify-between items-center no-print shadow-[10px_10px_0px_0px_rgba(0,31,63,1)] gap-6">
         <div>
           <h2 className="text-xl md:text-3xl font-black text-[#001F3F] flex items-center gap-4 uppercase tracking-tighter drop-shadow-md">
@@ -268,7 +276,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         )}
       </div>
 
-      {/* Match Cards List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 no-print">
         {filteredMatches.map(m => (
           <div key={m.id} className={`bg-white p-8 rounded-[3rem] border-4 border-slate-900 relative shadow-xl transition-all ${m.isCompleted ? 'border-emerald-600' : 'hover:border-orange-600 border-b-[16px]'}`}>
@@ -295,7 +302,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         ))}
       </div>
 
-      {/* Add Match Modal */}
       {isAddOpen && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-[600] flex items-center justify-center p-4">
            <div className="bg-white rounded-[4rem] w-full max-w-xl border-[10px] border-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
@@ -324,6 +330,13 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     <label className={labelStyle}>اسم النادي الخصم</label>
                     <input required type="text" className={inputStyle} value={formData.opponent} onChange={e => setFormData({...formData, opponent: e.target.value})} placeholder="مثال: نادي الاتحاد.." />
                  </div>
+                 <div className="space-y-2">
+                    <label className={labelStyle}>الملعب / الموقع</label>
+                    <div className="relative">
+                      <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-600" size={20} />
+                      <input required type="text" className={`${inputStyle} pr-12`} value={formData.pitch} onChange={e => setFormData({...formData, pitch: e.target.value})} placeholder="مثال: ملعب الكرامة البلدي.." />
+                    </div>
+                 </div>
                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                        <label className={labelStyle}>تاريخ المباراة</label>
@@ -340,13 +353,10 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         </div>
       )}
 
-      {/* Active Match Editor Modal */}
       {activeMatch && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[700] overflow-y-auto no-print text-right" dir="rtl">
            <div className="max-w-7xl mx-auto p-4 md:p-12 min-h-screen">
               <div className="bg-white rounded-[4rem] border-[12px] border-slate-900 p-8 md:p-16 shadow-2xl relative">
-                
-                {/* Modal Header */}
                 <header className="flex flex-col md:flex-row justify-between items-center mb-16 border-b-[10px] border-slate-900 pb-12 gap-10">
                    <div className="text-center md:text-right">
                       <h2 className="text-3xl md:text-6xl font-black text-slate-900 tracking-tighter uppercase drop-shadow-md">الكرامة × {activeMatch.opponent}</h2>
@@ -375,11 +385,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                 </header>
 
                 <div className={`grid grid-cols-1 lg:grid-cols-12 gap-16 ${activeMatch.isCompleted ? 'opacity-80 pointer-events-none' : ''}`}>
-                   
-                   {/* Left Column: Lineup & Score */}
                    <div className="lg:col-span-8 space-y-16">
-                      
-                      {/* Score & Stoppage Section */}
                       <section className="bg-slate-900 text-white p-12 rounded-[4rem] border-8 border-orange-600 shadow-2xl">
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                             <div>
@@ -405,14 +411,18 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                   </div>
                                   <div className="space-y-4">
                                      <p className="text-[10px] font-black opacity-50 uppercase text-center">الشوط الثاني (د)</p>
-                                     <input type="number" className="w-full bg-white/10 border-4 border-white/20 text-white rounded-2xl py-4 text-center font-black text-2xl outline-none" value={activeMatch.stoppageTime2} onChange={e => setActiveMatch({...activeMatch, stoppageTime2: e.target.value})} />
+                                     <input 
+                                        type="number" 
+                                        className="w-full bg-white/10 border-4 border-white/20 text-white rounded-2xl py-4 text-center font-black text-2xl outline-none" 
+                                        value={activeMatch.stoppageTime2} 
+                                        onChange={e => setActiveMatch(recalculateAllMinutes({...activeMatch, stoppageTime2: e.target.value}))} 
+                                     />
                                   </div>
                                </div>
                             </div>
                          </div>
                       </section>
 
-                      {/* Starters Section */}
                       <section>
                          <h3 className="text-2xl font-black text-slate-900 mb-10 border-r-8 border-orange-600 pr-5 uppercase flex items-center gap-4 drop-shadow-sm"><Users size={32}/> التشكيلة الأساسية (11 لاعب)</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -435,7 +445,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          </div>
                       </section>
 
-                      {/* التبديلات - Substitutions Section */}
                       <section className="bg-blue-50/50 p-10 rounded-[4rem] border-4 border-blue-900 shadow-xl">
                          <div className="flex justify-between items-center mb-10">
                             <h3 className="text-2xl font-black text-blue-900 uppercase flex items-center gap-4 drop-shadow-sm"><ArrowRightLeft size={32}/> التبديلات ودكة البدلاء</h3>
@@ -497,7 +506,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          </div>
                       </section>
 
-                      {/* ملخص أداء اللاعبين المجمع */}
                       <section className="bg-white p-10 rounded-[4rem] border-4 border-slate-900 shadow-xl overflow-hidden">
                          <h3 className="text-2xl font-black text-slate-900 mb-8 border-r-8 border-emerald-600 pr-5 uppercase flex items-center gap-4 drop-shadow-sm">
                             <ClipboardList size={32}/> ملخص بيانات اللاعبين في المباراة
@@ -542,17 +550,16 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                       </section>
                    </div>
 
-                   {/* Right Column: Events & Technical Report */}
                    <div className="lg:col-span-4 space-y-16">
-                      
-                      {/* Events Tracker */}
                       <section className="bg-slate-50 p-10 rounded-[4rem] border-4 border-slate-900 shadow-xl">
                          <h3 className="text-xl font-black text-slate-900 mb-8 border-r-8 border-emerald-600 pr-4 uppercase flex items-center gap-3 drop-shadow-sm"><Activity size={28}/> سجل أحداث المباراة</h3>
                          <div className="grid grid-cols-2 gap-3 mb-8">
                             <button onClick={() => addEvent('goal')} className="bg-emerald-600 text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md">⚽ هدف</button>
                             <button onClick={() => addEvent('assist')} className="bg-blue-600 text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md">👟 أسيست</button>
+                            <button onClick={() => addEvent('substitution')} className="bg-[#001F3F] text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md">🔄 تبديل</button>
                             <button onClick={() => addEvent('yellow')} className="bg-yellow-400 text-slate-900 py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md">🟨 إنذار</button>
                             <button onClick={() => addEvent('red')} className="bg-red-600 text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md">🟥 طرد</button>
+                            <button onClick={() => addEvent('injury')} className="bg-slate-900 text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md col-span-2">🩹 إصابة</button>
                          </div>
                          <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                             {activeMatch.events.map(ev => (
@@ -561,8 +568,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                      <span className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase border-2 ${
                                        ev.type === 'goal' ? 'bg-emerald-600 text-white border-emerald-700' : 
                                        ev.type === 'assist' ? 'bg-blue-600 text-white border-blue-700' : 
+                                       ev.type === 'substitution' ? 'bg-[#001F3F] text-white border-black' :
                                        ev.type === 'yellow' ? 'bg-yellow-400 text-slate-900 border-yellow-500' : 'bg-red-600 text-white border-red-700'
-                                     }`}>{ev.type === 'goal' ? 'هدف' : ev.type === 'assist' ? 'أسيست' : ev.type === 'yellow' ? 'إنذار' : 'طرد'}</span>
+                                     }`}>{ev.type === 'goal' ? 'هدف' : ev.type === 'assist' ? 'أسيست' : ev.type === 'substitution' ? 'تبديل' : ev.type === 'yellow' ? 'إنذار' : 'طرد'}</span>
                                      <button onClick={() => setActiveMatch({...activeMatch, events: activeMatch.events.filter(x => x.id !== ev.id)})} className="text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>
                                   </div>
                                   <div className="space-y-3">
@@ -579,7 +587,6 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                          </div>
                       </section>
 
-                      {/* Technical Report Section */}
                       <section className="bg-white p-10 rounded-[4rem] border-4 border-[#001F3F] shadow-xl">
                          <h3 className="text-xl font-black text-[#001F3F] mb-8 border-r-8 border-[#FF6B00] pr-4 uppercase flex items-center gap-3 drop-shadow-sm"><FileText size={28}/> التقرير الفني للمكتب</h3>
                          <textarea 

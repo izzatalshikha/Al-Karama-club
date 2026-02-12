@@ -19,6 +19,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
   const currentUser = state.currentUser!;
   const restrictedCat = currentUser.restrictedCategory;
   const isManager = currentUser.role === 'مدير';
+  const isWarehouseKeeper = currentUser.role === 'أمين مستودع';
   const isViewer = currentUser.role === 'مشاهد';
 
   const [formData, setFormData] = useState<Partial<WarehouseItem>>({
@@ -30,8 +31,8 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
 
   const filteredItems = useMemo(() => {
     return state.warehouse.filter(item => {
-      // إذا كان إداري فئة، يرى فقط فئته + المخزن العام
-      const canAccess = isManager || item.category === restrictedCat || item.category === 'المخزن العام';
+      // السماح للمدير وأمين المستودع برؤية كل شيء
+      const canAccess = isManager || isWarehouseKeeper || item.category === restrictedCat || item.category === 'المخزن العام';
       if (!canAccess) return false;
 
       const matchCat = localCategoryFilter === 'الكل' ? true : item.category === localCategoryFilter;
@@ -39,7 +40,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
       
       return matchCat && matchSearch;
     }).sort((a, b) => a.category.localeCompare(b.category));
-  }, [state.warehouse, localCategoryFilter, searchTerm, restrictedCat, isManager]);
+  }, [state.warehouse, localCategoryFilter, searchTerm, restrictedCat, isManager, isWarehouseKeeper]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +101,8 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
               />
            </div>
            
-           {!restrictedCat && (
+           {/* السماح لأمين المستودع والمدير بالفلترة عبر جميع الفئات */}
+           {(isManager || isWarehouseKeeper) && (
              <select 
                value={localCategoryFilter}
                onChange={e => setLocalCategoryFilter(e.target.value)}
@@ -129,7 +131,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                    {item.category}
                  </span>
                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {!isViewer && (isManager || item.category === restrictedCat) && (
+                    {!isViewer && (isManager || isWarehouseKeeper || item.category === restrictedCat) && (
                       <>
                         <button onClick={() => { setEditingId(item.id); setFormData(item); setIsModalOpen(true); }} className="p-1.5 bg-slate-100 text-blue-600 rounded-lg"><Edit3 size={14}/></button>
                         <button onClick={async () => { if(confirm('هل تريد حذف هذا الصنف؟')) { setState(p => ({...p, warehouse: p.warehouse.filter(x => x.id !== item.id)})); addLog?.('حذف من المستودع', `تم مسح: ${item.name}`, 'error'); } }} className="p-1.5 bg-red-50 text-red-600 rounded-lg"><Trash2 size={14}/></button>
@@ -183,7 +185,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                     <div className="space-y-1">
                        <label className={labelClass}>القسم / الفئة</label>
                        <select 
-                        disabled={!!restrictedCat}
+                        disabled={!!restrictedCat && !isWarehouseKeeper}
                         className={fieldClass} 
                         value={formData.category} 
                         onChange={e => setFormData({...formData, category: e.target.value as any})}

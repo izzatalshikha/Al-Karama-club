@@ -6,57 +6,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>نادي الكرامة الرياضي - مكتب كرة القدم</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg-main: #020617; /* سواد أزرق عميق */
+      --card-bg: rgba(30, 41, 59, 0.5); /* رمادي أزرق شفاف */
+      --accent: #f97316; /* برتقالي عصري */
+      --text-primary: #f8fafc; /* أبيض ثلجي */
+      --text-secondary: #94a3b8; /* رمادي هادئ */
+    }
+
     body {
-      font-family: 'Tajawal', sans-serif;
-      background-color: #000F21;
-      color: #FFFFFF;
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-primary);
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    
-    /* Solid Panel Style - No Blur */
-    .solid-panel {
-      background-color: #ffffff;
-      border: 2px solid #001F3F;
-      border-radius: 2rem;
-      box-shadow: 8px 8px 0px 0px #001F3F;
+      overflow-x: hidden;
     }
 
-    .dark-solid-panel {
-      background-color: #001F3F;
-      border: 2px solid #FF6B00;
-      border-radius: 2rem;
-      box-shadow: 8px 8px 0px 0px #FF6B00;
+    /* إزالة ظلال التسعينات المزعجة */
+    h1, h2, h3, h4, h5, h6, p, span, button, label, td, th {
+      text-shadow: none !important;
     }
 
-    @media print {
-      * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      .no-print { display: none !important; }
-      body { background: white !important; color: black !important; margin: 0; padding: 0; }
-      @page { size: A4 portrait; margin: 1cm; }
-      .solid-panel { border: 2px solid #000 !important; box-shadow: none !important; color: black !important; }
+    /* تصميم البطاقات العصرية (Glassmorphism) */
+    .modern-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 1.25rem;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* تحسين شكل المدخلات */
+    input, select, textarea {
+      background-color: rgba(15, 23, 42, 0.8) !important;
+      color: var(--text-primary) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      transition: all 0.2s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2) !important;
+      outline: none;
     }
 
     .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-    .custom-scrollbar::-webkit-scrollbar-track { background: #000F21; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: #FF6B00; border-radius: 10px; }
-    
-    /* Animation Fixes */
-    .glow-orange { box-shadow: 0 0 20px rgba(255, 107, 0, 0.2); }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-    /* Mobile Legibility & Prevent Auto-Zoom */
-    input, select, textarea {
-      font-size: 14px !important;
+    /* أنيميشن ناعمة */
+    .fade-up {
+      animation: fadeUp 0.4s ease-out forwards;
     }
-    @media (max-width: 768px) {
-      input, select, textarea {
-        font-size: 16px !important; /* iOS specific fix to prevent zoom */
-      }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 <script type="importmap">
@@ -67,7 +75,8 @@
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.7",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "html2pdf.js": "https://esm.sh/html2pdf.js@^0.14.0"
   }
 }
 </script>
@@ -75,6 +84,7 @@
 </head>
 <body>
   <div id="root"></div>
+  <script type="module" src="index.tsx"></script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
