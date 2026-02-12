@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, RefreshCw, CloudCheck, Sparkles, Package, FilePieChart, Printer, Loader2,
-  Activity, HeartPulse, QrCode, PenTool, ChevronRight
+  Activity, HeartPulse, QrCode, PenTool, ChevronRight, ClipboardList
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person } from './types';
@@ -154,11 +154,13 @@ const App: React.FC = () => {
   const navItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
     { id: 'squad', label: 'الفريق', icon: Users },
+    { id: 'training', label: 'التدريبات', icon: Calendar },
     { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
     { id: 'tactics', label: 'التكتيك', icon: PenTool },
     { id: 'medical', label: 'الطبابة', icon: HeartPulse },
     { id: 'matches', label: 'المباريات', icon: Trophy },
     { id: 'warehouse', label: 'المستودع', icon: Package },
+    { id: 'qr', label: 'نظام QR', icon: QrCode },
     { id: 'analytics', label: 'التحليلات', icon: Activity },
     { id: 'ai', label: 'الذكاء الفني', icon: Sparkles },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
@@ -220,11 +222,13 @@ const App: React.FC = () => {
           <div id="report-section" className="max-w-6xl mx-auto space-y-8 fade-up">
             {activeTab === 'dashboard' && <Dashboard state={state} setState={updateStateAndSync as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
             {activeTab === 'squad' && <SquadManagement state={state} setState={updateStateAndSync as any} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={() => {}} getSuspension={() => ({isSuspended:false,currentYellows:0,hasActiveRed:false})} />}
+            {activeTab === 'training' && <TrainingPlanner state={state} setState={updateStateAndSync as any} addLog={() => {}} />}
             {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateStateAndSync as any} addLog={() => {}} />}
             {activeTab === 'tactics' && <TacticalBoard state={state} setState={updateStateAndSync as any} />}
             {activeTab === 'medical' && <MedicalCenter state={state} setState={updateStateAndSync as any} />}
             {activeTab === 'matches' && <MatchPlanner state={state} setState={updateStateAndSync as any} defaultSelectedId={selectedMatchId} getSuspension={() => ({isSuspended:false,currentYellows:0,hasActiveRed:false})} />}
-            {activeTab === 'warehouse' && <QRManager state={state} setState={updateStateAndSync as any} />}
+            {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateStateAndSync as any} addLog={() => {}} />}
+            {activeTab === 'qr' && <QRManager state={state} setState={updateStateAndSync as any} />}
             {activeTab === 'analytics' && <VisualAnalytics state={state} />}
             {activeTab === 'ai' && <AIAssistant state={state} />}
             {activeTab === 'settings' && <SettingsView state={state} setState={updateStateAndSync as any} addLog={() => {}} />}
