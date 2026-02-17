@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, 
-  Activity, HeartPulse, QrCode, PenTool, Sparkles, Package, Printer, Loader2, CheckCircle2, AlertCircle
+  Activity, HeartPulse, QrCode, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Map as MapIcon, Compass
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification } from './types';
@@ -25,6 +25,7 @@ import TacticalBoard from './components/TacticalBoard';
 import MedicalCenter from './components/MedicalCenter';
 import QRManager from './components/QRManager';
 import VisualAnalytics from './components/VisualAnalytics';
+import LocationAssistant from './components/LocationAssistant';
 
 export const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -49,8 +50,8 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem('alkarama_final_v1_fixed');
-    if (saved) { try { return JSON.parse(saved); } catch (e) { console.error("Parse Error", e); } }
+    const saved = localStorage.getItem('alkarama_central_v2');
+    if (saved) { try { return JSON.parse(saved); } catch (e) {} }
     return {
       currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال'],
       people: [], sessions: [], matches: [], warehouse: [], technicalReports: [],
@@ -65,86 +66,123 @@ const App: React.FC = () => {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 3000);
   }, []);
 
-  // المزامنة التلقائية المحسنة
-  useEffect(() => {
-    if (state.currentUser) {
-      localStorage.setItem('alkarama_final_v1_fixed', JSON.stringify(state));
-      setSyncStatus('syncing');
-      const timer = setTimeout(async () => {
-        try {
-          await Promise.all([
-            state.people.length > 0 && supabase.from('people').upsert(state.people),
-            state.matches.length > 0 && supabase.from('matches').upsert(state.matches),
-            state.attendance.length > 0 && supabase.from('attendance').upsert(state.attendance),
-            state.warehouse.length > 0 && supabase.from('warehouse').upsert(state.warehouse),
-            state.users.length > 0 && supabase.from('app_users').upsert(state.users),
-            state.sessions.length > 0 && supabase.from('sessions').upsert(state.sessions)
-          ]);
-          setSyncStatus('synced');
-        } catch (e) {
-          console.error("Sync Error", e);
-          setSyncStatus('error');
-        }
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [state]);
-
   const fetchAllData = useCallback(async (user: AppUser) => {
-    setIsInitialLoading(true);
     setSyncStatus('syncing');
     try {
-      const [ppl, mtch, usrs, cats, sess, att] = await Promise.all([
-        supabase.from('people').select('*'),
-        supabase.from('matches').select('*'),
-        supabase.from('app_users').select('*'),
-        supabase.from('categories').select('*'),
-        supabase.from('sessions').select('*'),
-        supabase.from('attendance').select('*')
+      const isManager = user.role === 'مدير';
+      const cat = user.restrictedCategory;
+
+      let peopleQ = supabase.from('people').select('*');
+      let matchesQ = supabase.from('matches').select('*');
+      let sessionsQ = supabase.from('sessions').select('*');
+      let attendanceQ = supabase.from('attendance').select('*');
+      let warehouseQ = supabase.from('warehouse').select('*');
+      let usersQ = supabase.from('app_users').select('*');
+
+      if (!isManager && cat) {
+        peopleQ = peopleQ.eq('category', cat);
+        matchesQ = matchesQ.eq('category', cat);
+        sessionsQ = sessionsQ.eq('category', cat);
+        warehouseQ = warehouseQ.or(`category.eq.${cat},category.eq.المخزن العام`);
+      }
+
+      const [p, m, s, a, w, u] = await Promise.all([
+        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ
       ]);
 
       setState(prev => ({
         ...prev,
         currentUser: user,
-        people: ppl.data || [],
-        matches: mtch.data || [],
-        users: usrs.data || [],
-        sessions: sess.data || [],
-        attendance: att.data || [],
-        categories: cats.data?.length ? cats.data.map(c => c.name) : prev.categories
+        people: p.data || [],
+        matches: m.data || [],
+        sessions: s.data || [],
+        attendance: a.data || [],
+        warehouse: w.data || [],
+        users: u.data || [],
+        globalCategoryFilter: isManager ? 'الكل' : (cat || 'الكل')
       }));
       setSyncStatus('synced');
     } catch (e) {
       setSyncStatus('error');
-    } finally {
-      setIsInitialLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!state.currentUser) return;
+
+    const channel = supabase.channel('global-changes')
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        fetchAllData(state.currentUser!);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [state.currentUser, fetchAllData]);
+
+  useEffect(() => {
+    if (state.currentUser) {
+      localStorage.setItem('alkarama_central_v2', JSON.stringify(state));
+    }
+  }, [state]);
 
   const updateState = (updater: (prev: AppState) => AppState) => {
     setState(prev => updater(prev));
   };
 
   const onLoginAttempt = async (u: string, p: string) => {
-    if ((u === 'عزت' || u.toUpperCase() === 'IZZAT') && p === '123') {
-      const user: AppUser = { id: 'root', username: 'عزت عامر الشيخة', role: 'مدير' };
-      await fetchAllData(user);
-      return user;
+    setSyncStatus('syncing');
+    if ((u.trim() === 'عزت' || u.toUpperCase() === 'IZZAT') && p === '123') {
+      const rootUser: AppUser = { id: 'root', username: 'عزت عامر الشيخة', role: 'مدير' };
+      await fetchAllData(rootUser);
+      return rootUser;
     }
+
     const { data } = await supabase.from('app_users').select('*').eq('username', u).eq('password', p).maybeSingle();
-    if (!data) return null;
+    if (!data) {
+      setSyncStatus('error');
+      return null;
+    }
     await fetchAllData(data);
     return data;
   };
 
+  const getPlayerSuspension = useCallback((playerId: string, category: string) => {
+    const playerMatches = state.matches
+      .filter(m => m.category === category && m.isCompleted)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    let accumulatedYellows = 0;
+    let hasActiveRed = false;
+    let suspendedForNext = false;
+
+    playerMatches.forEach(m => {
+      const matchYellows = m.events.filter(e => e.type === 'yellow' && (e.player === playerId)).length;
+      const matchRed = m.events.some(e => e.type === 'red' && (e.player === playerId));
+
+      if (hasActiveRed) {
+        suspendedForNext = true;
+        hasActiveRed = false;
+      } else if (accumulatedYellows >= 3) {
+        suspendedForNext = true;
+        accumulatedYellows = 0;
+      } else {
+        suspendedForNext = false;
+      }
+
+      accumulatedYellows += matchYellows;
+      if (matchRed) hasActiveRed = true;
+    });
+
+    return { 
+      isSuspended: suspendedForNext || hasActiveRed, 
+      currentYellows: accumulatedYellows,
+      hasActiveRed
+    };
+  }, [state.matches]);
+
   if (!state.currentUser) return <Login onLoginAttempt={onLoginAttempt} />;
-  
-  if (isInitialLoading) return (
-    <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 text-white font-['IBM_Plex_Sans_Arabic']">
-       <Loader2 className="animate-spin text-orange-500 mb-4" size={50} />
-       <h2 className="text-xl font-bold">جاري تحميل سجلات النادي المركزية...</h2>
-    </div>
-  );
 
   const navItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
@@ -154,11 +192,15 @@ const App: React.FC = () => {
     { id: 'tactics', label: 'التكتيك', icon: PenTool },
     { id: 'medical', label: 'الطبابة', icon: HeartPulse },
     { id: 'matches', label: 'المباريات', icon: Trophy },
+    { id: 'logistics', label: 'المساعد اللوجستي', icon: Compass },
     { id: 'warehouse', label: 'المستودع', icon: Package },
     { id: 'qr', label: 'نظام QR', icon: QrCode },
     { id: 'analytics', label: 'التحليلات', icon: Activity },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
-  ];
+  ].filter(item => {
+    if (state.currentUser?.role !== 'مدير' && item.id === 'settings') return false;
+    return true;
+  });
 
   return (
     <div className="flex h-screen bg-[#020617] text-[#f8fafc] font-['IBM_Plex_Sans_Arabic'] overflow-hidden" dir="rtl">
@@ -180,6 +222,17 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 mt-auto">
+          <div className="bg-white/5 rounded-xl p-3 mb-4 flex items-center gap-3">
+             <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-[10px] font-bold">
+                {state.currentUser.username.charAt(0)}
+             </div>
+             {isSidebarOpen && (
+               <div className="min-w-0">
+                  <p className="text-[10px] font-bold truncate">{state.currentUser.username}</p>
+                  <p className="text-[8px] text-slate-500 uppercase">{state.currentUser.role}</p>
+               </div>
+             )}
+          </div>
           <button onClick={() => setState(prev => ({ ...prev, currentUser: null }))} 
             className="w-full p-3 rounded-xl text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 transition-all flex items-center justify-center gap-3">
             <LogOut size={18} /> {isSidebarOpen && <span className="text-sm font-semibold">خروج</span>}
@@ -197,42 +250,45 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-4">
-             <div className={`px-4 py-2 rounded-full border border-white/5 text-[10px] font-bold ${syncStatus === 'synced' ? 'text-emerald-500' : 'text-orange-500'}`}>
-                {syncStatus === 'synced' ? 'متصل ومزامن' : 'جاري المزامنة...'}
+             <div className={`flex items-center gap-2 px-4 py-2 rounded-full border border-white/5 text-[10px] font-bold ${syncStatus === 'synced' ? 'text-emerald-500' : 'text-orange-500'}`}>
+                {syncStatus === 'syncing' ? <RefreshCw size={12} className="animate-spin"/> : <div className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>}
+                {syncStatus === 'synced' ? 'مزامنة لحظية' : 'جاري التحديث...'}
              </div>
-             <button onClick={() => html2pdf().from(document.getElementById('report-section')).save()} 
+             <button onClick={() => window.print()} 
                 className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-orange-500 hover:text-white transition-all shadow-xl flex items-center gap-2">
-                <Printer size={16} /> تصدير PDF
+                <Printer size={16} /> طباعة
              </button>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <div id="report-section" className="max-w-6xl mx-auto space-y-8">
-            {activeTab === 'dashboard' && <Dashboard state={state} setState={updateState} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
+            {activeTab === 'dashboard' && <Dashboard state={state} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
             {activeTab === 'squad' && <SquadManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
-            {activeTab === 'training' && <TrainingPlanner state={state} setState={updateState} addLog={addNotify} />}
-            {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateState} addLog={addNotify} />}
+            {activeTab === 'training' && <TrainingPlanner state={state} setState={updateState as any} addLog={addNotify} />}
+            {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'tactics' && <TacticalBoard state={state} setState={updateState} />}
             {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} />}
-            {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState} defaultSelectedId={selectedMatchId} getSuspension={() => ({isSuspended:false,currentYellows:0,hasActiveRed:false})} />}
+            {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} />}
+            {activeTab === 'logistics' && <LocationAssistant />}
             {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} />}
             {activeTab === 'qr' && <QRManager state={state} setState={updateState} />}
             {activeTab === 'analytics' && <VisualAnalytics state={state} />}
-            {activeTab === 'settings' && <SettingsView state={state} setState={updateState} addLog={addNotify} />}
-            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} onBack={() => setActiveTab('squad')} />}
+            {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} />}
+            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} />}
           </div>
         </div>
 
         <div className="fixed bottom-8 left-8 z-[999] space-y-2">
           {notifications.map(n => (
-            <div key={n.id} className={`p-4 rounded-xl shadow-2xl border-r-4 min-w-[200px] flex items-center gap-3 bg-[#1e293b] text-white ${n.type === 'success' ? 'border-emerald-500' : 'border-red-500'}`}>
+            <div key={n.id} className={`p-4 rounded-xl shadow-2xl border-r-4 min-w-[200px] flex items-center gap-3 bg-[#1e293b] text-white animate-in slide-in-from-left-full ${n.type === 'success' ? 'border-emerald-500' : n.type === 'error' ? 'border-red-500' : 'border-blue-500'}`}>
               {n.type === 'success' ? <CheckCircle2 className="text-emerald-500" /> : <AlertCircle className="text-red-500" />}
               <span className="text-xs font-bold">{n.message}</span>
             </div>
           ))}
         </div>
       </div>
+      <ChatBot state={state} />
     </div>
   );
 };
