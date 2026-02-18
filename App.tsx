@@ -2,11 +2,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, 
-  Activity, HeartPulse, QrCode, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Map as MapIcon, Compass
+  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification } from './types';
-import html2pdf from 'html2pdf.js';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -19,11 +18,9 @@ import PlayerReport from './components/PlayerReport';
 import WarehouseManagement from './components/WarehouseManagement';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
-import AIAssistant from './components/AIAssistant';
 import ChatBot from './components/ChatBot';
 import TacticalBoard from './components/TacticalBoard';
 import MedicalCenter from './components/MedicalCenter';
-import QRManager from './components/QRManager';
 import VisualAnalytics from './components/VisualAnalytics';
 import LocationAssistant from './components/LocationAssistant';
 
@@ -44,19 +41,18 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
-  const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Person | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem('alkarama_central_v2');
+    const saved = localStorage.getItem('eagle_os_v3');
     if (saved) { try { return JSON.parse(saved); } catch (e) {} }
     return {
       currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال'],
       people: [], sessions: [], matches: [], warehouse: [], technicalReports: [],
-      attendance: [], users: [], notifications: [], globalCategoryFilter: 'الكل',
-      injuries: [], tacticalPlans: []
+      attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], 
+      globalCategoryFilter: 'الكل'
     };
   });
 
@@ -78,6 +74,8 @@ const App: React.FC = () => {
       let attendanceQ = supabase.from('attendance').select('*');
       let warehouseQ = supabase.from('warehouse').select('*');
       let usersQ = supabase.from('app_users').select('*');
+      let injuriesQ = supabase.from('injuries').select('*');
+      let tacticalQ = supabase.from('tactical_plans').select('*');
 
       if (!isManager && cat) {
         peopleQ = peopleQ.eq('category', cat);
@@ -86,8 +84,8 @@ const App: React.FC = () => {
         warehouseQ = warehouseQ.or(`category.eq.${cat},category.eq.المخزن العام`);
       }
 
-      const [p, m, s, a, w, u] = await Promise.all([
-        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ
+      const [p, m, s, a, w, u, inj, tac] = await Promise.all([
+        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ
       ]);
 
       setState(prev => ({
@@ -99,7 +97,9 @@ const App: React.FC = () => {
         attendance: a.data || [],
         warehouse: w.data || [],
         users: u.data || [],
-        globalCategoryFilter: isManager ? 'الكل' : (cat || 'الكل')
+        injuries: inj.data || [],
+        tacticalPlans: tac.data || [],
+        globalCategoryFilter: (!isManager && cat) ? cat : 'الكل'
       }));
       setSyncStatus('synced');
     } catch (e) {
@@ -123,7 +123,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (state.currentUser) {
-      localStorage.setItem('alkarama_central_v2', JSON.stringify(state));
+      localStorage.setItem('eagle_os_v3', JSON.stringify(state));
     }
   }, [state]);
 
@@ -194,7 +194,6 @@ const App: React.FC = () => {
     { id: 'matches', label: 'المباريات', icon: Trophy },
     { id: 'logistics', label: 'المساعد اللوجستي', icon: Compass },
     { id: 'warehouse', label: 'المستودع', icon: Package },
-    { id: 'qr', label: 'نظام QR', icon: QrCode },
     { id: 'analytics', label: 'التحليلات', icon: Activity },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ].filter(item => {
@@ -207,7 +206,7 @@ const App: React.FC = () => {
       <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} bg-[#0f172a] border-l border-white/5 transition-all duration-300 flex flex-col z-50 shadow-2xl`}>
         <div className="p-8 flex items-center justify-center gap-4">
            <ClubLogo size={isSidebarOpen ? 50 : 35} />
-           {isSidebarOpen && <span className="text-lg font-bold text-white tracking-tight">الكرامة SC</span>}
+           {isSidebarOpen && <span className="text-xl font-black text-white tracking-tight bg-gradient-to-r from-orange-500 to-white bg-clip-text text-transparent">EAGLE OS</span>}
         </div>
         
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
@@ -252,7 +251,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
              <div className={`flex items-center gap-2 px-4 py-2 rounded-full border border-white/5 text-[10px] font-bold ${syncStatus === 'synced' ? 'text-emerald-500' : 'text-orange-500'}`}>
                 {syncStatus === 'syncing' ? <RefreshCw size={12} className="animate-spin"/> : <div className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>}
-                {syncStatus === 'synced' ? 'مزامنة لحظية' : 'جاري التحديث...'}
+                {syncStatus === 'synced' ? 'EAGLE OS: Online' : 'EAGLE OS: Syncing...'}
              </div>
              <button onClick={() => window.print()} 
                 className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-orange-500 hover:text-white transition-all shadow-xl flex items-center gap-2">
@@ -272,10 +271,9 @@ const App: React.FC = () => {
             {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} />}
             {activeTab === 'logistics' && <LocationAssistant />}
             {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} />}
-            {activeTab === 'qr' && <QRManager state={state} setState={updateState} />}
             {activeTab === 'analytics' && <VisualAnalytics state={state} />}
             {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} />}
+            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}
           </div>
         </div>
 

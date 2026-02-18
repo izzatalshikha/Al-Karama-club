@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, Calendar, Trophy, Clock, MapPin, Zap, 
-  Activity, Search, Package, Map
+  Activity, Search, Package, WalletCards
 } from 'lucide-react';
 import { AppState, Person, Match, TrainingSession } from '../types';
 
@@ -58,6 +58,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const [searchTerm, setSearchTerm] = useState('');
   const globalFilter = state.globalCategoryFilter;
   const isManager = state.currentUser?.role === 'مدير';
+  const isViewer = state.currentUser?.role === 'مشاهد';
+  const restrictedCat = state.currentUser?.restrictedCategory;
+  
+  const canSwitchCategory = isManager || (isViewer && !restrictedCat);
+
   const todayStr = new Date().toLocaleDateString('en-CA');
 
   const upcomingMatches = useMemo(() => {
@@ -78,14 +83,13 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
 
   return (
     <div className="space-y-10">
-      {/* Header & Category Filter */}
       <div className="flex flex-col lg:flex-row gap-6 items-center">
          <div className="flex-1 w-full relative group">
             <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-orange-500 transition-colors" size={20} />
-            <input type="text" placeholder="البحث في الفريق والمواعيد..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            <input type="text" placeholder="البحث في EAGLE OS..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-5 pr-14 pl-6 text-white placeholder:text-slate-600 focus:bg-[#0f172a] transition-all" />
          </div>
-         {isManager && (
+         {canSwitchCategory && (
            <select value={state.globalCategoryFilter} onChange={e => setState(prev => ({ ...prev, globalCategoryFilter: e.target.value }))}
              className="w-full lg:w-72 bg-slate-900/50 border border-white/5 rounded-2xl p-5 font-bold text-white cursor-pointer outline-none hover:bg-white/5 transition-all">
               <option value="الكل">جميع فئات النادي</option>
@@ -94,7 +98,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
          )}
       </div>
 
-      {/* Stats Cards - Modern Look */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {stats.map((s, i) => (
           <div key={i} className="modern-card p-8 group hover:scale-[1.02] transition-all duration-300">
@@ -111,12 +114,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         ))}
       </div>
 
-      {/* Sections Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-         {/* Matches List */}
          <div className="space-y-6">
             <div className="flex items-center gap-3 border-r-4 border-orange-500 pr-4">
-               <h2 className="text-xl font-bold text-white tracking-tight uppercase">المباريات المرتقبة</h2>
+               <h2 className="text-xl font-bold text-white tracking-tight uppercase">مباريات EAGLE OS المرتقبة</h2>
                <div className="px-2 py-0.5 bg-orange-500/10 text-orange-400 text-[10px] font-bold rounded">{upcomingMatches.length}</div>
             </div>
             <div className="space-y-4">
@@ -130,29 +131,17 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                        <ActivityCountdown date={m.date} time={m.time} />
                     </div>
                     <div className="flex items-center gap-6">
-                       <div className="text-center">
-                          <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center font-bold text-xl border border-white/5">الكرامة</div>
-                       </div>
-                       <div className="text-slate-600 font-bold">VS</div>
-                       <div className="text-center">
-                          <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center font-bold text-xl border border-white/5">{m.opponent.charAt(0)}</div>
-                       </div>
                        <div className="flex-1">
                           <h3 className="text-lg font-bold text-white">ضد {m.opponent}</h3>
                           <p className="text-xs text-slate-400 flex items-center gap-2 mt-1"><MapPin size={12}/> {m.pitch}</p>
+                          <p className="text-[10px] text-emerald-500 font-bold mt-2 flex items-center gap-1"><WalletCards size={12}/> سلفة: {m.advancePayment} ل.س</p>
                        </div>
                     </div>
                  </div>
                ))}
-               {upcomingMatches.length === 0 && (
-                 <div className="modern-card p-12 text-center text-slate-500 font-medium italic border-dashed border-2 border-white/5">
-                    لا توجد مباريات مجدولة حالياً
-                 </div>
-               )}
             </div>
          </div>
 
-         {/* Training Sessions List */}
          <div className="space-y-6">
             <div className="flex items-center gap-3 border-r-4 border-blue-500 pr-4">
                <h2 className="text-xl font-bold text-white tracking-tight uppercase">أجندة التدريبات</h2>
@@ -172,11 +161,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                     </div>
                  </div>
                ))}
-               {upcomingSessions.length === 0 && (
-                 <div className="modern-card p-12 text-center text-slate-500 font-medium italic border-dashed border-2 border-white/5">
-                    لا توجد حصص تدريبية مجدولة
-                 </div>
-               )}
             </div>
          </div>
       </div>

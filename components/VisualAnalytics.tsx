@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { AppState } from '../types';
 import { BarChart3, TrendingUp, Trophy, Calendar, Users, Activity, PieChart } from 'lucide-react';
 
+// Added missing VisualAnalyticsProps interface
 interface VisualAnalyticsProps {
   state: AppState;
 }
@@ -14,11 +15,26 @@ const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({ state }) => {
     const losses = matches.filter(m => parseInt(m.ourScore) < parseInt(m.opponentScore)).length;
     const draws = matches.filter(m => parseInt(m.ourScore) === parseInt(m.opponentScore)).length;
     
-    // حساب معدل الحضور الأسبوعي
+    // حساب معدل الحضور الأسبوعي بدقة إحصائية
     const categoryAttendance = state.categories.map(cat => {
-      const catPeople = state.people.filter(p => p.category === cat && p.role === 'لاعب').length;
-      const catAttendance = state.attendance.filter(a => state.people.find(p => p.id === a.personId)?.category === cat);
-      const rate = catPeople > 0 ? Math.round((catAttendance.filter(a => a.status === 'حاضر').length / (catAttendance.length || 1)) * 100) : 0;
+      const catPlayers = state.people.filter(p => p.category === cat && p.role === 'لاعب');
+      const catSessions = state.sessions.filter(s => s.category === cat && s.isCompleted);
+      
+      // المقام هو إجمالي الفرص المتاحة للحضور لجميع اللاعبين في الفئة
+      const totalPotentialAttendance = catPlayers.length * catSessions.length;
+      
+      if (totalPotentialAttendance === 0) return { cat, rate: 0 };
+
+      // حساب مجموع النقاط: حضور كامل = 1، تأخر = 0.5
+      let totalPoints = 0;
+      catPlayers.forEach(player => {
+        const records = state.attendance.filter(a => a.personId === player.id && state.sessions.find(s => s.id === a.sessionId)?.category === cat);
+        const present = records.filter(r => r.status === 'حاضر').length;
+        const late = records.filter(r => r.status === 'متأخر').length;
+        totalPoints += (present + (late * 0.5));
+      });
+
+      const rate = Math.round((totalPoints / totalPotentialAttendance) * 100);
       return { cat, rate };
     });
 

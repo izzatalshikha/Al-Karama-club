@@ -130,6 +130,9 @@ export interface Match {
   opponentScore: string;
   stoppageTime1?: string; 
   stoppageTime2?: string; 
+  referee?: string;
+  homeCoach?: string;
+  awayCoach?: string;
   events: MatchEvent[];
   lineup: {
     starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];

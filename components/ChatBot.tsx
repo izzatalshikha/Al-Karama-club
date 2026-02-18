@@ -11,7 +11,7 @@ interface ChatBotProps {
 const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([
-    { role: 'ai', text: 'أهلاً بك! أنا مساعدك الذكي الخاص بنادي الكرامة. لقد قمت الآن بمزامنة كافة بيانات النادي، كيف يمكنني مساعدتك اليوم؟' }
+    { role: 'ai', text: 'Eagle OS: ترحيب نشط! أنا مساعدك الذكي المدمج في نظام إيجل. لقد قمت الآن بمزامنة كافة بيانات نادي الكرامة، كيف يمكنني مساعدتك إدارياً أو فنياً اليوم؟' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +25,6 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen]);
 
-  // توليد سياق البيانات المحدث للذكاء الاصطناعي
   const dataContext = useMemo(() => {
     const playersCount = state.people.filter(p => p.role === 'لاعب').length;
     const staffCount = state.people.filter(p => p.role !== 'لاعب').length;
@@ -45,7 +44,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
     const categoriesList = state.categories.join(', ');
 
     return `
-      إليك ملخص حي لقاعدة بيانات نادي الكرامة السوري حالياً:
+      إليك ملخص حي لقاعدة بيانات نادي الكرامة السوري من خلال Eagle OS:
       - عدد اللاعبين الإجمالي: ${playersCount}
       - عدد الكوادر الفنية والإدارية: ${staffCount}
       - الفئات المسجلة: ${categoriesList}
@@ -72,17 +71,17 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const systemInstruction = `
-        أنت "مساعد الكرامة الذكي" (Pro Edition). 
-        تعمل كمستشار إداري وفني داخل مكتب كرة القدم لنادي الكرامة الرياضي السوري.
-        لديك وصول كامل للبيانات التالية لاستخدامها في إجاباتك:
+        أنت "مساعد Eagle OS الذكي" (Pro Edition). 
+        تعمل كنظام تشغيل استشاري إداري وفني داخل مكتب كرة القدم لنادي الكرامة الرياضي السوري.
+        لديك وصول كامل لبيانات Eagle OS التالية لاستخدامها في إجاباتك:
         
         ${dataContext}
         
-        قواعد الإجابة:
-        1. كن مهنياً، ودوداً، ومخلصاً لهوية نادي الكرامة.
+        قواعد Eagle OS للإجابة:
+        1. كن مهنياً، سريع الاستجابة، ودوداً، ومخلصاً لهوية نادي الكرامة.
         2. استخدم البيانات أعلاه للإجابة بدقة على أسئلة المستخدم حول المواعيد أو أعداد اللاعبين.
-        3. إذا سأل المستخدم عن شيء غير موجود في البيانات، أخبره بلباقة أنك لا تملك هذه المعلومة حالياً.
-        4. شجع دائماً على الروح الرياضية والتميز الفني.
+        3. إذا سأل المستخدم عن شيء غير موجود في البيانات، أخبره بلباقة أن نظام Eagle OS لا يملك هذه المعلومة حالياً.
+        4. شجع دائماً على الروح الرياضية والتميز الفني والابتكار الرقمي.
       `;
 
       const response = await ai.models.generateContent({
@@ -94,9 +93,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
         }
       });
 
-      setMessages(prev => [...prev, { role: 'ai', text: response.text || "عذراً، لم أستطع معالجة طلبك بناءً على البيانات المتاحة." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: response.text || "عذراً، لم أستطع معالجة طلبك بناءً على بروتوكولات Eagle OS الحالية." }]);
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'ai', text: "خطأ في الاتصال بقاعدة البيانات الذكية: " + error.message }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "Eagle OS Connection Error: " + error.message }]);
     } finally {
       setLoading(false);
     }
@@ -111,7 +110,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
         >
           <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-600 rounded-full animate-ping"></div>
           <MessageSquare size={28} />
-          <span className="absolute right-full mr-4 bg-slate-900 text-white text-[10px] font-black py-2 px-4 rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">مساعد الكرامة الذكي (متصل بالبيانات)</span>
+          <span className="absolute right-full mr-4 bg-slate-900 text-white text-[10px] font-black py-2 px-4 rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Eagle OS: Assistant Active</span>
         </button>
       ) : (
         <div className="bg-white w-[380px] h-[550px] rounded-[2.5rem] shadow-2xl border-4 border-slate-900 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
@@ -121,9 +120,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
                  <Bot size={20} className="text-[#001F3F]" />
               </div>
               <div>
-                <h4 className="text-white font-black text-sm">مساعد الكرامة (Data-Linked)</h4>
+                <h4 className="text-white font-black text-sm">Eagle OS AI Assistant</h4>
                 <p className="text-[8px] text-orange-400 font-black uppercase tracking-widest flex items-center gap-1">
-                  <BrainCircuit size={10} /> الوصول لقاعدة البيانات نشط
+                  <BrainCircuit size={10} /> Data-Link: SECURE
                 </p>
               </div>
             </div>
@@ -148,7 +147,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
               <div className="flex justify-end">
                 <div className="bg-slate-900 text-white p-4 rounded-2xl rounded-tl-none flex items-center gap-2 shadow-sm">
                   <Loader2 className="animate-spin" size={14} />
-                  <span className="text-[10px] font-black animate-pulse">جاري تحليل البيانات...</span>
+                  <span className="text-[10px] font-black animate-pulse">Eagle OS: Processing...</span>
                 </div>
               </div>
             )}
@@ -161,7 +160,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ state }) => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="اسأل عن اللاعبين أو المواعيد..."
+              placeholder="ارسل استفساراً لـ Eagle OS..."
               className="flex-1 bg-slate-100 border-2 border-slate-200 rounded-xl px-4 py-3 text-xs font-black outline-none focus:border-orange-600 transition-all"
             />
             <button 

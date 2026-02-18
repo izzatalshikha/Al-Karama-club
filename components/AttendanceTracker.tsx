@@ -48,9 +48,9 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const savedRecords = state.attendance.filter(r => r.sessionId === selectedSessionId);
   
   const isLocked = activeSession?.isCompleted;
-  const canEditNow = isManager ? (adminEditOverride || !isLocked) : !isLocked;
+  // المشاهد لا يمكنه التعديل أبداً
+  const canEditNow = isViewer ? false : (isManager ? (adminEditOverride || !isLocked) : !isLocked);
 
-  // إحصائيات الجلسة الحالية
   const sessionStats = useMemo(() => {
     const stats = { 'حاضر': 0, 'متأخر': 0, 'غائب': 0, 'غياب بعذر': 0, 'لم يرصد': 0 };
     categoryMembers.forEach(p => {
@@ -69,7 +69,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   };
 
   const saveAttendance = async () => {
-    if (!selectedSessionId || isSaving) return;
+    if (!selectedSessionId || isSaving || isViewer) return;
     setIsSaving(true);
     try {
       const newRecords: AttendanceRecord[] = [];
@@ -220,6 +220,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                           {(Object.entries(statusConfig) as [AttendanceStatus, any][]).map(([status, cfg]) => (
                             <button 
                               key={status}
+                              disabled={isViewer}
                               onClick={() => handleSetStatus(p.id, status)} 
                               className={`px-5 py-2.5 rounded-xl text-[10px] font-black border-2 transition-all active:scale-95 flex items-center gap-2 ${currentStatus === status ? `${cfg.bgColor} text-white border-black/10 shadow-lg scale-105` : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
                             >
@@ -237,9 +238,9 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                       <td className="px-8 py-6">
                         <div className="relative group/input">
                            <Edit3 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within/input:text-orange-600 transition-colors" size={16} />
-                           <input type="text" value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
+                           <input type="text" readOnly={isViewer} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
                             className="bg-slate-50 border-2 border-slate-200 rounded-xl pr-12 pl-4 py-3 text-xs font-black w-full outline-none focus:border-orange-600 focus:bg-white transition-all shadow-inner" 
-                            placeholder="سجل عذراً أو ملاحظة..."
+                            placeholder={isViewer ? "" : "سجل عذراً أو ملاحظة..."}
                            />
                         </div>
                       </td>

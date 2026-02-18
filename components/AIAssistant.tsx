@@ -94,18 +94,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
       const { medicalHistory, performanceAndDiscipline, recentMatches } = clubAnalysis;
 
       const systemInstruction = `
-        أنت المحلل التكتيكي الرقمي لنادي الكرامة الرياضي. 
-        تحلل فئة: ${selectedCategory}.
+        أنت المحلل التكتيكي الرقمي المدمج في نظام "Eagle OS" لنادي الكرامة الرياضي. 
+        تعمل من خلال خوارزميات تحليل البيانات الفورية لفئة: ${selectedCategory}.
         
-        بيانات قاعدة البيانات المتاحة:
+        بيانات Eagle OS المتاحة حالياً:
         [إصابات]: ${medicalHistory}
         [أداء وانضباط]: ${performanceAndDiscipline}
         [نتائج أخيرة]: ${recentMatches}
 
-        مهمتك:
-        1. تقديم توصيات تكتيكية للمباريات.
-        2. تحليل مخاطر الغياب والإنذارات.
-        3. اقتراح التشكيلة المثالية بناءً على الأرقام.
+        مهمتك كجزء من Eagle OS:
+        1. تقديم توصيات تكتيكية للمباريات بناءً على الأرقام.
+        2. تحليل مخاطر الغياب والإنذارات وتأثيرها على قوة الفريق.
+        3. اقتراح التشكيلة المثالية (Eagle Lineup) بناءً على إحصائيات الالتزام والنتائج.
       `;
 
       const response = await ai.models.generateContent({
@@ -117,19 +117,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
         }
       });
 
-      setMessages(prev => [...prev, { role: 'ai', text: response.text || "لم أستطع تحليل البيانات حالياً." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: response.text || "Eagle OS: لم أستطع تحليل البيانات حالياً." }]);
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'ai', text: "حدث خطأ: " + error.message }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "Eagle OS Error: " + error.message }]);
     } finally {
       setLoading(false);
     }
   };
 
   const quickActions = [
-    { label: 'أفضل تشكيلة حالية', prompt: 'بناءً على التزام اللاعبين وأدائهم التهديفي، ما هي التشكيلة الأساسية المثالية المقترحة للمباراة القادمة؟', icon: Trophy, color: 'text-emerald-600' },
-    { label: 'تحليل مخاطر الإصابات', prompt: 'حلل السجل الطبي للاعبين وحذرني من اللاعبين الذين قد يعانون من إجهاد أو لديهم تاريخ إصابات قد يتجدد.', icon: HeartPulse, color: 'text-red-600' },
-    { label: 'تقرير التزام الفئة', prompt: 'أعطني ملخصاً عن أكثر اللاعبين التزاماً وأقلهم حضوراً، مع تحليل تأثير ذلك على نتائج المباريات الأخيرة.', icon: TrendingUp, color: 'text-blue-600' },
-    { label: 'تحليل مخاطر البطاقات', prompt: 'من هم اللاعبون المهددون بالإيقاف بسبب تراكم الإنذارات، وكيف يؤثر غيابهم المحتمل على تكتيك الفريق؟', icon: AlertCircle, color: 'text-orange-600' }
+    { label: 'Eagle Ideal Lineup', prompt: 'بناءً على التزام اللاعبين وأدائهم التهديفي، ما هي التشكيلة الأساسية المثالية المقترحة للمباراة القادمة؟', icon: Trophy, color: 'text-emerald-600' },
+    { label: 'Risk Analysis', prompt: 'حلل السجل الطبي للاعبين وحذرني من اللاعبين الذين قد يعانون من إجهاد أو لديهم تاريخ إصابات قد يتجدد.', icon: HeartPulse, color: 'text-red-600' },
+    { label: 'Attendance Report', prompt: 'أعطني ملخصاً عن أكثر اللاعبين التزاماً وأقلهم حضوراً، مع تحليل تأثير ذلك على نتائج المباريات الأخيرة.', icon: TrendingUp, color: 'text-blue-600' },
+    { label: 'Card Threat', prompt: 'من هم اللاعبون المهددون بالإيقاف بسبب تراكم الإنذارات، وكيف يؤثر غيابهم المحتمل على تكتيك الفريق؟', icon: AlertCircle, color: 'text-orange-600' }
   ];
 
   return (
@@ -140,8 +140,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
             <BrainCircuit className="text-orange-400" size={24} />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900 uppercase">المحلل التكتيكي الذكي</h2>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">تحليل معمق للأداء الفني والانضباطي</p>
+            <h2 className="text-xl font-black text-slate-900 uppercase">Eagle Tactical Analyzer</h2>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">تحليل معمق للأداء الفني والانضباطي عبر Eagle OS</p>
           </div>
         </div>
 
@@ -154,7 +154,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="bg-transparent font-black text-[10px] outline-none cursor-pointer text-slate-700"
             >
-              {isManager && <option value="الكل">جميع الفئات</option>}
+              {isManager && <option value="الكل">Eagle View: All</option>}
               {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
@@ -163,13 +163,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
 
           <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl">
              <button onClick={() => setAiMode('fast')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${aiMode === 'fast' ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500'}`}>سريع</button>
-             <button onClick={() => setAiMode('deep')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${aiMode === 'deep' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500'}`}>تفكير عميق</button>
+             <button onClick={() => setAiMode('deep')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${aiMode === 'deep' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500'}`}>Deep Think</button>
           </div>
         </div>
       </div>
 
       <div className="flex-1 bg-white rounded-[3rem] border-2 border-slate-900 flex flex-col overflow-hidden relative shadow-inner">
-        {/* Quick Insights Dashboard */}
         <div className="p-4 bg-slate-50 border-b-2 border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-3 no-print">
            {quickActions.map((action, i) => (
              <button 
@@ -188,9 +187,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
             <div className="h-full flex flex-col items-center justify-center opacity-30 space-y-4">
               <Bot size={80} className="text-[#001F3F]" />
               <div className="text-center max-w-sm">
-                <p className="font-black text-sm mb-2">محلل فئة {selectedCategory}</p>
+                <p className="font-black text-sm mb-2">Eagle OS: Tactical Engine Initialized</p>
                 <p className="font-medium text-[11px] leading-relaxed">
-                  أهلاً بك مدرب الكرامة. لقد قمت بمراجعة كافة السجلات الإدارية والفنية. اطلب مني نصيحة تكتيكية أو استخدم الأزرار في الأعلى للتحليل السريع.
+                  أهلاً بك مدرب الكرامة. محلل Eagle OS جاهز لمعالجة كافة السجلات الإدارية والفنية. اطلب مني نصيحة تكتيكية أو استخدم الأزرار في الأعلى للتحليل السريع.
                 </p>
               </div>
             </div>
@@ -200,7 +199,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
               <div className={`max-w-[85%] p-5 rounded-[2.2rem] text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-slate-100 border-2 border-slate-200 text-slate-900 rounded-tr-none' : 'bg-[#001F3F] text-white border-b-4 border-orange-600 rounded-tl-none'}`}>
                 <div className="flex items-center gap-2 mb-2 opacity-50">
                    {msg.role === 'user' ? <User size={14}/> : <Bot size={14}/>}
-                   <span className="text-[9px] font-black uppercase">{msg.role === 'user' ? 'المدرب' : 'المحلل الذكي'}</span>
+                   <span className="text-[9px] font-black uppercase">{msg.role === 'user' ? 'المدرب' : 'Eagle OS AI'}</span>
                 </div>
                 <div className="whitespace-pre-wrap font-medium">{msg.text}</div>
               </div>
@@ -210,7 +209,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
             <div className="flex justify-end">
               <div className="bg-[#001F3F] text-white p-5 rounded-[2rem] rounded-tl-none flex items-center gap-4 shadow-xl border-b-4 border-orange-600">
                 <Loader2 className="animate-spin text-orange-400" size={20} />
-                <span className="text-[10px] font-black animate-pulse">جاري معالجة البيانات الفنية...</span>
+                <span className="text-[10px] font-black animate-pulse">Eagle OS: Analyzing Technical Data...</span>
               </div>
             </div>
           )}
@@ -223,7 +222,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
-            placeholder="اسأل المحلل التكتيكي..."
+            placeholder="اسأل Eagle Tactical Analyzer..."
             className="flex-1 bg-slate-50 border-2 border-slate-200 rounded-2xl px-6 py-4 font-black outline-none focus:border-[#001F3F] transition-all"
           />
           <button onClick={() => handleAsk()} disabled={loading || !input.trim()} className="bg-[#001F3F] text-white p-4 rounded-2xl shadow-lg hover:bg-black transition-all">

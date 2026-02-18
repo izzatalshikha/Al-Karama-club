@@ -31,7 +31,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
 
   const filteredItems = useMemo(() => {
     return state.warehouse.filter(item => {
-      // السماح للمدير وأمين المستودع برؤية كل شيء
+      // إذا كان المستخدم محصوراً في فئة، يرى بيانات فئته + المخزن العام فقط
       const canAccess = isManager || isWarehouseKeeper || item.category === restrictedCat || item.category === 'المخزن العام';
       if (!canAccess) return false;
 
@@ -77,7 +77,6 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
-      {/* رأس الصفحة */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-slate-900 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
         <div className="flex items-center gap-4">
            <div className="bg-[#001F3F] p-3 rounded-2xl text-white">
@@ -85,7 +84,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
            </div>
            <div>
              <h2 className="text-xl font-black text-slate-900">المستودع المركزي والمخازن</h2>
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">إدارة العتاد، اللباس، والمعدات الرياضية</p>
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">إدارة العتاد واللباس</p>
            </div>
         </div>
         
@@ -101,8 +100,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
               />
            </div>
            
-           {/* السماح لأمين المستودع والمدير بالفلترة عبر جميع الفئات */}
-           {(isManager || isWarehouseKeeper) && (
+           {(isManager || isWarehouseKeeper || (isViewer && !restrictedCat)) && (
              <select 
                value={localCategoryFilter}
                onChange={e => setLocalCategoryFilter(e.target.value)}
@@ -122,7 +120,6 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
         </div>
       </div>
 
-      {/* عرض البطاقات */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
          {filteredItems.map(item => (
            <div key={item.id} className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-900 shadow-sm relative group hover:shadow-xl transition-all border-b-8 hover:border-orange-600">
@@ -139,7 +136,6 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                     )}
                  </div>
               </div>
-              
               <div className="mb-6">
                  <h4 className="text-lg font-black text-slate-900 mb-1">{item.name}</h4>
                  <div className="flex items-center gap-2">
@@ -147,7 +143,6 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.condition}</span>
                  </div>
               </div>
-
               <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-100 flex justify-between items-center">
                  <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase">الكمية المتوفرة</p>
@@ -155,29 +150,15 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                  </div>
                  <Box size={32} className="text-slate-200" />
               </div>
-
-              {item.notes && (
-                <div className="mt-4 p-3 bg-orange-50 rounded-xl border border-orange-100">
-                   <p className="text-[9px] font-black text-orange-600 leading-relaxed italic">{item.notes}</p>
-                </div>
-              )}
            </div>
          ))}
-
-         {filteredItems.length === 0 && (
-           <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-              <Archive className="mx-auto text-slate-200 mb-4" size={48} />
-              <p className="text-slate-900 font-black italic">لا توجد أصناف في هذا القسم من المستودع</p>
-           </div>
-         )}
       </div>
 
-      {/* نافذة الإضافة والتعديل */}
-      {isModalOpen && (
+      {isModalOpen && !isViewer && (
         <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center z-[500] p-4">
            <div className="bg-white rounded-[2.5rem] w-full max-w-lg border-[6px] border-slate-900 shadow-2xl overflow-hidden">
               <div className="p-6 bg-slate-100 border-b-2 border-slate-900 flex justify-between items-center">
-                 <h3 className="font-black text-slate-900 uppercase">{editingId ? 'تعديل بيانات الصنف' : 'إضافة صنف جديد للمستودع'}</h3>
+                 <h3 className="font-black text-slate-900 uppercase">{editingId ? 'تعديل بيانات الصنف' : 'إضافة صنف جديد'}</h3>
                  <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-lg border-2 border-slate-900"><X size={20}/></button>
               </div>
               <form onSubmit={handleSave} className="p-8 space-y-5 text-right" dir="rtl">
@@ -190,25 +171,23 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                         value={formData.category} 
                         onChange={e => setFormData({...formData, category: e.target.value as any})}
                        >
-                          <option value="المخزن العام">المخزن العام (مركزي)</option>
+                          <option value="المخزن العام">المخزن العام</option>
                           {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div className="space-y-1">
                        <label className={labelClass}>حالة الصنف</label>
                        <select className={fieldClass} value={formData.condition} onChange={e => setFormData({...formData, condition: e.target.value as any})}>
-                          <option value="جديد">جديد (بكر)</option>
-                          <option value="مستعمل">مستعمل (جيد)</option>
-                          <option value="تالف">تالف (للإتلاف)</option>
+                          <option value="جديد">جديد</option>
+                          <option value="مستعمل">مستعمل</option>
+                          <option value="تالف">تالف</option>
                        </select>
                     </div>
                  </div>
-
                  <div className="space-y-1">
-                    <label className={labelClass}>اسم الصنف (كرات، طقم تدريب، أقماع...)</label>
+                    <label className={labelClass}>اسم الصنف</label>
                     <input required type="text" className={fieldClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
                  </div>
-
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <label className={labelClass}>الكمية</label>
@@ -218,19 +197,12 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                        <label className={labelClass}>وحدة القياس</label>
                        <select className={fieldClass} value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value as any})}>
                           <option value="قطعة">قطعة</option>
-                          <option value="طقم">طقم (كامل)</option>
+                          <option value="طقم">طقم</option>
                           <option value="كرة">كرة</option>
                           <option value="حذاء">حذاء</option>
-                          <option value="أخرى">أخرى</option>
                        </select>
                     </div>
                  </div>
-
-                 <div className="space-y-1">
-                    <label className={labelClass}>ملاحظات المستودع (اختياري)</label>
-                    <textarea className={fieldClass + " h-24 resize-none"} value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})}></textarea>
-                 </div>
-
                  <button type="submit" className="w-full bg-[#001F3F] text-white py-4 rounded-xl font-black text-lg flex items-center justify-center gap-3 border-b-4 border-black active:translate-y-1 active:border-b-0 transition-all">
                     <Save size={20}/> حفظ في السجلات
                  </button>

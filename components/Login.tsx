@@ -16,7 +16,6 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
   const [loading, setLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
 
-  // نمط خلفية برمجي بديل للصورة الخارجية
   const techPattern = {
     backgroundImage: `
       radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0),
@@ -60,8 +59,8 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
                 <CheckCircle2 size={48} />
              </div>
           </div>
-          <h2 className="text-white text-5xl font-black mt-12 tracking-tighter animate-in fade-in slide-in-from-bottom-8 duration-1000">تم التأكيد بنجاح</h2>
-          <p className="text-orange-400 text-xl font-bold mt-4 opacity-80 uppercase tracking-widest animate-pulse">جاري فتح غرفة العمليات المركزية...</p>
+          <h2 className="text-white text-5xl font-black mt-12 tracking-tighter animate-in fade-in slide-in-from-bottom-8 duration-1000">Eagle OS: Authorized</h2>
+          <p className="text-orange-400 text-xl font-bold mt-4 opacity-80 uppercase tracking-widest animate-pulse">جاري تحميل بروتوكولات الإدارة الذكية...</p>
           <div className="mt-12 flex gap-2">
              <div className="w-3 h-3 bg-white rounded-full animate-bounce [animation-delay:-0.3s]"></div>
              <div className="w-3 h-3 bg-white rounded-full animate-bounce [animation-delay:-0.15s]"></div>
@@ -74,7 +73,6 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
 
   return (
     <div className="min-h-screen bg-[#001F3F] flex flex-col items-center justify-center p-6 font-['Tajawal'] relative overflow-hidden" dir="rtl" style={techPattern}>
-      {/* Decorative Elements */}
       <div className="absolute top-[-15%] right-[-10%] w-[50%] h-[50%] bg-orange-600/10 rounded-full blur-[120px]"></div>
       <div className="absolute bottom-[-15%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px]"></div>
 
@@ -83,9 +81,9 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
           <div className="bg-white p-6 rounded-[3rem] shadow-2xl mb-8 ring-8 ring-orange-500/10 transition-transform hover:scale-105 duration-500">
             <ClubLogo size={120} />
           </div>
-          <h2 className="text-white font-black text-2xl tracking-tight leading-snug uppercase">AL-Karamah Sport Club</h2>
-          <h2 className="text-white font-black text-xl tracking-tight leading-snug mt-2">نادي الكرامة الرياضي - مكتب كرة القدم</h2>
-          <p className="text-orange-400 font-black mt-5 text-sm uppercase tracking-widest bg-orange-500/10 px-6 py-2 rounded-full border border-orange-500/20">أهلاً بك في عائلة الكرامة الأسيوي</p>
+          <h2 className="text-white font-black text-4xl tracking-tight leading-snug uppercase bg-gradient-to-r from-orange-400 to-white bg-clip-text text-transparent">Eagle OS</h2>
+          <p className="text-white font-black mt-2 text-xs uppercase tracking-[0.4em] opacity-60">Football Management Intelligence</p>
+          <p className="text-orange-400 font-black mt-5 text-sm uppercase tracking-widest bg-orange-500/10 px-6 py-2 rounded-full border border-orange-500/20">مكتب كرة القدم - نادي الكرامة</p>
         </div>
 
         <div className="p-12 space-y-8">
@@ -98,21 +96,21 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
             
             <div className="space-y-3">
               <label className="text-[11px] font-black text-slate-500 mr-2 uppercase flex items-center gap-2">
-                <User size={14} className="text-[#001F3F]" /> اسم المستخدم
+                <User size={14} className="text-[#001F3F]" /> المعرف الرقمي
               </label>
               <input 
                 type="text" 
                 value={username} 
                 onChange={e => setUsername(e.target.value)}
                 disabled={loading}
-                placeholder="" 
+                placeholder="Username" 
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl py-5 px-8 outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 font-black text-slate-800 transition-all text-xl disabled:opacity-50" 
               />
             </div>
 
             <div className="space-y-3">
               <label className="text-[11px] font-black text-slate-500 mr-2 uppercase flex items-center gap-2">
-                <Lock size={14} className="text-[#001F3F]" /> كلمة المرور
+                <Lock size={14} className="text-[#001F3F]" /> رمز الوصول
               </label>
               <div className="relative">
                 <input 
@@ -120,7 +118,7 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
                   value={password} 
                   onChange={e => setPassword(e.target.value)}
                   disabled={loading}
-                  placeholder=""
+                  placeholder="Password"
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl py-5 pr-8 pl-16 outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 font-black text-slate-800 transition-all text-xl disabled:opacity-50" 
                 />
                 <button 
@@ -141,11 +139,11 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
               {loading ? (
                 <>
                   <Loader2 className="animate-spin" size={28} />
-                  جاري التحقق...
+                  Eagle OS: Authenticating...
                 </>
               ) : (
                 <>
-                  دخول آمن
+                  تفعيل الدخول الذكي
                   <ChevronLeft className="group-hover:-translate-x-2 transition-transform" size={28} />
                 </>
               )}
@@ -153,8 +151,8 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
           </form>
           
           <div className="pt-8 border-t border-slate-100 text-center space-y-2">
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">Football Management Pro System</p>
-            <p className="text-[10px] text-slate-400 font-bold">نادي الكرامة | نسخة مكتب كرة القدم</p>
+            <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">Eagle Operating System v3.1</p>
+            <p className="text-[10px] text-slate-400 font-bold">AL-KARAMAH SC | Official Management Unit</p>
           </div>
         </div>
       </div>

@@ -4,16 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>نادي الكرامة الرياضي - مكتب كرة القدم</title>
+  <title>EAGLE OS | نظام النسر لإدارة الأندية</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-main: #020617; /* سواد أزرق عميق */
-      --card-bg: rgba(30, 41, 59, 0.5); /* رمادي أزرق شفاف */
-      --accent: #f97316; /* برتقالي عصري */
-      --text-primary: #f8fafc; /* أبيض ثلجي */
-      --text-secondary: #94a3b8; /* رمادي هادئ */
+      --bg-main: #020617;
+      --card-bg: rgba(30, 41, 59, 0.5);
+      --accent: #f97316;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
     }
 
     body {
@@ -24,12 +24,10 @@
       overflow-x: hidden;
     }
 
-    /* إزالة ظلال التسعينات المزعجة */
     h1, h2, h3, h4, h5, h6, p, span, button, label, td, th {
       text-shadow: none !important;
     }
 
-    /* تصميم البطاقات العصرية (Glassmorphism) */
     .modern-card {
       background: var(--card-bg);
       backdrop-filter: blur(12px);
@@ -39,7 +37,6 @@
       box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     }
 
-    /* تحسين شكل المدخلات */
     input, select, textarea {
       background-color: rgba(15, 23, 42, 0.8) !important;
       color: var(--text-primary) !important;
@@ -58,7 +55,6 @@
     .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-    /* أنيميشن ناعمة */
     .fade-up {
       animation: fadeUp 0.4s ease-out forwards;
     }

@@ -76,7 +76,7 @@ const StatsView: React.FC<StatsViewProps> = ({ state, onOpenReport }) => {
         // إحصائيات الحضور (تعتمد على الفئة والموسم فقط)
         const sessionsInSeason = state.sessions.filter(s => {
           const sessSeason = getSeasonFromDate(s.date);
-          return s.category === player.category && (selectedSeason === 'الكل' || sessSeason === selectedSeason);
+          return s.category === player.category && s.isCompleted && (selectedSeason === 'الكل' || sessSeason === selectedSeason);
         });
 
         const recordsInSeason = state.attendance.filter(a => {
@@ -86,7 +86,10 @@ const StatsView: React.FC<StatsViewProps> = ({ state, onOpenReport }) => {
 
         const present = recordsInSeason.filter(r => r.status === 'حاضر').length;
         const late = recordsInSeason.filter(r => r.status === 'متأخر').length;
-        const attendanceRate = sessionsInSeason.length > 0 ? Math.round(((present + late * 0.7) / sessionsInSeason.length) * 100) : 0;
+        const excused = recordsInSeason.filter(r => r.status === 'غياب بعذر').length;
+        
+        const effectiveTotal = Math.max(0, sessionsInSeason.length - excused);
+        const attendanceRate = effectiveTotal > 0 ? Math.round(((present + late * 0.5) / effectiveTotal) * 100) : 0;
 
         return {
           player,
