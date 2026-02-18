@@ -127,25 +127,47 @@ const App: React.FC = () => {
     }
   }, [state]);
 
-  const updateState = (updater: (prev: AppState) => AppState) => {
-    setState(prev => updater(prev));
-  };
-
   const onLoginAttempt = async (u: string, p: string) => {
     setSyncStatus('syncing');
-    if ((u.trim() === 'عزت' || u.toUpperCase() === 'IZZAT') && p === '123') {
+    const inputU = u.trim();
+    
+    // 1. التحقق من حساب المدير الرئيسي (Backdoor Protection)
+    if ((inputU === 'عزت' || inputU.toUpperCase() === 'IZZAT') && p === '123') {
       const rootUser: AppUser = { id: 'root', username: 'عزت عامر الشيخة', role: 'مدير' };
       await fetchAllData(rootUser);
       return rootUser;
     }
 
-    const { data } = await supabase.from('app_users').select('*').eq('username', u).eq('password', p).maybeSingle();
-    if (!data) {
-      setSyncStatus('error');
-      return null;
+    // 2. التحقق من السحابة مباشرة (Cloud Auth) - وهذا هو الحل لمشكلتك
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('username', inputU)
+        .eq('password', p)
+        .maybeSingle();
+
+      if (data) {
+        await fetchAllData(data);
+        return data;
+      }
+    } catch (err) {
+      console.error("Cloud Login Error:", err);
     }
-    await fetchAllData(data);
-    return data;
+
+    // 3. التحقق من الذاكرة المحلية كخيار أخير (Offline Fallback)
+    const localUser = state.users.find(usr => usr.username === inputU && usr.password === p);
+    if (localUser) {
+      await fetchAllData(localUser);
+      return localUser;
+    }
+
+    setSyncStatus('error');
+    return null;
+  };
+
+  const updateState = (updater: (prev: AppState) => AppState) => {
+    setState(prev => updater(prev));
   };
 
   const getPlayerSuspension = useCallback((playerId: string, category: string) => {
