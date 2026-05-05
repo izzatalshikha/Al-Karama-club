@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { AppState, TacticalPlan } from '../types';
-import { generateUUID } from '../App';
+import { generateUUID, supabase } from '../App';
 import { 
   Save, Trash2, Plus, Users, Layout, Map as MapIcon, 
   ChevronRight, Swords, UserPlus, Info, Settings2
@@ -10,9 +10,10 @@ import {
 interface TacticalBoardProps {
   state: AppState;
   setState: (updater: (prev: AppState) => AppState) => void;
+  syncToCloud?: (table: string, data: any) => Promise<boolean>;
 }
 
-const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
+const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState, syncToCloud }) => {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [draggedData, setDraggedData] = useState<{ id: string; team: 'home' | 'away' } | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -31,34 +32,41 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
+    const updatedPlans = state.tacticalPlans.map(plan => {
+      if (plan.id === selectedPlanId) {
+        const newPositions = [...plan.positions];
+        const existingIdx = newPositions.findIndex(pos => pos.playerId === draggedData.id);
+        
+        let updatedPlan;
+        if (existingIdx > -1) {
+          newPositions[existingIdx] = { ...newPositions[existingIdx], x, y };
+          updatedPlan = { ...plan, positions: newPositions };
+        } else {
+          const player = players.find(p => p.id === draggedData.id);
+          newPositions.push({ 
+            playerId: draggedData.id, 
+            x, 
+            y, 
+            team: draggedData.team,
+            label: draggedData.team === 'away' ? `خصم ${newPositions.filter(p=>p.team==='away').length + 1}` : player?.name.split(' ')[0]
+          });
+          updatedPlan = { ...plan, positions: newPositions };
+        }
+        // مزامنة فورية
+        syncToCloud?.('tactical_plans', updatedPlan);
+        return updatedPlan;
+      }
+      return plan;
+    });
+
     setState(prev => ({
       ...prev,
-      tacticalPlans: prev.tacticalPlans.map(plan => {
-        if (plan.id === selectedPlanId) {
-          const newPositions = [...plan.positions];
-          const existingIdx = newPositions.findIndex(pos => pos.playerId === draggedData.id);
-          
-          if (existingIdx > -1) {
-            newPositions[existingIdx] = { ...newPositions[existingIdx], x, y };
-          } else {
-            const player = players.find(p => p.id === draggedData.id);
-            newPositions.push({ 
-              playerId: draggedData.id, 
-              x, 
-              y, 
-              team: draggedData.team,
-              label: draggedData.team === 'away' ? `خصم ${newPositions.filter(p=>p.team==='away').length + 1}` : player?.name.split(' ')[0]
-            });
-          }
-          return { ...plan, positions: newPositions };
-        }
-        return plan;
-      })
+      tacticalPlans: updatedPlans
     }));
     setDraggedData(null);
   };
 
-  const createNewPlan = () => {
+  const createNewPlan = async () => {
     const newPlan: TacticalPlan = {
       id: generateUUID(),
       name: `خطة جديدة - ${new Date().toLocaleDateString('ar')}`,
@@ -67,20 +75,25 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
       positions: [],
       notes: ''
     };
-    setState(prev => ({ ...prev, tacticalPlans: [newPlan, ...prev.tacticalPlans] }));
-    setSelectedPlanId(newPlan.id);
+    const success = await syncToCloud?.('tactical_plans', newPlan);
+    if (success) {
+      setState(prev => ({ ...prev, tacticalPlans: [newPlan, ...prev.tacticalPlans] }));
+      setSelectedPlanId(newPlan.id);
+    }
   };
 
-  const removePosition = (playerId: string) => {
-    if (!selectedPlanId) return;
-    setState(prev => ({
-      ...prev,
-      tacticalPlans: prev.tacticalPlans.map(plan => 
-        plan.id === selectedPlanId 
-          ? { ...plan, positions: plan.positions.filter(p => p.playerId !== playerId) }
-          : plan
-      )
-    }));
+  const removePosition = async (playerId: string) => {
+    if (!selectedPlanId || !activePlan) return;
+    const updatedPlan = { ...activePlan, positions: activePlan.positions.filter(p => p.playerId !== playerId) };
+    const success = await syncToCloud?.('tactical_plans', updatedPlan);
+    if (success) {
+      setState(prev => ({
+        ...prev,
+        tacticalPlans: prev.tacticalPlans.map(plan => 
+          plan.id === selectedPlanId ? updatedPlan : plan
+        )
+      }));
+    }
   };
 
   return (
@@ -89,9 +102,9 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
         
         {/* Sidebar - Plans List & Controls */}
         <div className="lg:col-span-1 space-y-6">
-           <div className="modern-card p-6 border-white/5">
-              <h3 className="font-bold text-lg mb-6 flex items-center gap-3 text-white">
-                <Layout size={20} className="text-orange-500" /> مسودة الخطط
+           <div className="modern-card p-6 border-slate-200">
+              <h3 className="font-black text-lg mb-6 flex items-center gap-3 text-blue-950">
+                <Layout size={20} className="text-orange-600" /> مسودة الخطط
               </h3>
               <button onClick={createNewPlan} className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mb-6 shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all">
                 <Plus size={18}/> خطة جديدة
@@ -99,8 +112,8 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
               <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
                  {state.tacticalPlans.map(plan => (
                    <button key={plan.id} onClick={() => setSelectedPlanId(plan.id)}
-                     className={`w-full text-right p-4 rounded-xl border transition-all group ${selectedPlanId === plan.id ? 'border-orange-500 bg-orange-500/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}>
-                      <p className="font-bold text-sm text-white group-hover:text-orange-500 transition-colors">{plan.name}</p>
+                     className={`w-full text-right p-4 rounded-xl border transition-all group ${selectedPlanId === plan.id ? 'border-orange-500 bg-orange-50 shadow-sm' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 shadow-sm'}`}>
+                      <p className="font-bold text-sm text-blue-950 group-hover:text-orange-600 transition-colors">{plan.name}</p>
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 block">{plan.category} • {plan.formation}</span>
                    </button>
                  ))}
@@ -109,26 +122,26 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
            </div>
 
            {activePlan && (
-             <div className="modern-card p-6 border-white/5 bg-slate-900/40">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Settings2 size={14}/> إعدادات الخطة</h4>
+             <div className="modern-card p-6 border-slate-200 bg-slate-50 shadow-inner">
+                <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2"><Settings2 size={14}/> إعدادات الخطة</h4>
                 <div className="space-y-4">
                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block mr-1">الفئة المستهدفة</label>
+                      <label className="text-[10px] font-black text-slate-600 uppercase mb-1 block mr-1">الفئة المستهدفة</label>
                       <select 
                         value={activePlan.category} 
                         onChange={e => setState(p => ({...p, tacticalPlans: p.tacticalPlans.map(tp => tp.id === activePlan.id ? {...tp, category: e.target.value} : tp)}))}
-                        className="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs font-bold text-white outline-none focus:border-orange-500"
+                        className="w-full bg-white border border-slate-200 shadow-sm rounded-xl p-3 text-xs font-black text-blue-950 outline-none focus:border-orange-500 transition-all focus:ring-2 focus:ring-orange-500/20"
                       >
                          {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                    </div>
                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block mr-1">نوع التشكيل</label>
+                      <label className="text-[10px] font-black text-slate-600 uppercase mb-1 block mr-1">نوع التشكيل</label>
                       <input 
                         type="text" 
                         value={activePlan.formation} 
                         onChange={e => setState(p => ({...p, tacticalPlans: p.tacticalPlans.map(tp => tp.id === activePlan.id ? {...tp, formation: e.target.value} : tp)}))}
-                        className="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs font-bold text-white outline-none focus:border-orange-500"
+                        className="w-full bg-white border border-slate-200 shadow-sm rounded-xl p-3 text-xs font-black text-blue-950 outline-none focus:border-orange-500 transition-all focus:ring-2 focus:ring-orange-500/20"
                       />
                    </div>
                 </div>
@@ -139,17 +152,24 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
         {/* Tactical Pitch View */}
         <div className="lg:col-span-3">
           {activePlan ? (
-            <div className="modern-card p-8 border-white/5 flex flex-col gap-8">
+            <div className="modern-card p-8 border-slate-200 flex flex-col gap-8 shadow-sm">
                <div className="flex justify-between items-center">
                   <div className="flex-1 max-w-md">
                      <input 
                         value={activePlan.name} 
                         onChange={e => setState(p => ({...p, tacticalPlans: p.tacticalPlans.map(tp => tp.id === activePlan.id ? {...tp, name: e.target.value} : tp)}))} 
-                        className="bg-transparent text-2xl font-bold text-white outline-none border-b border-white/10 focus:border-orange-500 pb-1 w-full" 
+                        className="bg-transparent text-2xl font-black text-blue-950 outline-none border-b border-slate-200 focus:border-orange-600 pb-1 w-full transition-all" 
                      />
                   </div>
-                  <button onClick={() => { if(confirm('حذف هذه الخطة؟')) setSelectedPlanId(null); setState(p => ({...p, tacticalPlans: p.tacticalPlans.filter(tp => tp.id !== activePlan.id)})); }} 
-                    className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
+                  <button onClick={async () => { 
+                    if(confirm('حذف هذه الخطة؟')) {
+                      const { error } = await supabase.from('tactical_plans').delete().eq('id', activePlan.id);
+                      if (error) return alert('فشل الحذف: ' + error.message);
+                      setSelectedPlanId(null); 
+                      setState(p => ({...p, tacticalPlans: p.tacticalPlans.filter(tp => tp.id !== activePlan.id)})); 
+                    }
+                  }} 
+                    className="p-3 bg-red-50/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
                     <Trash2 size={20}/>
                   </button>
                </div>
@@ -199,33 +219,33 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
                                <div key={p.id}
                                  draggable
                                  onDragStart={() => setDraggedData({ id: p.id, team: 'home' })}
-                                 className={`p-3 rounded-xl border transition-all cursor-grab active:cursor-grabbing flex items-center gap-3 ${isPlaced ? 'bg-orange-500/10 border-orange-500/30 opacity-50' : 'bg-white/5 border-white/5 hover:border-orange-500'}`}
+                                 className={`p-3 rounded-xl border transition-all cursor-grab active:cursor-grabbing flex items-center gap-3 ${isPlaced ? 'bg-orange-50 border-orange-200 opacity-50' : 'bg-slate-50 border-slate-200 hover:border-orange-500'}`}
                                >
                                   <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center font-bold text-xs text-white">#{p.number}</div>
-                                  <span className="text-[11px] font-bold text-slate-300 truncate">{p.name}</span>
+                                  <span className="text-[11px] font-bold text-slate-700 truncate">{p.name}</span>
                                </div>
                              );
                            })}
                         </div>
                      </div>
 
-                     <div className="space-y-4 pt-4 border-t border-white/5">
+                     <div className="space-y-4 pt-4 border-t border-slate-200">
                         <h4 className="text-[10px] font-bold text-red-500 uppercase tracking-[0.2em] flex items-center gap-2"><Swords size={14}/> لاعبو الفريق الخصم</h4>
                         <div className="grid grid-cols-2 xl:grid-cols-1 gap-2">
                            {[1, 2, 3].map(n => (
                              <div key={`opp-${n}`}
                                draggable
                                onDragStart={() => setDraggedData({ id: `away-${generateUUID()}`, team: 'away' })}
-                               className="p-3 rounded-xl border border-white/5 bg-red-900/10 hover:border-red-500 transition-all cursor-grab active:cursor-grabbing flex items-center gap-3"
+                               className="p-3 rounded-xl border border-red-100 bg-red-50 hover:border-red-500 transition-all cursor-grab active:cursor-grabbing flex items-center gap-3"
                              >
                                 <div className="w-8 h-8 bg-red-900 rounded-lg flex items-center justify-center font-bold text-xs text-white">X</div>
-                                <span className="text-[11px] font-bold text-slate-300">إضافة لاعب خصم</span>
+                                <span className="text-[11px] font-bold text-red-900">إضافة لاعب خصم</span>
                              </div>
                            ))}
                         </div>
                      </div>
                      
-                     <div className="p-4 rounded-2xl bg-white/5 border border-white/5 mt-4">
+                     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 mt-4">
                         <p className="text-[9px] font-bold text-slate-500 leading-relaxed flex items-center gap-2">
                            <Info size={12}/> اسحب اللاعب للملعب لوضعه، انقر مرتين على اللاعب في الملعب لحذفه.
                         </p>
@@ -234,7 +254,7 @@ const TacticalBoard: React.FC<TacticalBoardProps> = ({ state, setState }) => {
                </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center bg-slate-900/20 rounded-[3rem] border-2 border-dashed border-white/5 p-20 opacity-30">
+            <div className="h-full flex flex-col items-center justify-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 p-20 opacity-50">
                <MapIcon size={80} className="mb-4 text-slate-600" />
                <p className="font-bold text-xl text-slate-400">اختر خطة من القائمة للبدء بالرسم التكتيكي</p>
             </div>

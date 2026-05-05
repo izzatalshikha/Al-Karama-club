@@ -9,11 +9,11 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-main: #020617;
-      --card-bg: rgba(30, 41, 59, 0.5);
+      --bg-main: #f8fafc;
+      --card-bg: #ffffff;
       --accent: #f97316;
-      --text-primary: #f8fafc;
-      --text-secondary: #94a3b8;
+      --text-primary: #0f172a;
+      --text-secondary: #64748b;
     }
 
     body {
@@ -30,29 +30,27 @@
 
     .modern-card {
       background: var(--card-bg);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(0, 0, 0, 0.05);
       border-radius: 1.25rem;
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
     }
 
     input, select, textarea {
-      background-color: rgba(15, 23, 42, 0.8) !important;
+      background-color: #ffffff !important;
       color: var(--text-primary) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border: 1px solid rgba(0, 0, 0, 0.1) !important;
       transition: all 0.2s ease;
     }
 
     input:focus, select:focus {
       border-color: var(--accent) !important;
-      box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2) !important;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.1) !important;
       outline: none;
     }
 
     .custom-scrollbar::-webkit-scrollbar { width: 6px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 10px; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
     .fade-up {

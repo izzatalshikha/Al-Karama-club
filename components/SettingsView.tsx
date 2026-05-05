@@ -8,9 +8,10 @@ interface SettingsProps {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   addLog?: (m: string, d?: string, t?: any) => void;
+  syncToCloud?: (table: string, data: any) => Promise<boolean>;
 }
 
-const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
+const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncToCloud }) => {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newCatName, setNewCatName] = useState('');
@@ -28,16 +29,20 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
 
   const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع'];
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFormData.username || !userFormData.password) return alert('يرجى إكمال كافة البيانات المطلوبة');
 
     if (editingUserId) {
-      setState(prev => ({
-        ...prev,
-        users: prev.users.map(u => u.id === editingUserId ? { ...u, ...userFormData } as AppUser : u)
-      }));
-      addLog?.('تعديل صلاحية مستخدم', `تم تحديث بيانات المستخدم: ${userFormData.username}`, 'info');
+      const updatedUser = { ...state.users.find(u => u.id === editingUserId), ...userFormData } as AppUser;
+      const success = await syncToCloud?.('app_users', updatedUser);
+      if (success) {
+        setState(prev => ({
+          ...prev,
+          users: prev.users.map(u => u.id === editingUserId ? updatedUser : u)
+        }));
+        addLog?.('تعديل صلاحية مستخدم', `تم تحديث بيانات المستخدم: ${userFormData.username}`, 'info');
+      }
     } else {
       const newUser: AppUser = {
         id: generateUUID(),
@@ -46,8 +51,11 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
         password: userFormData.password!,
         restrictedCategory: (userFormData.role === 'إداري فئة' || userFormData.role === 'مشاهد') ? userFormData.restrictedCategory : undefined
       };
-      setState(prev => ({ ...prev, users: [...prev.users, newUser] }));
-      addLog?.('إنشاء حساب مستخدم', `تم إنشاء مستخدم جديد بنجاح: ${newUser.username}`, 'success');
+      const success = await syncToCloud?.('app_users', newUser);
+      if (success) {
+        setState(prev => ({ ...prev, users: [...prev.users, newUser] }));
+        addLog?.('إنشاء حساب مستخدم', `تم إنشاء مستخدم جديد بنجاح: ${newUser.username}`, 'success');
+      }
     }
 
     setIsUserModalOpen(false);
@@ -55,17 +63,35 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog }) => {
     setUserFormData({ username: '', role: 'إداري فئة', password: '', restrictedCategory: '' });
   };
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
-    if (state.categories.includes(newCatName.trim())) return alert('هذه الفئة موجودة مسبقاً.');
-    setState(prev => ({ ...prev, categories: [...prev.categories, newCatName.trim()] }));
-    addLog?.('إضافة فئة', `تمت إضافة فئة: ${newCatName}`, 'success');
+    const catName = newCatName.trim();
+    if (state.categories.includes(catName)) return alert('هذه الفئة موجودة مسبقاً.');
+    
+    // Update local state early for responsiveness
+    setState(prev => ({ ...prev, categories: [...prev.categories, catName] }));
+    
+    // Sync to Supabase
+    if (syncToCloud) {
+       await syncToCloud('categories', { name: catName });
+    }
+    
+    addLog?.('إضافة فئة', `تمت إضافة فئة: ${catName}`, 'success');
     setNewCatName('');
   };
 
-  const removeCategory = (cat: string) => {
+  const removeCategory = async (cat: string) => {
     if (confirm(`حذف فئة ${cat}؟`)) {
+      // Local clean
       setState(prev => ({ ...prev, categories: prev.categories.filter(c => c !== cat) }));
+      
+      // Request cloud deletion
+      try {
+         const { error } = await supabase.from('categories').delete().eq('name', cat);
+         if (error) throw error;
+      } catch (e: any) {
+         addLog?.('خطأ', `تعذر الحذف من السحابة: ${e.message}`, 'error');
+      }
     }
   };
 

@@ -38,95 +38,104 @@ const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({ state }) => {
       return { cat, rate };
     });
 
-    return { wins, losses, draws, categoryAttendance, totalMatches: matches.length };
-  }, [state]);
+    return {
+      wins,
+      losses,
+      draws,
+      totalMatches: matches.length,
+      categoryAttendance
+    };
+  }, [state.matches, state.attendance, state.sessions, state.categories, state.people]);
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
-      {/* شبكة الإحصائيات العلوية */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-20 px-2 md:px-0" dir="rtl">
+      {/* Top Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
          {[
-           { label: 'إجمالي المباريات', value: analytics.totalMatches, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-           { label: 'الانتصارات', value: analytics.wins, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-           { label: 'التعادلات', value: analytics.draws, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-           { label: 'الخسائر', value: analytics.losses, color: 'text-red-500', bg: 'bg-red-500/10' }
+           { label: 'إجمالي المباريات', value: analytics.totalMatches, color: 'text-blue-600', bg: 'bg-blue-50/50' },
+           { label: 'الانتصارات', value: analytics.wins, color: 'text-emerald-700', bg: 'bg-emerald-50/50' },
+           { label: 'التعادلات', value: analytics.draws, color: 'text-orange-600', bg: 'bg-orange-50/50' },
+           { label: 'الخسائر', value: analytics.losses, color: 'text-red-700', bg: 'bg-red-50/50' }
          ].map((stat, i) => (stat.value > 0 || i === 0) && (
-           <div key={stat.label} className={`${stat.bg} p-8 rounded-[2.5rem] border-2 border-white/5 flex flex-col items-center shadow-xl`}>
-              <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-2">{stat.label}</p>
-              <h3 className={`text-6xl font-black ${stat.color}`}>{stat.value}</h3>
+           <div key={stat.label} className={`${stat.bg} p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 flex flex-col items-center shadow-sm transition-transform hover:scale-105 duration-300`}>
+              <p className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-center">{stat.label}</p>
+              <h3 className={`text-4xl md:text-6xl font-black ${stat.color}`}>{stat.value}</h3>
            </div>
          ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-         {/* الرسم البياني للنتائج (SVG Custom) */}
-         <div className="bg-[#001F3F] p-10 rounded-[3rem] border-2 border-white/10 shadow-2xl">
-            <h3 className="text-xl font-black mb-10 flex items-center gap-3 border-r-4 border-orange-500 pr-4">
-              <Trophy className="text-orange-500" /> تحليل نتائج الموسم
+         {/* Season Results Analysis (SVG Custom) */}
+         <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[3.5rem] shadow-sm border border-slate-200">
+            <h3 className="text-lg md:text-xl font-black mb-10 flex items-center gap-3 border-r-4 border-orange-500 pr-4 text-blue-900 leading-tight">
+              <Trophy className="text-orange-500 shrink-0" /> تحليل نتائج الموسم
             </h3>
-            <div className="flex items-end justify-around h-64 px-10 relative">
-               <div className="absolute left-0 right-0 h-0.5 bg-white/10 bottom-0"></div>
+            <div className="flex items-end justify-around h-48 md:h-64 px-2 md:px-10 relative">
+               <div className="absolute left-0 right-0 h-px bg-slate-100 bottom-0"></div>
                {[
                  { label: 'فوز', val: analytics.wins, color: 'bg-emerald-500' },
-                 { label: 'تعادل', val: analytics.draws, color: 'bg-yellow-500' },
+                 { label: 'تعادل', val: analytics.draws, color: 'bg-orange-500' },
                  { label: 'خسارة', val: analytics.losses, color: 'bg-red-500' }
                ].map(bar => {
                  const height = analytics.totalMatches > 0 ? (bar.val / analytics.totalMatches) * 100 : 0;
                  return (
                    <div key={bar.label} className="flex flex-col items-center gap-4 w-16 group">
-                      <div className="w-full relative">
+                      <div className="w-full relative h-full flex items-end">
                          <div 
-                          className={`${bar.color} rounded-t-xl transition-all duration-1000 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]`} 
+                          className={`${bar.color} rounded-t-xl transition-all duration-1000 shadow-sm w-full`} 
                           style={{ height: `${height}%`, minHeight: bar.val > 0 ? '10px' : '0' }}
                          >
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 font-black text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                              {bar.val}
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 font-black text-xs text-blue-900 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {bar.val} مباراة
                             </div>
                          </div>
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-tighter">{bar.label}</span>
+                      <span className="text-[10px] font-black uppercase tracking-tighter text-slate-400">{bar.label}</span>
                    </div>
                  );
                })}
             </div>
          </div>
 
-         {/* الرسم البياني للالتزام */}
-         <div className="bg-[#001F3F] p-10 rounded-[3rem] border-2 border-white/10 shadow-2xl">
-            <h3 className="text-xl font-black mb-10 flex items-center gap-3 border-r-4 border-blue-500 pr-4">
-              <Activity className="text-blue-500" /> معدلات الالتزام بالفئات
+         {/* Commitment Analysis */}
+         <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[3.5rem] shadow-sm border border-slate-200">
+            <h3 className="text-lg md:text-xl font-black mb-10 flex items-center gap-3 border-r-4 border-blue-900 pr-4 text-blue-900 leading-tight">
+              <Activity className="text-blue-900 shrink-0" /> معدلات الالتزام بالفئات
             </h3>
             <div className="space-y-6">
                {analytics.categoryAttendance.map(cat => (
                  <div key={cat.cat} className="space-y-2">
                     <div className="flex justify-between items-center px-2">
-                       <span className="text-xs font-black">{cat.cat}</span>
-                       <span className="text-xs font-black text-orange-500 tabular-nums">%{cat.rate}</span>
+                       <span className="text-xs font-black text-blue-900">{cat.cat}</span>
+                       <span className="text-xs font-black text-orange-600 tabular-nums">%{cat.rate}</span>
                     </div>
-                    <div className="h-4 bg-black/40 rounded-full p-1 border border-white/5">
+                    <div className="h-4 bg-slate-100 rounded-full p-0.5 border border-slate-200 overflow-hidden shadow-inner">
                        <div 
-                        className="h-full bg-blue-600 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(37,99,235,0.4)]" 
+                        className="h-full bg-blue-900 rounded-full transition-all duration-1000 shadow-sm" 
                         style={{ width: `${cat.rate}%` }}
                        />
                     </div>
                  </div>
                ))}
+               {analytics.categoryAttendance.length === 0 && (
+                 <p className="text-center py-10 text-slate-400 font-bold italic">لا توجد سجلات مطابقة لعرضها</p>
+               )}
             </div>
          </div>
       </div>
 
-      {/* الرؤية الاستراتيجية */}
-      <div className="bg-white/5 p-12 rounded-[4rem] border-2 border-dashed border-white/10 flex flex-col md:flex-row items-center gap-10">
-         <div className="p-10 bg-[#FF6B00] rounded-[3rem] shadow-2xl animate-pulse">
-            <TrendingUp size={60} className="text-white" />
+      {/* Strategic Insight */}
+      <div className="bg-slate-50 p-6 md:p-12 rounded-[2.5rem] md:rounded-[4rem] border border-slate-200 flex flex-col md:flex-row items-center gap-6 md:gap-10 shadow-sm">
+         <div className="p-8 md:p-10 bg-orange-600 rounded-[2rem] md:rounded-[3rem] shadow-xl shadow-orange-600/20 shrink-0">
+            <TrendingUp size={48} md:size={60} className="text-white" />
          </div>
-         <div className="flex-1 space-y-4">
-            <h4 className="text-2xl font-black text-orange-500">الرؤية التحليلية للمدير</h4>
-            <p className="text-lg font-bold leading-relaxed opacity-70">
-              بناءً على البيانات الحالية، يظهر الفريق استقراراً في {analytics.wins > analytics.losses ? 'النتائج الإيجابية' : 'مرحلة البناء'}. 
-              معدل الالتزام المتوسط هو {analytics.categoryAttendance.length > 0 ? Math.round(analytics.categoryAttendance.reduce((a,b)=>a+b.rate, 0)/analytics.categoryAttendance.length) : 0}%.
-              يُنصح بالتركيز على رفع معدل اللياقة في الفئات التي يقل التزامها عن 70% لضمان جاهزية الفريق للمنافسات القادمة.
-            </p>
+         <div className="flex-1 space-y-4 text-center md:text-right">
+            <h4 className="text-xl md:text-2xl font-black text-blue-900">الرؤية التحليلية الفنية</h4>
+            <div className="text-base md:text-lg font-bold leading-loose text-slate-600 bg-white/70 p-6 md:p-8 rounded-[1.5rem] md:rounded-[2rem] border border-slate-100 shadow-sm italic">
+              بناءً على التقرير الـمركزي، يظهر الـنادي استقراراً في {analytics.wins > analytics.losses ? 'ترجمة المجهود البدني إلى نتائج إيجابية' : 'مرحلة تطوير الـمستوى الفني'}. 
+              معدل الالتزام العام هو <span className="text-blue-900 font-black">%{analytics.categoryAttendance.length > 0 ? Math.round(analytics.categoryAttendance.reduce((a,b)=>a+b.rate, 0)/analytics.categoryAttendance.length) : 0}</span>.
+              يُنصح برفع وتيرة التدريب في الفئات الأقل من <span className="text-orange-600 font-black">70%</span> لضمان الجاهزية القصوى للمباريات الـقادمة.
+            </div>
          </div>
       </div>
     </div>

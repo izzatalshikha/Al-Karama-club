@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, Person, WarehouseItem } from '../types';
 import { QrCode, Camera, Scan, Download, X, User, Package, ShieldCheck, RefreshCw } from 'lucide-react';
+// @ts-ignore
 import jsQR from 'https://esm.sh/jsqr@1.4.0';
 
 interface QRManagerProps {

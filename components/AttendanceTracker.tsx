@@ -99,7 +99,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
       
       if (attError) throw attError;
 
-      await supabase.from('sessions').update({ isCompleted: true }).eq('id', selectedSessionId);
+      await supabase.from('sessions').upsert({ id: selectedSessionId, isCompleted: true });
       
       setState(prev => ({
         ...prev,
@@ -119,21 +119,21 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
 
   return (
     <div className="space-y-4 md:space-y-8 animate-in fade-in duration-500 px-2 md:px-0 pb-20">
-      <div className="bg-white p-6 md:p-10 rounded-[3rem] border-4 border-slate-900 shadow-[10px_10px_0px_0px_rgba(0,31,63,1)] flex flex-col gap-6 no-print">
+      <div className="modern-card p-6 md:p-10 flex flex-col gap-6 no-print">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex-1 space-y-2 w-full">
-            <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest flex items-center gap-2">
+            <label className="text-[11px] font-black text-slate-700 mr-2 uppercase tracking-widest flex items-center gap-2">
               <div className="w-1.5 h-1.5 bg-orange-600 rounded-full"></div> رصد حضور الحصة الفوري
             </label>
             <select value={selectedSessionId} onChange={e => { setSelectedSessionId(e.target.value); setLocalRecords({}); }}
-              className="w-full bg-slate-50 border-4 border-slate-900 rounded-2xl p-4 md:p-6 font-black text-sm md:text-2xl text-slate-900 outline-none focus:border-orange-600 transition-all">
+              className="w-full bg-white border border-slate-200 rounded-2xl p-4 md:p-6 font-black text-sm md:text-2xl text-slate-900 outline-none focus:border-orange-500 transition-all shadow-sm">
               <option value="">-- اختر التمرين من القائمة --</option>
               {sessions.map(s => <option key={s.id} value={s.id}>{s.date} | {s.objective} ({s.category})</option>)}
             </select>
           </div>
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto self-end">
             {!isViewer && (
-              <button onClick={saveAttendance} disabled={!selectedSessionId || (isLocked && !canEditNow) || isSaving} className="w-full md:w-auto bg-[#001F3F] text-white px-8 py-5 rounded-[2rem] font-black text-sm md:text-lg flex items-center justify-center gap-3 border-b-8 border-black active:translate-y-1 active:border-b-0 transition-all shadow-xl disabled:opacity-30">
+              <button onClick={saveAttendance} disabled={!selectedSessionId || (isLocked && !canEditNow) || isSaving} className="w-full md:w-auto bg-blue-900 text-white px-8 py-5 rounded-2xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all disabled:opacity-30">
                 {isSaving ? <History className="animate-spin" size={20}/> : <Save size={20} />}
                 اعتماد الرصد النهائي
               </button>
@@ -151,8 +151,8 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
               </div>
             ))}
             <div className="bg-slate-100 border-2 border-slate-200 p-4 rounded-2xl flex flex-col items-center justify-center text-center">
-              <AlertCircle className="text-slate-400" size={20} />
-              <p className="text-[9px] font-black text-slate-400 uppercase mt-1">لم يرصد</p>
+              <AlertCircle className="text-slate-600" size={20} />
+              <p className="text-[9px] font-black text-slate-600 uppercase mt-1">لم يرصد</p>
               <p className="text-xl font-black text-slate-900 tabular-nums">{sessionStats['لم يرصد']}</p>
             </div>
           </div>
@@ -160,30 +160,31 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
       </div>
 
       {activeSession && (
-        <div className={`bg-white rounded-[3.5rem] border-4 border-slate-900 shadow-[15px_15px_0px_0px_rgba(0,31,63,1)] overflow-hidden relative ${isLocked && !canEditNow ? 'opacity-70 grayscale-[0.5]' : ''}`}>
-          <div className="p-6 md:p-10 border-b-4 border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className={`modern-card overflow-hidden relative ${isLocked && !canEditNow ? 'opacity-70 grayscale-[0.5]' : ''}`}>
+          <div className="p-6 md:p-10 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-6">
              <div className="flex items-center gap-6 w-full md:w-auto">
-               <div className="w-16 h-16 md:w-20 md:h-20 bg-[#001F3F] border-4 border-orange-600 rounded-[2rem] flex items-center justify-center font-black text-2xl md:text-4xl text-white uppercase shadow-xl">
+               <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-900 border-4 border-white rounded-2xl flex items-center justify-center font-black text-2xl md:text-4xl text-white uppercase shadow-lg">
                   {activeSession.category.charAt(0)}
                </div>
                <div>
-                 <h3 className="text-xl md:text-3xl font-black text-slate-900 leading-tight drop-shadow-sm">{activeSession.objective}</h3>
+                 <h3 className="text-xl md:text-3xl font-black text-blue-900 leading-tight">{activeSession.objective}</h3>
                  <p className="text-[10px] md:text-xs font-black text-orange-600 uppercase tracking-[0.2em] mt-1">{activeSession.category} • {activeSession.date}</p>
                </div>
              </div>
              <div className="flex gap-3 items-center">
-                {isLocked && <span className="bg-red-600 text-white px-6 py-2 rounded-full text-[10px] font-black flex items-center gap-2 uppercase shadow-lg"><Lock size={14}/> سجل مقفل إدارياً</span>}
+                {isLocked && <span className="bg-red-50 text-red-600 px-6 py-2 rounded-full text-[10px] font-black flex items-center gap-2 uppercase border border-red-100"><Lock size={14}/> سجل مقفل إدارياً</span>}
                 {isManager && selectedSessionId && (
-                  <button onClick={() => setAdminEditOverride(!adminEditOverride)} className={`px-6 py-2 rounded-full font-black text-[10px] border-2 transition-all shadow-md ${adminEditOverride ? 'bg-orange-600 text-white border-orange-900' : 'bg-white text-slate-900 border-slate-900 hover:bg-slate-100'}`}>
+                  <button onClick={() => setAdminEditOverride(!adminEditOverride)} className={`px-6 py-2 rounded-full font-black text-[10px] border transition-all shadow-sm ${adminEditOverride ? 'bg-orange-500 text-white border-orange-400' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50'}`}>
                     {adminEditOverride ? 'إيقاف التعديل الاستثنائي' : 'تعديل السجل المقفل'}
                   </button>
                 )}
              </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-right min-w-[900px]">
-              <thead className="bg-[#001F3F] text-white border-b-4 border-slate-950">
+          <div className="overflow-x-auto lg:overflow-visible">
+            {/* Desktop Table View */}
+            <table className="hidden lg:table w-full text-right">
+              <thead className="bg-blue-900 text-white">
                 <tr>
                   <th className="px-8 py-5 text-[11px] font-black uppercase tracking-widest">اللاعب والمركز</th>
                   <th className="px-8 py-5 text-[11px] font-black uppercase tracking-widest text-center">حالة الحضور</th>
@@ -191,7 +192,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                   <th className="px-8 py-5 text-[11px] font-black uppercase tracking-widest">ملاحظات العذر</th>
                 </tr>
               </thead>
-              <tbody className="divide-y-2 divide-slate-100">
+              <tbody className="divide-y divide-slate-100">
                 {categoryMembers.map(p => {
                   const saved = savedRecords.find(r => r.personId === p.id);
                   const local = localRecords[p.id];
@@ -200,15 +201,15 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                   const config = currentStatus ? statusConfig[currentStatus] : null;
 
                   return (
-                    <tr key={p.id} className={`transition-all hover:bg-slate-50/80 ${currentStatus === 'غائب' ? 'bg-red-50/30' : currentStatus === 'حاضر' ? 'bg-emerald-50/10' : ''}`}>
+                    <tr key={p.id} className={`transition-all hover:bg-slate-50/80 ${currentStatus === 'غائب' ? 'bg-red-50/20' : currentStatus === 'حاضر' ? 'bg-emerald-50/5' : ''}`}>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm border-2 transition-all shadow-sm ${config ? `${config.bgColor} text-white border-black/10` : 'bg-white text-slate-300 border-slate-200'}`}>
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm border transition-all shadow-sm ${config ? `${config.bgColor} text-white border-white/20` : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                             {p.number || '0'}
                           </div>
                           <div className="flex flex-col">
                              <div className="flex items-center gap-2">
-                                <span className="font-black text-lg text-slate-900 drop-shadow-sm">{p.name}</span>
+                                <span className="font-black text-lg text-slate-900">{p.name}</span>
                                 {config && <config.icon className={`${config.color} shrink-0`} size={16} />}
                              </div>
                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{p.role} {p.position ? `| ${p.position}` : ''}</span>
@@ -222,7 +223,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                               key={status}
                               disabled={isViewer}
                               onClick={() => handleSetStatus(p.id, status)} 
-                              className={`px-5 py-2.5 rounded-xl text-[10px] font-black border-2 transition-all active:scale-95 flex items-center gap-2 ${currentStatus === status ? `${cfg.bgColor} text-white border-black/10 shadow-lg scale-105` : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
+                              className={`px-5 py-2.5 rounded-xl text-[10px] font-black border transition-all active:scale-95 flex items-center gap-2 ${currentStatus === status ? `${cfg.bgColor} text-white border-white/20 shadow-md scale-105` : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'}`}
                             >
                               <cfg.icon size={14} />
                               {cfg.label}
@@ -231,15 +232,15 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                         </div>
                       </td>
                       <td className="px-8 py-6 text-center">
-                         <span className={`text-[11px] font-black px-4 py-2 rounded-xl border-2 tabular-nums ${currentStatus ? 'bg-slate-900 text-white border-black shadow-md' : 'bg-slate-100 text-slate-300 border-slate-200'}`}>
+                         <span className={`text-[11px] font-black px-4 py-2 rounded-xl border tabular-nums ${currentStatus ? 'bg-blue-900 text-white border-blue-950 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                             {currentTime}
                          </span>
                       </td>
                       <td className="px-8 py-6">
                         <div className="relative group/input">
-                           <Edit3 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within/input:text-orange-600 transition-colors" size={16} />
+                           <Edit3 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-orange-500 transition-colors" size={16} />
                            <input type="text" readOnly={isViewer} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
-                            className="bg-slate-50 border-2 border-slate-200 rounded-xl pr-12 pl-4 py-3 text-xs font-black w-full outline-none focus:border-orange-600 focus:bg-white transition-all shadow-inner" 
+                            className="bg-white border border-slate-200 rounded-xl pr-12 pl-4 py-3 text-xs font-bold w-full outline-none focus:border-orange-500 transition-all shadow-sm" 
                             placeholder={isViewer ? "" : "سجل عذراً أو ملاحظة..."}
                            />
                         </div>
@@ -249,6 +250,58 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                 })}
               </tbody>
             </table>
+
+            {/* Mobile Card View */}
+            <div className="lg:hidden divide-y divide-slate-100">
+              {categoryMembers.map(p => {
+                const saved = savedRecords.find(r => r.personId === p.id);
+                const local = localRecords[p.id];
+                const currentStatus = local?.status || saved?.status || null;
+                const currentTime = local?.time || saved?.time || "--:--";
+                const config = currentStatus ? statusConfig[currentStatus] : null;
+
+                return (
+                  <div key={p.id} className={`p-4 space-y-4 ${currentStatus === 'غائب' ? 'bg-red-50/20' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-xs border ${config ? `${config.bgColor} text-white` : 'bg-slate-50 text-slate-400'}`}>
+                          {p.number || '0'}
+                        </div>
+                        <div>
+                          <p className="font-black text-sm text-slate-900">{p.name}</p>
+                          <p className="text-[9px] font-bold text-slate-600 uppercase">{p.role} {p.position ? `| ${p.position}` : ''}</p>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-black px-2 py-1 rounded-lg border tabular-nums ${currentStatus ? 'bg-blue-900 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                        {currentTime}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                       {(Object.entries(statusConfig) as [AttendanceStatus, any][]).map(([status, cfg]) => (
+                        <button 
+                          key={status}
+                          disabled={isViewer}
+                          onClick={() => handleSetStatus(p.id, status)} 
+                          className={`py-2.5 rounded-xl text-[10px] font-black border transition-all flex items-center justify-center gap-2 ${currentStatus === status ? `${cfg.bgColor} text-white` : 'bg-white text-slate-600 border-slate-200'}`}
+                        >
+                          <cfg.icon size={14} />
+                          {cfg.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="relative">
+                      <Edit3 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                      <input type="text" readOnly={isViewer} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
+                        className="bg-white border border-slate-200 rounded-xl pr-10 pl-3 py-2 text-[10px] font-bold w-full outline-none focus:border-orange-500" 
+                        placeholder="سجل عذراً..."
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

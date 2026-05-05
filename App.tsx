@@ -62,10 +62,12 @@ const App: React.FC = () => {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 3000);
   }, []);
 
-  const fetchAllData = useCallback(async (user: AppUser) => {
-    setSyncStatus('syncing');
+  const fetchAllData = useCallback(async (user: AppUser, silent: boolean = false) => {
+    if (!user) return;
+    if (!silent) setSyncStatus('syncing');
     try {
       const isManager = user.role === 'مدير';
+      const isWarehouse = user.role === 'أمين مستودع';
       const cat = user.restrictedCategory;
 
       let peopleQ = supabase.from('people').select('*');
@@ -77,16 +79,40 @@ const App: React.FC = () => {
       let injuriesQ = supabase.from('injuries').select('*');
       let tacticalQ = supabase.from('tactical_plans').select('*');
 
-      if (!isManager && cat) {
+      let categoriesQ = supabase.from('categories').select('*');
+
+      if (isManager) {
+      } else if (isWarehouse) {
+        peopleQ = peopleQ.limit(0);
+        matchesQ = matchesQ.limit(0);
+        sessionsQ = sessionsQ.limit(0);
+        attendanceQ = attendanceQ.limit(0);
+        injuriesQ = injuriesQ.limit(0);
+        tacticalQ = tacticalQ.limit(0);
+      } else if (cat) {
         peopleQ = peopleQ.eq('category', cat);
         matchesQ = matchesQ.eq('category', cat);
         sessionsQ = sessionsQ.eq('category', cat);
         warehouseQ = warehouseQ.or(`category.eq.${cat},category.eq.المخزن العام`);
+        injuriesQ = injuriesQ.eq('category', cat);
+        tacticalQ = tacticalQ.eq('category', cat);
       }
 
-      const [p, m, s, a, w, u, inj, tac] = await Promise.all([
-        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ
+      const [p, m, s, a, w, u, inj, tac, catsReq] = await Promise.all([
+        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ, categoriesQ
       ]);
+
+      if (u.error) console.error("Error fetching users:", u.error);
+      if (catsReq.error) console.error("Error fetching categories:", catsReq.error);
+
+      console.log("FETCH RESULT:", { people: p.data?.length, users: u.data?.length, warehouse: w.data?.length });
+
+      const peopleCount = p.data?.length || 0;
+      const playersCount = p.data?.filter(person => person.role === 'لاعب').length || 0;
+      const staffCount = peopleCount - playersCount;
+      const accountsCount = u.data?.length || 0;
+      
+      const fetchedCats = catsReq.data?.map(c => c.name) || [];
 
       setState(prev => ({
         ...prev,
@@ -99,31 +125,56 @@ const App: React.FC = () => {
         users: u.data || [],
         injuries: inj.data || [],
         tacticalPlans: tac.data || [],
-        globalCategoryFilter: (!isManager && cat) ? cat : 'الكل'
+        categories: fetchedCats.length > 0 ? fetchedCats : prev.categories,
+        globalCategoryFilter: (!isManager && !isWarehouse && cat) ? cat : 'الكل'
       }));
       setSyncStatus('synced');
+      if (!silent) {
+        addNotify(`تم استدعاء البيانات: ${playersCount} لاعب، ${staffCount} كادر، ${accountsCount} حساب`, 'success');
+      }
     } catch (e) {
       setSyncStatus('error');
+      if (!silent) addNotify('فشل في استدعاء البيانات من السحابة', 'error');
     }
-  }, []);
+  }, [addNotify]);
+
+  const syncToCloud = useCallback(async (table: string, data: any | any[]) => {
+    setSyncStatus('syncing');
+    try {
+      const { error } = await supabase.from(table).upsert(data);
+      if (error) throw error;
+      setSyncStatus('synced');
+      return true;
+    } catch (e: any) {
+      setSyncStatus('error');
+      addNotify(`خطأ في مزامنة ${table}: ${e.message}`, 'error');
+      return false;
+    }
+  }, [addNotify]);
 
   useEffect(() => {
     if (!state.currentUser) return;
 
+    let debounceTimer: any;
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        fetchAllData(state.currentUser!);
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchAllData(state.currentUser!, true), 2000);
       })
       .subscribe();
 
     return () => {
+      clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [state.currentUser, fetchAllData]);
 
   useEffect(() => {
     if (state.currentUser) {
-      localStorage.setItem('eagle_os_v3', JSON.stringify(state));
+      const timeoutId = setTimeout(() => {
+        localStorage.setItem('eagle_os_v3', JSON.stringify(state));
+      }, 500);
+      return () => clearTimeout(timeoutId);
     }
   }, [state]);
 
@@ -166,9 +217,9 @@ const App: React.FC = () => {
     return null;
   };
 
-  const updateState = (updater: (prev: AppState) => AppState) => {
+  const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState(prev => updater(prev));
-  };
+  }, []);
 
   const getPlayerSuspension = useCallback((playerId: string, category: string) => {
     const playerMatches = state.matches
@@ -224,84 +275,121 @@ const App: React.FC = () => {
   });
 
   return (
-    <div className="flex h-screen bg-[#020617] text-[#f8fafc] font-['IBM_Plex_Sans_Arabic'] overflow-hidden" dir="rtl">
-      <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} bg-[#0f172a] border-l border-white/5 transition-all duration-300 flex flex-col z-50 shadow-2xl`}>
-        <div className="p-8 flex items-center justify-center gap-4">
-           <ClubLogo size={isSidebarOpen ? 50 : 35} />
-           {isSidebarOpen && <span className="text-xl font-black text-white tracking-tight bg-gradient-to-r from-orange-500 to-white bg-clip-text text-transparent">EAGLE OS</span>}
+    <div className="flex h-[100dvh] bg-slate-50 text-slate-900 font-['IBM_Plex_Sans_Arabic'] overflow-hidden print:h-auto print:block print:overflow-visible" dir="rtl">
+      {/* Sidebar - Hidden on mobile, Drawer on mobile toggle */}
+      <aside className={`
+        ${isSidebarOpen ? 'translate-x-0 w-72' : 'translate-x-full lg:translate-x-0 w-72 lg:w-24'} 
+        bg-blue-900 border-l border-blue-800 transition-all duration-300 flex flex-col z-[100] shadow-2xl fixed inset-y-0 right-0 lg:static h-full overflow-hidden print:hidden
+      `}>
+        <div className="p-8 flex items-center justify-center gap-4 shrink-0">
+           <ClubLogo size={(isSidebarOpen || !isSidebarOpen) ? 45 : 35} />
+           {isSidebarOpen && <span className="text-xl font-black text-white tracking-tight whitespace-nowrap">EAGLE OS</span>}
+           {!isSidebarOpen && <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-white"><Menu/></button>}
         </div>
         
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map(item => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)}
+            <button key={item.id} onClick={() => { setActiveTab(item.id); if (window.innerWidth < 1024) setSidebarOpen(false); }}
               className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200
-              ${activeTab === item.id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'hover:bg-white/5 text-slate-400 hover:text-white'}`}>
-              <item.icon size={20} />
-              {isSidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
+              ${activeTab === item.id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'hover:bg-white/10 text-blue-100 hover:text-white'}`}>
+              <item.icon size={20} className="shrink-0" />
+              <span className={`text-sm font-medium whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:opacity-0'}`}>{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="p-4 mt-auto">
-          <div className="bg-white/5 rounded-xl p-3 mb-4 flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-[10px] font-bold">
+        <div className="p-4 mt-auto shrink-0">
+          <div className="bg-white/10 rounded-xl p-3 mb-4 flex items-center gap-3">
+             <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
                 {state.currentUser.username.charAt(0)}
              </div>
-             {isSidebarOpen && (
-               <div className="min-w-0">
-                  <p className="text-[10px] font-bold truncate">{state.currentUser.username}</p>
-                  <p className="text-[8px] text-slate-500 uppercase">{state.currentUser.role}</p>
-               </div>
-             )}
+             <div className={`min-w-0 transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                <p className="text-[10px] font-bold truncate text-white">{state.currentUser.username}</p>
+                <p className="text-[8px] text-blue-100 uppercase font-black">{state.currentUser.role}</p>
+             </div>
           </div>
           <button onClick={() => setState(prev => ({ ...prev, currentUser: null }))} 
-            className="w-full p-3 rounded-xl text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 transition-all flex items-center justify-center gap-3">
-            <LogOut size={18} /> {isSidebarOpen && <span className="text-sm font-semibold">خروج</span>}
+            className="w-full p-3 rounded-xl text-white bg-red-600/30 hover:bg-red-600 transition-all flex items-center justify-center gap-3 border border-red-500/30">
+            <LogOut size={18} className="shrink-0" /> <span className={`text-sm font-semibold text-white whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>خروج</span>
           </button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 relative">
-        <header className="h-20 bg-[#0f172a]/80 backdrop-blur-md border-b border-white/5 px-8 flex items-center justify-between z-40">
-          <div className="flex items-center gap-6">
-             <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2.5 bg-white/5 rounded-xl hover:bg-orange-500 transition-all">
+      {/* Overlay for mobile sidebar */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-blue-900/60 backdrop-blur-sm z-[90] lg:hidden" 
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0 relative print:block print:overflow-visible print:h-auto">
+        <header className="h-20 bg-white border-b border-slate-200 px-4 md:px-8 flex items-center justify-between z-40 print:hidden">
+          <div className="flex items-center gap-3 md:gap-6">
+             <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white transition-all shadow-sm">
                 <Menu size={20} />
              </button>
-             <h1 className="text-xl font-bold tracking-tight">{navItems.find(n => n.id === activeTab)?.label}</h1>
+             <h1 className="text-sm md:text-xl font-bold tracking-tight text-blue-900 whitespace-nowrap">{navItems.find(n => n.id === activeTab)?.label}</h1>
           </div>
           
-          <div className="flex items-center gap-4">
-             <div className={`flex items-center gap-2 px-4 py-2 rounded-full border border-white/5 text-[10px] font-bold ${syncStatus === 'synced' ? 'text-emerald-500' : 'text-orange-500'}`}>
+          <div className="flex items-center gap-2 md:gap-4">
+             <button onClick={() => state.currentUser && fetchAllData(state.currentUser)} 
+                className="hidden sm:flex p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white transition-all group"
+                title="تحديث البيانات من السحابة">
+                <RefreshCw size={20} className={syncStatus === 'syncing' ? 'animate-spin text-orange-500' : 'group-hover:rotate-180 transition-transform duration-500'} />
+             </button>
+             <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200 text-[10px] font-bold text-slate-600">
                 {syncStatus === 'syncing' ? <RefreshCw size={12} className="animate-spin"/> : <div className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>}
-                {syncStatus === 'synced' ? 'EAGLE OS: Online' : 'EAGLE OS: Syncing...'}
+                <span className={syncStatus === 'synced' ? 'text-emerald-700' : 'text-orange-600'}>
+                  {syncStatus === 'synced' ? 'EAGLE OS: Online' : 'EAGLE OS: Syncing...'}
+                </span>
              </div>
              <button onClick={() => window.print()} 
-                className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-orange-500 hover:text-white transition-all shadow-xl flex items-center gap-2">
-                <Printer size={16} /> طباعة
+                className="bg-blue-900 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-bold text-[10px] md:text-xs hover:bg-orange-500 transition-all shadow-lg flex items-center gap-2">
+                <Printer size={16} /> <span className="hidden xs:inline">طباعة</span>
              </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div id="report-section" className="max-w-6xl mx-auto space-y-8">
+        <main className="flex-1 overflow-y-auto p-4 md:px-8 md:pt-8 pb-32 md:pb-32 lg:pb-8 custom-scrollbar print:p-0 print:overflow-visible print:bg-white print:m-0">
+          <div id="report-section" className="max-w-6xl mx-auto space-y-6 md:space-y-8">
             {activeTab === 'dashboard' && <Dashboard state={state} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
             {activeTab === 'squad' && <SquadManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
             {activeTab === 'training' && <TrainingPlanner state={state} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'tactics' && <TacticalBoard state={state} setState={updateState} />}
-            {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} />}
+            {activeTab === 'tactics' && <TacticalBoard state={state} setState={updateState} syncToCloud={syncToCloud} />}
+            {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} syncToCloud={syncToCloud} />}
             {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} />}
             {activeTab === 'logistics' && <LocationAssistant />}
-            {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} />}
+            {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'analytics' && <VisualAnalytics state={state} />}
-            {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} />}
+            {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}
           </div>
-        </div>
+        </main>
+
+        {/* Bottom Nav for Mobile */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-20 bg-white border-t border-slate-200 flex items-center justify-around px-4 z-[80] shadow-[0_-4px_20px_rgba(0,0,0,0.05)] print:hidden">
+           {[
+             { id: 'dashboard', icon: LayoutDashboard, label: 'الرئيسية' },
+             { id: 'squad', icon: Users, label: 'الفريق' },
+             { id: 'training', icon: Calendar, label: 'التدريبات' },
+             { id: 'matches', icon: Trophy, label: 'المباريات' },
+           ].map(item => (
+             <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 transition-all ${activeTab === item.id ? 'text-orange-500 scale-110' : 'text-slate-400'}`}>
+                <item.icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">{item.label}</span>
+             </button>
+           ))}
+           <button onClick={() => setSidebarOpen(true)} className="flex flex-col items-center gap-1 text-slate-400">
+              <Menu size={24} />
+              <span className="text-[10px] font-bold">المزيد</span>
+           </button>
+        </nav>
 
         <div className="fixed bottom-8 left-8 z-[999] space-y-2">
           {notifications.map(n => (
-            <div key={n.id} className={`p-4 rounded-xl shadow-2xl border-r-4 min-w-[200px] flex items-center gap-3 bg-[#1e293b] text-white animate-in slide-in-from-left-full ${n.type === 'success' ? 'border-emerald-500' : n.type === 'error' ? 'border-red-500' : 'border-blue-500'}`}>
+            <div key={n.id} className={`p-4 rounded-xl shadow-2xl border-r-4 min-w-[200px] flex items-center gap-3 bg-white text-slate-900 animate-in slide-in-from-left-full ${n.type === 'success' ? 'border-emerald-500' : n.type === 'error' ? 'border-red-500' : 'border-blue-500'}`}>
               {n.type === 'success' ? <CheckCircle2 className="text-emerald-500" /> : <AlertCircle className="text-red-500" />}
               <span className="text-xs font-bold">{n.message}</span>
             </div>

@@ -98,83 +98,83 @@ const TechnicalReports: React.FC<TechnicalReportsProps> = ({ state, setState, ad
   );
 
   return (
-    <div className="space-y-6 md:space-y-10 animate-in fade-in duration-700 pb-24">
+    <div className="space-y-6 md:space-y-10 animate-in fade-in duration-700 pb-24 px-2 md:px-0">
       
       {/* هيدر مركز التقارير */}
-      <div className="bg-[#001F3F] p-8 rounded-[3rem] border-4 border-slate-900 text-white shadow-xl relative overflow-hidden">
+      <div className="bg-[#001F3F] p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border-4 border-slate-900 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
-           <div className="flex items-center gap-5">
-              <div className="bg-orange-600 p-4 rounded-3xl shadow-lg border-2 border-orange-400/30 animate-pulse">
-                <FilePieChart size={32} />
+           <div className="flex items-center gap-4 md:gap-5 w-full md:w-auto">
+              <div className="bg-orange-600 p-3 md:p-4 rounded-2xl md:rounded-3xl shadow-lg border-2 border-orange-400/30 animate-pulse shrink-0">
+                <FilePieChart size={24} className="md:w-8 md:h-8" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">مركز التقارير الرقمي الشامل</h2>
-                <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mt-1">البيانات الفنية والإدارية لنادي الكرامة الرياضي</p>
+                <h2 className="text-xl md:text-3xl font-black uppercase tracking-tighter leading-tight">مركز التقارير الرقمي</h2>
+                <p className="text-[9px] md:text-[10px] font-black text-orange-400 uppercase tracking-widest mt-1">البيانات الفنية والإدارية المـركزية</p>
               </div>
            </div>
            
-           <div className="flex flex-wrap gap-3">
-              <div className="bg-white/10 p-1.5 rounded-2xl border border-white/10 flex items-center gap-3">
-                 <CalendarDays size={18} className="text-orange-400 mr-2"/>
+           <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center">
+              <div className="bg-white/10 p-2 rounded-xl border border-white/10 flex items-center gap-2">
+                 <CalendarDays size={16} className="text-orange-400"/>
                  <select 
                   value={selectedSeason} 
                   onChange={e => setSelectedSeason(e.target.value)}
-                  className="bg-transparent font-black text-xs outline-none cursor-pointer text-white"
+                  className="bg-transparent font-black text-[10px] md:text-xs outline-none cursor-pointer text-white"
                  >
-                    <option value="2025-2026" className="text-slate-900">موسم 2025-2026</option>
-                    <option value="2024-2025" className="text-slate-900">موسم 2024-2025</option>
+                    <option value="2025-2026" className="text-slate-900">موسم 25-26</option>
+                    <option value="2024-2025" className="text-slate-900">موسم 24-25</option>
                     <option value="الكل" className="text-slate-900">كل المواسم</option>
                  </select>
               </div>
-              <button onClick={() => window.print()} className="bg-white text-[#001F3F] px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-xl hover:bg-orange-600 hover:text-white transition-all">
-                <Printer size={18}/> تصدير التقرير الحالي PDF
+              <button onClick={() => window.print()} className="bg-white text-[#001F3F] px-4 py-2 rounded-xl font-black text-[10px] flex items-center gap-2 shadow-lg hover:bg-orange-600 hover:text-white transition-all">
+                <Printer size={16}/> PDF
               </button>
            </div>
         </div>
       </div>
 
       {/* نافيجشن الأقسام */}
-      <div className="bg-white p-2 rounded-[2.5rem] border-2 border-slate-900 shadow-sm flex flex-wrap gap-2 no-print justify-center">
+      <div className="bg-white p-1 rounded-2xl md:rounded-[2.5rem] border-2 border-slate-900 shadow-sm flex overflow-x-auto no-scrollbar gap-1 no-print">
          {[
-           { id: 'players', label: 'بيانات اللاعبين', icon: Users, color: 'text-blue-600' },
-           { id: 'technical', label: 'إحصائيات فنية', icon: BarChart3, color: 'text-emerald-600' },
-           { id: 'matches', label: 'تقارير المباريات', icon: Trophy, color: 'text-orange-600' },
-           { id: 'warehouse', label: 'تقارير المستودع', icon: Package, color: 'text-purple-600' },
-           { id: 'reviews', label: 'مراجعات الكوادر', icon: Star, color: 'text-yellow-600' }
+           { id: 'players', label: 'اللاعبين', icon: Users, color: 'text-blue-600' },
+           { id: 'technical', label: 'إحصائيات', icon: BarChart3, color: 'text-emerald-600' },
+           { id: 'matches', label: 'المباريات', icon: Trophy, color: 'text-orange-600' },
+           { id: 'warehouse', label: 'المستودع', icon: Package, color: 'text-purple-600' },
+           { id: 'reviews', label: 'المراجعات', icon: Star, color: 'text-yellow-600' }
          ].map(tab => (
            <button 
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-3 transition-all ${activeTab === tab.id ? 'bg-[#001F3F] text-white shadow-lg scale-105' : 'text-slate-500 hover:bg-slate-50'}`}
+            className={`px-4 py-2.5 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs flex items-center gap-2 transition-all whitespace-nowrap shrink-0 ${activeTab === tab.id ? 'bg-[#001F3F] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
            >
-             <tab.icon size={18} className={activeTab === tab.id ? 'text-orange-400' : tab.color} />
+             <tab.icon size={16} className={activeTab === tab.id ? 'text-orange-400' : tab.color} />
              {tab.label}
            </button>
          ))}
       </div>
 
       {/* شريط الأدوات (البحث والفلترة) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 no-print">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 no-print">
          <div className="relative">
-            <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
               placeholder="ابحث بالاسم أو التفاصيل..." 
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-white border-2 border-slate-900 rounded-2xl py-4 pr-12 pl-4 font-black outline-none focus:border-orange-600"
+              className="w-full bg-white border-2 border-slate-900 rounded-xl md:rounded-2xl py-3 pr-10 pl-4 text-xs font-black outline-none focus:border-orange-600"
             />
          </div>
          {!restrictedCat && (
-            <div className="flex items-center gap-3 bg-white p-1 rounded-2xl border-2 border-slate-900 px-4">
-               <Filter size={18} className="text-slate-400" />
+            <div className="flex items-center gap-2 bg-white p-1 rounded-xl md:rounded-2xl border-2 border-slate-900 px-3">
+               <Filter size={16} className="text-slate-400 shrink-0" />
                <select 
                 value={selectedCategory} 
                 onChange={e => setSelectedCategory(e.target.value)}
-                className="flex-1 bg-transparent py-3 font-black text-xs outline-none cursor-pointer"
+                className="flex-1 bg-transparent py-2 font-black text-[10px] md:text-xs outline-none cursor-pointer"
                >
-                  <option value="الكل">كل الفئات</option>
+                  <option value="الكل">كل الفئة</option>
                   {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
                </select>
             </div>
@@ -182,167 +182,244 @@ const TechnicalReports: React.FC<TechnicalReportsProps> = ({ state, setState, ad
       </div>
 
       {/* محتوى التقارير المتغير */}
-      <div className="bg-white rounded-[3rem] border-2 border-slate-900 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-[2rem] md:rounded-[3rem] border-2 border-slate-900 overflow-hidden shadow-sm">
         
         {/* 1. تقرير بيانات اللاعبين */}
         {activeTab === 'players' && (
-          <div className="overflow-x-auto">
-             <table className="w-full text-right">
-                <thead className="bg-[#001F3F] text-white border-b-4 border-slate-900">
-                   <tr>
-                      <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">اللاعب</th>
-                      <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">تاريخ الميلاد</th>
-                      <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">الرقم الوطني</th>
-                      <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">القيد (الخانة)</th>
-                      <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">الطول/الوزن</th>
-                      <th className="p-5 text-[10px] font-black uppercase tracking-widest">الاتصال</th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-slate-100 font-black text-xs">
-                   {playersData.map(p => (
-                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                         <td className="p-5 flex items-center gap-3">
-                            <span className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center text-[10px]">#{p.number}</span>
-                            <div>
-                               <p>{p.name}</p>
-                               <p className="text-[9px] text-slate-400">{p.category}</p>
-                            </div>
-                         </td>
-                         <td className="p-5 tabular-nums text-slate-500">{p.birthDate}</td>
-                         <td className="p-5 tabular-nums">{p.nationalId || '---'}</td>
-                         <td className="p-5">{p.khana || '---'}</td>
-                         <td className="p-5 tabular-nums text-slate-500">{p.height}/{p.weight}</td>
-                         <td className="p-5 tabular-nums text-blue-600">{p.phone || '---'}</td>
-                      </tr>
-                   ))}
-                </tbody>
-             </table>
-          </div>
+          <>
+            {/* Mobile Cards */}
+            <div className="block md:hidden divide-y-2 divide-slate-50">
+               {playersData.map(p => (
+                 <div key={p.id} className="p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                       <div className="flex items-center gap-3">
+                          <span className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center text-[10px] font-black">#{p.number}</span>
+                          <div>
+                             <p className="text-xs font-black text-blue-900">{p.name}</p>
+                             <p className="text-[9px] text-slate-500 font-bold">{p.category}</p>
+                          </div>
+                       </div>
+                       <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">{p.phone || '---'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[9px] font-bold text-slate-600">
+                       <div className="bg-slate-50 p-2 rounded-lg"><span className="text-slate-400 block mb-1 uppercase text-[8px]">الرقم الوطني</span> {p.nationalId || '---'}</div>
+                       <div className="bg-slate-50 p-2 rounded-lg"><span className="text-slate-400 block mb-1 uppercase text-[8px]">تاريخ الميلاد</span> {p.birthDate}</div>
+                    </div>
+                 </div>
+               ))}
+            </div>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+               <table className="w-full text-right">
+                  <thead className="bg-[#001F3F] text-white border-b-4 border-slate-900">
+                     <tr>
+                        <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">اللاعب</th>
+                        <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">تاريخ الميلاد</th>
+                        <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">الرقم الوطني</th>
+                        <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">القيد (الخانة)</th>
+                        <th className="p-5 text-[10px] font-black uppercase tracking-widest border-l border-white/5">الطول/الوزن</th>
+                        <th className="p-5 text-[10px] font-black uppercase">الاتصال</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y-2 divide-slate-100 font-black text-xs">
+                     {playersData.map(p => (
+                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                           <td className="p-5 flex items-center gap-3">
+                              <span className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center text-[10px]">#{p.number}</span>
+                              <div>
+                                 <p>{p.name}</p>
+                                 <p className="text-[9px] text-slate-400">{p.category}</p>
+                              </div>
+                           </td>
+                           <td className="p-5 tabular-nums text-slate-500">{p.birthDate}</td>
+                           <td className="p-5 tabular-nums">{p.nationalId || '---'}</td>
+                           <td className="p-5">{p.khana || '---'}</td>
+                           <td className="p-5 tabular-nums text-slate-500">{p.height}/{p.weight}</td>
+                           <td className="p-5 tabular-nums text-blue-600">{p.phone || '---'}</td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
+            </div>
+          </>
         )}
 
         {/* 2. الإحصائيات الفنية */}
         {activeTab === 'technical' && (
-          <div className="overflow-x-auto">
-             <table className="w-full text-right">
-                <thead className="bg-[#001F3F] text-white border-b-4 border-slate-900">
-                   <tr>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5">اللاعب</th>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">دقائق دوري</th>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">دقائق كأس</th>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">دقائق ودي</th>
-                      <th className="p-5 text-[10px] font-black text-emerald-400 border-l border-white/5 text-center">أهداف</th>
-                      <th className="p-5 text-[10px] font-black text-blue-400 border-l border-white/5 text-center">أسيست</th>
-                      <th className="p-5 text-[10px] font-black text-yellow-400 text-center">🟨 / 🟥</th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-slate-100 font-black text-xs tabular-nums">
-                   {technicalStats.map(s => (
-                      <tr key={s.player.id} className="hover:bg-slate-50 transition-colors">
-                         <td className="p-5 flex items-center gap-3">
-                            <span className="w-8 h-8 bg-emerald-600 text-white rounded-lg flex items-center justify-center text-[10px]">#{s.player.number}</span>
-                            {s.player.name}
-                         </td>
-                         <td className="p-5 text-center text-slate-900">{s.leagueMins} د</td>
-                         <td className="p-5 text-center text-slate-900">{s.cupMins} د</td>
-                         <td className="p-5 text-center text-slate-900">{s.friendlyMins} د</td>
-                         <td className="p-5 text-center text-emerald-700 font-black">{s.goals}</td>
-                         <td className="p-5 text-center text-blue-700 font-black">{s.assists}</td>
-                         <td className="p-5 text-center">
-                            <span className="text-yellow-600">{s.yellows}</span> / <span className="text-red-600">{s.reds}</span>
-                         </td>
-                      </tr>
-                   ))}
-                </tbody>
-             </table>
-          </div>
+          <>
+            {/* Mobile Cards */}
+            <div className="block md:hidden divide-y-2 divide-slate-50">
+               {technicalStats.map(s => (
+                 <div key={s.player.id} className="p-4 space-y-4">
+                    <div className="flex items-center gap-3">
+                       <span className="w-8 h-8 bg-emerald-600 text-white rounded-lg flex items-center justify-center text-[10px] font-black">#{s.player.number}</span>
+                       <p className="text-xs font-black text-blue-900">{s.player.name}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                       <div className="text-center bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">دقائق</p>
+                          <p className="text-[10px] font-black text-blue-900">{s.leagueMins + s.cupMins + s.friendlyMins}</p>
+                       </div>
+                       <div className="text-center bg-emerald-50 p-2 rounded-xl border border-emerald-100">
+                          <p className="text-[8px] font-black text-emerald-600 uppercase mb-1">أهداف</p>
+                          <p className="text-[10px] font-black text-emerald-700">{s.goals}</p>
+                       </div>
+                       <div className="text-center bg-blue-50 p-2 rounded-xl border border-blue-100">
+                          <p className="text-[8px] font-black text-blue-600 uppercase mb-1">صناعة</p>
+                          <p className="text-[10px] font-black text-blue-700">{s.assists}</p>
+                       </div>
+                    </div>
+                 </div>
+               ))}
+            </div>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+               <table className="w-full text-right">
+                  <thead className="bg-[#001F3F] text-white border-b-4 border-slate-900">
+                     <tr>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5">اللاعب</th>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">دقائق دوري</th>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">دقائق كأس</th>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">دقائق ودي</th>
+                        <th className="p-5 text-[10px] font-black text-emerald-400 border-l border-white/5 text-center">أهداف</th>
+                        <th className="p-5 text-[10px] font-black text-blue-400 border-l border-white/5 text-center">أسيست</th>
+                        <th className="p-5 text-[10px] font-black text-yellow-400 text-center">🟨 / 🟥</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y-2 divide-slate-100 font-black text-xs tabular-nums">
+                     {technicalStats.map(s => (
+                        <tr key={s.player.id} className="hover:bg-slate-50 transition-colors">
+                           <td className="p-5 flex items-center gap-3">
+                              <span className="w-8 h-8 bg-emerald-600 text-white rounded-lg flex items-center justify-center text-[10px]">#{s.player.number}</span>
+                              {s.player.name}
+                           </td>
+                           <td className="p-5 text-center text-slate-900">{s.leagueMins} د</td>
+                           <td className="p-5 text-center text-slate-900">{s.cupMins} د</td>
+                           <td className="p-5 text-center text-slate-900">{s.friendlyMins} د</td>
+                           <td className="p-5 text-center text-emerald-700 font-black">{s.goals}</td>
+                           <td className="p-5 text-center text-blue-700 font-black">{s.assists}</td>
+                           <td className="p-5 text-center">
+                              <span className="text-yellow-600">{s.yellows}</span> / <span className="text-red-600">{s.reds}</span>
+                           </td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
+            </div>
+          </>
         )}
 
         {/* 3. تقارير المباريات */}
         {activeTab === 'matches' && (
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 bg-slate-50">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-4 md:p-8 bg-slate-50">
               {filteredMatches.filter(m => m.isCompleted).map(m => (
-                <div key={m.id} className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-900 shadow-sm relative group overflow-hidden border-b-8 hover:border-orange-600 transition-all">
+                <div key={m.id} className="bg-white p-6 rounded-[2rem] md:rounded-[2.5rem] border-2 border-slate-900 shadow-sm relative group overflow-hidden border-b-8 hover:border-orange-600 transition-all">
                    <div className="flex justify-between items-start mb-4">
-                      <span className="bg-[#001F3F] text-white text-[9px] font-black px-3 py-1 rounded-lg uppercase">{m.matchType}</span>
-                      <span className="text-[10px] font-black text-slate-400">{m.date}</span>
+                      <span className="bg-[#001F3F] text-white text-[8px] md:text-[9px] font-black px-3 py-1 rounded-lg uppercase">{m.matchType}</span>
+                      <span className="text-[9px] md:text-[10px] font-black text-slate-400">{m.date}</span>
                    </div>
-                   <h4 className="text-xl font-black text-slate-900 mb-4">الكرامة {m.ourScore} - {m.opponentScore} {m.opponent}</h4>
-                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
-                      <p className="text-[11px] font-black text-slate-600 leading-relaxed italic line-clamp-3">
+                   <h4 className="text-lg md:text-xl font-black text-slate-900 mb-4 leading-tight">الكرامة {m.ourScore} - {m.opponentScore} {m.opponent}</h4>
+                   <div className="bg-slate-50 p-4 rounded-xl md:rounded-2xl border border-slate-100 mb-6">
+                      <p className="text-[10px] md:text-[11px] font-black text-slate-600 leading-relaxed italic line-clamp-3">
                         {m.notes || 'لا يوجد تقرير فني مسجل لهذه المباراة.'}
                       </p>
                    </div>
                    <div className="flex justify-between items-center">
                       <div className="flex gap-4">
                         <div className="text-center">
-                           <p className="text-[8px] font-black text-slate-400 uppercase">الأهداف</p>
-                           <p className="text-sm font-black text-emerald-600">{m.events.filter(e => e.type === 'goal').length}</p>
+                           <p className="text-[7px] md:text-[8px] font-black text-slate-400 uppercase">الأهداف</p>
+                           <p className="text-xs md:text-sm font-black text-emerald-600">{m.events.filter(e => e.type === 'goal').length}</p>
                         </div>
                         <div className="text-center">
-                           <p className="text-[8px] font-black text-slate-400 uppercase">البطاقات</p>
-                           <p className="text-sm font-black text-orange-600">{m.events.filter(e => e.type === 'yellow' || e.type === 'red').length}</p>
+                           <p className="text-[7px] md:text-[8px] font-black text-slate-400 uppercase">البطاقات</p>
+                           <p className="text-xs md:text-sm font-black text-orange-600">{m.events.filter(e => e.type === 'yellow' || e.type === 'red').length}</p>
                         </div>
                       </div>
-                      <button className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-orange-600 transition-all">
-                        تصدير التقرير الفني <ChevronLeft size={14}/>
+                      <button className="bg-slate-900 text-white px-3 md:px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black flex items-center gap-2 hover:bg-orange-600 transition-all">
+                        تقرير <ChevronLeft size={14}/>
                       </button>
                    </div>
                 </div>
               ))}
+              {filteredMatches.filter(m => m.isCompleted).length === 0 && (
+                <div className="col-span-full py-12 text-center">
+                   <p className="text-slate-400 font-bold italic">لا توجد مباريات مكتملة للموسم الفلتر المختار</p>
+                </div>
+              )}
            </div>
         )}
 
         {/* 4. تقارير المستودع */}
         {activeTab === 'warehouse' && (
-          <div className="overflow-x-auto">
-             <table className="w-full text-right">
-                <thead className="bg-[#001F3F] text-white border-b-4 border-slate-900">
-                   <tr>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5">الصنف / المعدات</th>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5">القسم</th>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">الحالة</th>
-                      <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">الكمية</th>
-                      <th className="p-5 text-[10px] font-black uppercase text-center">آخر تحديث</th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-slate-100 font-black text-xs">
-                   {warehouseData.map(item => (
-                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                         <td className="p-5 text-slate-900">{item.name}</td>
-                         <td className="p-5 text-slate-400">{item.category}</td>
-                         <td className="p-5 text-center">
-                            <span className={`px-3 py-1 rounded-lg text-[9px] ${item.condition === 'جديد' ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
-                               {item.condition}
-                            </span>
-                         </td>
-                         <td className="p-5 text-center tabular-nums text-blue-600">{item.quantity} {item.unit}</td>
-                         <td className="p-5 text-center text-slate-400 text-[10px] tabular-nums">{new Date(item.lastUpdated).toLocaleDateString()}</td>
-                      </tr>
-                   ))}
-                </tbody>
-             </table>
-          </div>
+          <>
+            {/* Mobile Cards */}
+            <div className="block md:hidden divide-y-2 divide-slate-50">
+               {warehouseData.map(item => (
+                 <div key={item.id} className="p-4 flex justify-between items-center bg-white">
+                    <div>
+                       <p className="text-xs font-black text-blue-900">{item.name}</p>
+                       <p className="text-[9px] text-slate-400 font-bold">{item.category}</p>
+                    </div>
+                    <div className="text-right">
+                       <p className="text-[10px] font-black text-blue-600">{item.quantity} {item.unit}</p>
+                       <span className={`inline-block mt-1 px-2 py-0.5 rounded-lg text-[8px] font-black ${item.condition === 'جديد' ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
+                          {item.condition}
+                       </span>
+                    </div>
+                 </div>
+               ))}
+            </div>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+               <table className="w-full text-right">
+                  <thead className="bg-[#001F3F] text-white border-b-4 border-slate-900">
+                     <tr>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5">الصنف / المعدات</th>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5">القسم</th>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">الحالة</th>
+                        <th className="p-5 text-[10px] font-black uppercase border-l border-white/5 text-center">الكمية</th>
+                        <th className="p-5 text-[10px] font-black uppercase text-center">آخر تحديث</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y-2 divide-slate-100 font-black text-xs">
+                     {warehouseData.map(item => (
+                        <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                           <td className="p-5 text-slate-900">{item.name}</td>
+                           <td className="p-5 text-slate-400">{item.category}</td>
+                           <td className="p-5 text-center">
+                              <span className={`px-3 py-1 rounded-lg text-[9px] ${item.condition === 'جديد' ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
+                                 {item.condition}
+                              </span>
+                           </td>
+                           <td className="p-5 text-center tabular-nums text-blue-600">{item.quantity} {item.unit}</td>
+                           <td className="p-5 text-center text-slate-400 text-[10px] tabular-nums">{new Date(item.lastUpdated).toLocaleDateString()}</td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
+            </div>
+          </>
         )}
 
         {/* 5. مراجعات الكوادر */}
         {activeTab === 'reviews' && (
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-8 bg-slate-50">
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 p-4 md:p-8 bg-slate-50">
               {state.technicalReports.filter(r => r.type === 'staff_review').map(report => {
                 const target = state.people.find(p => p.id === report.targetId);
                 return (
-                  <div key={report.id} className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-900 shadow-sm border-b-[10px] hover:border-yellow-600 transition-all">
+                  <div key={report.id} className="bg-white p-6 rounded-[2rem] md:rounded-[2.5rem] border-2 border-slate-900 shadow-sm border-b-[10px] hover:border-yellow-600 transition-all relative">
                      <div className="flex justify-between items-center mb-4">
-                        <span className="text-[10px] font-black text-slate-400 uppercase">{report.date}</span>
+                        <span className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase">{report.date}</span>
                         {renderStars(report.rating)}
                      </div>
-                     <h4 className="font-black text-[#001F3F] mb-1">{target?.name}</h4>
-                     <p className="text-[9px] font-black text-orange-600 uppercase mb-4 tracking-widest">{target?.role}</p>
-                     <p className="text-xs font-bold text-slate-600 leading-relaxed italic line-clamp-4">
+                     <h4 className="font-black text-[#001F3F] mb-1 text-sm md:text-base">{target?.name}</h4>
+                     <p className="text-[8px] md:text-[9px] font-black text-orange-600 uppercase mb-4 tracking-widest">{target?.role}</p>
+                     <p className="text-[11px] md:text-xs font-bold text-slate-600 leading-relaxed italic line-clamp-4">
                         "{report.content}"
                      </p>
                      <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2">
-                        <div className="w-6 h-6 bg-slate-900 text-white rounded flex items-center justify-center text-[8px]">{report.author.charAt(0)}</div>
-                        <span className="text-[10px] text-slate-400 font-black">المقيم: {report.author}</span>
+                        <div className="w-6 h-6 bg-slate-900 text-white rounded flex items-center justify-center text-[8px] font-black">{report.author.charAt(0)}</div>
+                        <span className="text-[9px] md:text-[10px] text-slate-400 font-black">المقيم: {report.author}</span>
                      </div>
                   </div>
                 );
