@@ -42,6 +42,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     let reds = 0;
     let appearances = 0;
     const matchHistory: any[] = [];
+    const groupedStats: Record<string, { matches: number; mins: number; goals: number }> = {};
 
     state.matches.filter(m => m.isCompleted).forEach(m => {
       const starter = m.lineup.starters.find(s => s.playerId === player.id);
@@ -61,10 +62,26 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         assists += playerAssists;
         yellows += playerYellows;
         reds += playerReds;
+        
+        let typeName = m.matchType || 'أخرى';
+        if (m.matchType === 'مباراة بطولة' && m.notes) {
+           const tourNameMatch = m.notes.match(/من بطولة: (.*?) -/);
+           if (tourNameMatch && tourNameMatch[1]) {
+             typeName = `بطولة ${tourNameMatch[1]}`;
+           }
+        }
+        
+        if (!groupedStats[typeName]) {
+           groupedStats[typeName] = { matches: 0, mins: 0, goals: 0 };
+        }
+        groupedStats[typeName].matches += 1;
+        groupedStats[typeName].mins += mins;
+        groupedStats[typeName].goals += playerGoals;
 
         matchHistory.push({
           opponent: m.opponent,
           date: m.date,
+          matchType: typeName,
           mins,
           goals: playerGoals,
           assists: playerAssists,
@@ -74,7 +91,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
       }
     });
 
-    return { totalMins, goals, assists, yellows, reds, appearances, matchHistory };
+    return { totalMins, goals, assists, yellows, reds, appearances, matchHistory, groupedStats };
   }, [state.matches, player]);
 
   const attendanceStats = useMemo(() => {
@@ -249,6 +266,35 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                   <Timer size={14} className="text-purple-600 mx-auto mt-1" />
                </div>
             </div>
+
+            {/* إحصائيات المباريات المفصلة حسب البطولة/النوع */}
+            {Object.keys(stats.groupedStats).length > 0 && (
+               <div className="modern-card p-6 md:p-8 border-r-8 border-blue-600">
+                  <SectionTitle icon={Trophy} title="سجل المباريات المفصل" color="text-blue-500" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                     {Object.entries(stats.groupedStats).map(([type, s]: any) => (
+                        <div key={type} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-col gap-2 hover:bg-slate-100 transition-all">
+                           <div className="flex items-center gap-2 text-slate-500">
+                              <Trophy size={14} className="text-orange-500" />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-700">{type}</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold font-mono">
+                              <span className="text-slate-500">المباريات:</span>
+                              <span className="text-blue-900">{s.matches}</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold font-mono">
+                              <span className="text-slate-500">الدقائق:</span>
+                              <span className="text-emerald-600">{s.mins} دقيقة</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold font-mono">
+                              <span className="text-slate-500">الأهداف:</span>
+                              <span className="text-orange-600">{s.goals}</span>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+            )}
 
             {/* المواصفات الفنية والبدنية */}
             <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">

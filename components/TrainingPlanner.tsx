@@ -378,6 +378,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                   <div className="space-y-2 text-[10px] md:text-[11px] font-black text-slate-700 uppercase tracking-tighter">
                      <p className="flex items-center gap-2"><CalendarIcon size={14} className="text-orange-600"/> {session.date}</p>
                      <p className="flex items-center gap-2"><Clock size={14} className="text-blue-900"/> {session.time}</p>
+                     {session.duration && <p className="flex items-center gap-2"><Clock size={14} className="text-slate-500"/> المدة: {session.duration} دقيقة</p>}
                      <p className="flex items-center gap-2"><MapPin size={14} className="text-emerald-800"/> {session.pitch || 'ملعب الكرامة'}</p>
                   </div>
                   {!isViewer && (
@@ -418,7 +419,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <label className={labelClass}>الفئة</label>
-                       <select required disabled={!!restrictedCat} className={fieldClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                       <select required disabled={!!restrictedCat} className={fieldClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
                           {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
@@ -431,7 +432,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                     <label className={labelClass}>موضوع النشاط</label>
                     <input required type="text" className={fieldClass} value={formData.objective || ''} onChange={e => setFormData({...formData, objective: e.target.value})} placeholder="تمرين تكتيكي.." />
                  </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-1">
                        <label className={labelClass}>التاريخ</label>
                        <input required type="date" className={fieldClass} value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
@@ -439,6 +440,10 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                     <div className="space-y-1">
                        <label className={labelClass}>التوقيت</label>
                        <input required type="time" className={fieldClass} value={formData.time || ''} onChange={e => setFormData({...formData, time: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className={labelClass}>المدة (دقيقة)</label>
+                       <input type="number" min="0" className={fieldClass} value={formData.duration || ''} onChange={e => setFormData({...formData, duration: e.target.value})} placeholder="90" />
                     </div>
                  </div>
                  <button type="submit" className="w-full bg-blue-900 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all mt-4 uppercase active:scale-[0.98]">حفظ الحصة المركزية</button>

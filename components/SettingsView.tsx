@@ -221,7 +221,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                  <div className="space-y-2">
                     <label className={labelClass}>الرتبة / الصلاحية</label>
                     <select className={fieldClass}
-                      value={userFormData.role} onChange={e => setUserFormData({ ...userFormData, role: e.target.value as UserRole, restrictedCategory: '' })}>
+                      value={userFormData.role || ''} onChange={e => setUserFormData({ ...userFormData, role: e.target.value as UserRole, restrictedCategory: '' })}>
                       {roles.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                  </div>
@@ -229,7 +229,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                     <div className="space-y-2">
                       <label className={labelClass}>الفئة المحصورة</label>
                       <select className={fieldClass}
-                        value={userFormData.restrictedCategory} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value })}>
+                        value={userFormData.restrictedCategory || ''} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value })}>
                         <option value="">-- فئة مخصصة --</option>
                         {state.categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>

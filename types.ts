@@ -3,7 +3,49 @@ export type Category = string;
 export type Role = 'لاعب' | 'مدير' | 'مساعد مدرب' | 'مدرب حراس' | 'مدرب لياقة' | 'إداري' | 'طبيب' | 'معالج' | 'منسق إعلامي' | 'مرافق';
 export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب' | 'غياب بعذر';
 export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد' | 'أمين مستودع';
-export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية' | 'مباراة دولية';
+export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية' | 'مباراة دولية' | 'مباراة بطولة';
+
+export interface Tournament {
+  id: string;
+  name: string;
+  category: Category;
+  status: 'نشطة' | 'منتهية';
+}
+
+export interface TournamentStage {
+  id: string;
+  tournamentId: string;
+  name: string;
+  isGroupStage: boolean;
+}
+
+export interface TournamentTeam {
+  id: string;
+  tournamentId: string;
+  name: string;
+  isOurTeam: boolean;
+}
+
+export interface TournamentStageTeam {
+  id: string;
+  stageId: string;
+  teamId: string;
+}
+
+export interface TournamentMatch {
+  id: string;
+  tournamentId: string;
+  stageId: string;
+  team1Id: string; // references TournamentTeam
+  team2Id: string;
+  team1Score?: number;
+  team2Score?: number;
+  matchDate?: string;
+  matchTime?: string;
+  pitch?: string;
+  status: 'قادمة' | 'ملعوبة';
+  linkedMatchId?: string; // links to existing Match.id if it's our match
+}
 
 export interface InjuryRecord {
   id: string;
@@ -102,6 +144,7 @@ export interface TrainingSession {
   category: Category;
   date: string;
   time: string;
+  duration?: string;
   pitch?: string;
   objective: string;
   isCompleted?: boolean;
@@ -120,6 +163,14 @@ export interface Match {
   id: string;
   category: Category;
   matchType: MatchType;
+  isFinal?: boolean;
+  hasExtraTimeAndPenalties?: boolean;
+  ourPenaltiesScore?: string;
+  opponentPenaltiesScore?: string;
+  matchDuration?: string;
+  halvesCount?: string;
+  squadSize?: string;
+  squad?: string[];
   opponent: string;
   pitch?: string;
   date: string;
@@ -133,6 +184,7 @@ export interface Match {
   referee?: string;
   homeCoach?: string;
   awayCoach?: string;
+  isHome?: boolean;
   events: MatchEvent[];
   lineup: {
     starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
@@ -169,6 +221,19 @@ export interface AppUser {
   restrictedCategory?: Category;
 }
 
+export type ServiceCategory = 'فنادق' | 'مطاعم' | 'مشافي';
+
+export interface DirectoryService {
+  id: string;
+  category: ServiceCategory;
+  governorate: string;
+  name: string;
+  address: string;
+  phone: string;
+  description: string;
+  features: string;
+}
+
 export interface AppState {
   people: Person[];
   attendance: AttendanceRecord[];
@@ -183,4 +248,10 @@ export interface AppState {
   globalCategoryFilter: Category | 'الكل';
   injuries: InjuryRecord[];
   tacticalPlans: TacticalPlan[];
+  tournaments: Tournament[];
+  tournamentStages: TournamentStage[];
+  tournamentTeams: TournamentTeam[];
+  tournamentStageTeams: TournamentStageTeam[];
+  tournamentMatches: TournamentMatch[];
+  servicesDirectory: DirectoryService[];
 }

@@ -60,7 +60,12 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
       ...formData,
       id: editingId || generateUUID(),
       name: formData.name!.trim(),
-    } as Person;
+    } as any;
+
+    ['number', 'height', 'weight', 'contractValue', 'birthDate', 'contractStart', 'contractEnd'].forEach(key => {
+      if (updatedPerson[key] === '') updatedPerson[key] = null;
+    });
+    if (Number.isNaN(updatedPerson.number)) updatedPerson.number = null;
 
     try {
       const { error } = await supabase.from('people').upsert(updatedPerson);
@@ -219,9 +224,9 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
               {/* القسم 2: الرياضة */}
               <h4 className={sectionHeader}><Activity size={16}/> 2. البيانات الرياضية</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option><option value="مدرب">مدرب</option><option value="إداري">إداري</option><option value="طبيب">طبيب</option><option value="معالج">معالج</option></select></div>
-                <div className="space-y-1"><label className={labelClass}>الفئة</label><select disabled={!!restrictedCat} className={inputClass} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{state.categories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: parseInt(e.target.value)})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option><option value="مدرب">مدرب</option><option value="إداري">إداري</option><option value="طبيب">طبيب</option><option value="معالج">معالج</option></select></div>
+                <div className="space-y-1"><label className={labelClass}>الفئة</label><select disabled={!!restrictedCat} className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{state.categories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
                 <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>

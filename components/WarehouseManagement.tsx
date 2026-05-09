@@ -188,7 +188,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                        <select 
                         disabled={!!restrictedCat && !isWarehouseKeeper}
                         className={fieldClass} 
-                        value={formData.category} 
+                        value={formData.category || ''} 
                         onChange={e => setFormData({...formData, category: e.target.value as any})}
                        >
                           <option value="المخزن العام">المخزن العام</option>
@@ -197,7 +197,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                     </div>
                     <div className="space-y-1.5">
                        <label className={labelClass}>حالة الصنف</label>
-                       <select className={fieldClass} value={formData.condition} onChange={e => setFormData({...formData, condition: e.target.value as any})}>
+                       <select className={fieldClass} value={formData.condition || ''} onChange={e => setFormData({...formData, condition: e.target.value as any})}>
                           <option value="جديد">جديد</option>
                           <option value="مستعمل">مستعمل</option>
                           <option value="تالف">تالف</option>
@@ -215,7 +215,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                     </div>
                     <div className="space-y-1.5">
                        <label className={labelClass}>الوحدة</label>
-                       <select className={fieldClass} value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value as any})}>
+                       <select className={fieldClass} value={formData.unit || ''} onChange={e => setFormData({...formData, unit: e.target.value as any})}>
                           <option value="قطعة">قطعة</option>
                           <option value="طقم">طقم</option>
                           <option value="كرة">كرة</option>

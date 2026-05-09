@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, 
-  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass
+  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, Medal, 
+  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification } from './types';
@@ -16,13 +16,12 @@ import MatchPlanner from './components/MatchPlanner';
 import SettingsView from './components/SettingsView';
 import PlayerReport from './components/PlayerReport';
 import WarehouseManagement from './components/WarehouseManagement';
+import TournamentsView from './components/TournamentsView';
+import ServicesView from './components/ServicesView';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 import ChatBot from './components/ChatBot';
-import TacticalBoard from './components/TacticalBoard';
 import MedicalCenter from './components/MedicalCenter';
-import VisualAnalytics from './components/VisualAnalytics';
-import LocationAssistant from './components/LocationAssistant';
 
 export const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -50,8 +49,8 @@ const App: React.FC = () => {
     if (saved) { try { return JSON.parse(saved); } catch (e) {} }
     return {
       currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال'],
-      people: [], sessions: [], matches: [], warehouse: [], technicalReports: [],
-      attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], 
+      people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
+      attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [],
       globalCategoryFilter: 'الكل'
     };
   });
@@ -78,8 +77,13 @@ const App: React.FC = () => {
       let usersQ = supabase.from('app_users').select('*');
       let injuriesQ = supabase.from('injuries').select('*');
       let tacticalQ = supabase.from('tactical_plans').select('*');
-
       let categoriesQ = supabase.from('categories').select('*');
+      let tournamentsQ = supabase.from('tournaments').select('*');
+      let tourStagesQ = supabase.from('tournament_stages').select('*');
+      let tourTeamsQ = supabase.from('tournament_teams').select('*');
+      let tourSTeamsQ = supabase.from('tournament_stage_teams').select('*');
+      let tourMatchesQ = supabase.from('tournament_matches').select('*');
+      let servicesQ = supabase.from('services_directory').select('*');
 
       if (isManager) {
       } else if (isWarehouse) {
@@ -89,6 +93,12 @@ const App: React.FC = () => {
         attendanceQ = attendanceQ.limit(0);
         injuriesQ = injuriesQ.limit(0);
         tacticalQ = tacticalQ.limit(0);
+        tournamentsQ = tournamentsQ.limit(0);
+        tourStagesQ = tourStagesQ.limit(0);
+        tourTeamsQ = tourTeamsQ.limit(0);
+        tourSTeamsQ = tourSTeamsQ.limit(0);
+        tourMatchesQ = tourMatchesQ.limit(0);
+        servicesQ = servicesQ.limit(0);
       } else if (cat) {
         peopleQ = peopleQ.eq('category', cat);
         matchesQ = matchesQ.eq('category', cat);
@@ -96,10 +106,12 @@ const App: React.FC = () => {
         warehouseQ = warehouseQ.or(`category.eq.${cat},category.eq.المخزن العام`);
         injuriesQ = injuriesQ.eq('category', cat);
         tacticalQ = tacticalQ.eq('category', cat);
+        tournamentsQ = tournamentsQ.eq('category', cat);
       }
 
-      const [p, m, s, a, w, u, inj, tac, catsReq] = await Promise.all([
-        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ, categoriesQ
+      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq] = await Promise.all([
+        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ, categoriesQ,
+        tournamentsQ, tourStagesQ, tourTeamsQ, tourSTeamsQ, tourMatchesQ, servicesQ
       ]);
 
       if (u.error) console.error("Error fetching users:", u.error);
@@ -126,7 +138,13 @@ const App: React.FC = () => {
         injuries: inj.data || [],
         tacticalPlans: tac.data || [],
         categories: fetchedCats.length > 0 ? fetchedCats : prev.categories,
-        globalCategoryFilter: (!isManager && !isWarehouse && cat) ? cat : 'الكل'
+        globalCategoryFilter: (!isManager && !isWarehouse && cat) ? cat : 'الكل',
+        tournaments: toursReq.data || [],
+        tournamentStages: tStagesReq.data || [],
+        tournamentTeams: tTeamsReq.data || [],
+        tournamentStageTeams: tSTeamsReq.data || [],
+        tournamentMatches: tMatchesReq.data || [],
+        servicesDirectory: servicesReq.data || []
       }));
       setSyncStatus('synced');
       if (!silent) {
@@ -262,12 +280,11 @@ const App: React.FC = () => {
     { id: 'squad', label: 'الفريق', icon: Users },
     { id: 'training', label: 'التدريبات', icon: Calendar },
     { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
-    { id: 'tactics', label: 'التكتيك', icon: PenTool },
     { id: 'medical', label: 'الطبابة', icon: HeartPulse },
     { id: 'matches', label: 'المباريات', icon: Trophy },
-    { id: 'logistics', label: 'المساعد اللوجستي', icon: Compass },
+    { id: 'tournaments', label: 'البطولات', icon: Medal },
+    { id: 'services', label: 'خدمات', icon: MapPin },
     { id: 'warehouse', label: 'المستودع', icon: Package },
-    { id: 'analytics', label: 'التحليلات', icon: Activity },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ].filter(item => {
     if (state.currentUser?.role !== 'مدير' && item.id === 'settings') return false;
@@ -357,12 +374,11 @@ const App: React.FC = () => {
             {activeTab === 'squad' && <SquadManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
             {activeTab === 'training' && <TrainingPlanner state={state} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'tactics' && <TacticalBoard state={state} setState={updateState} syncToCloud={syncToCloud} />}
             {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} syncToCloud={syncToCloud} />}
+            {activeTab === 'tournaments' && <TournamentsView state={state} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} />}
+            {activeTab === 'services' && <ServicesView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} />}
-            {activeTab === 'logistics' && <LocationAssistant />}
             {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'analytics' && <VisualAnalytics state={state} />}
             {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}
           </div>
@@ -375,6 +391,7 @@ const App: React.FC = () => {
              { id: 'squad', icon: Users, label: 'الفريق' },
              { id: 'training', icon: Calendar, label: 'التدريبات' },
              { id: 'matches', icon: Trophy, label: 'المباريات' },
+             { id: 'tournaments', icon: Medal, label: 'البطولات' },
            ].map(item => (
              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 transition-all ${activeTab === item.id ? 'text-orange-500 scale-110' : 'text-slate-400'}`}>
                 <item.icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2} />
