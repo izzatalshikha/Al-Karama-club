@@ -168,7 +168,6 @@ export interface Match {
   ourPenaltiesScore?: string;
   opponentPenaltiesScore?: string;
   matchDuration?: string;
-  halvesCount?: string;
   squadSize?: string;
   squad?: string[];
   opponent: string;
@@ -188,6 +187,12 @@ export interface Match {
   events: MatchEvent[];
   lineup: {
     starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
+    half2Starters?: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
+    half3Starters?: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
+    durationHalf1?: string;
+    durationHalf2?: string;
+    durationHalf3?: string;
+    halvesCount?: string;
     subs: { 
       playerId: string; 
       name: string; 

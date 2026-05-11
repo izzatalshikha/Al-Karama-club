@@ -391,7 +391,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
             })}
             {filteredSessions.length === 0 && (
               <div className="col-span-full py-16 md:py-24 text-center bg-slate-50 rounded-[2.5rem] md:rounded-[3rem] border-4 border-dashed border-slate-200">
-                <CalendarIcon className="mx-auto text-slate-400 mb-4" size={56} md:size={64} />
+                <CalendarIcon className="mx-auto text-slate-400 mb-4" size={56} />
                 <p className="text-slate-600 font-black text-base md:text-lg uppercase tracking-widest italic">لا توجد تمارين مسجلة</p>
               </div>
             )}

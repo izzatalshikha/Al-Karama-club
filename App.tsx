@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, Medal, 
-  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin
+  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification } from './types';
@@ -48,7 +48,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('eagle_os_v3');
     if (saved) { try { return JSON.parse(saved); } catch (e) {} }
     return {
-      currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال'],
+      currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
       people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
       attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [],
       globalCategoryFilter: 'الكل'
@@ -275,6 +275,8 @@ const App: React.FC = () => {
 
   if (!state.currentUser) return <Login onLoginAttempt={onLoginAttempt} />;
 
+  const [isActivitiesOpen, setActivitiesOpen] = useState(false);
+
   const navItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
     { id: 'squad', label: 'الفريق', icon: Users },
@@ -282,6 +284,7 @@ const App: React.FC = () => {
     { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
     { id: 'medical', label: 'الطبابة', icon: HeartPulse },
     { id: 'matches', label: 'المباريات', icon: Trophy },
+    { id: 'baraaem-matches', label: 'مباريات البراعم', icon: Baby },
     { id: 'tournaments', label: 'البطولات', icon: Medal },
     { id: 'services', label: 'خدمات', icon: MapPin },
     { id: 'warehouse', label: 'المستودع', icon: Package },
@@ -377,7 +380,8 @@ const App: React.FC = () => {
             {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} syncToCloud={syncToCloud} />}
             {activeTab === 'tournaments' && <TournamentsView state={state} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} />}
             {activeTab === 'services' && <ServicesView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} />}
+            {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
+            {activeTab === 'baraaem-matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
             {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}

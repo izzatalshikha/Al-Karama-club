@@ -16,9 +16,10 @@ interface MatchPlannerProps {
   defaultSelectedId?: string | null;
   addLog?: (m: string, d?: string, t?: any) => void;
   getSuspension: (id: string, cat: string) => { isSuspended: boolean, currentYellows: number, hasActiveRed: boolean };
+  viewMode?: 'regular' | 'baraaem';
 }
 
-const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSelectedId, addLog, getSuspension }) => {
+const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSelectedId, addLog, getSuspension, viewMode = 'regular' }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeMatch, setActiveMatch] = useState<Match | null>(null);
 
@@ -26,12 +27,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     if (defaultSelectedId) {
       const targetMatch = state.matches.find(m => m.id === defaultSelectedId);
       if (targetMatch) {
-         // Fix old matches without 11 starters
-         if (!targetMatch.lineup) targetMatch.lineup = { starters: [], subs: [], staff: [], captain: '' };
-         if (!targetMatch.lineup.starters || targetMatch.lineup.starters.length < 11) {
-            targetMatch.lineup.starters = Array(11).fill(null).map((_, i) => targetMatch.lineup.starters[i] || { playerId: '', name: '', number: '', minutesPlayed: '90' });
-         }
-         setActiveMatch(targetMatch);
+         handleOpenMatch(targetMatch);
       }
     }
   }, [defaultSelectedId, state.matches]);
@@ -41,9 +37,11 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const isViewer = currentUser?.role === 'مشاهد';
   const restrictedCat = currentUser?.restrictedCategory;
 
+  const categoriesToUse = state.categories;
+
   const [formData, setFormData] = useState<Partial<Match>>({ 
     matchType: 'دوري', 
-    category: restrictedCat || (state.categories[0] || 'الرجال'),
+    category: restrictedCat || categoriesToUse[0] || 'الرجال',
     pitch: 'ملعب الكرامة',
     date: new Date().toISOString().split('T')[0],
     time: '16:00',
@@ -55,8 +53,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   });
 
   const recalculateAllMinutes = (currentMatch: Match) => {
+    if (currentMatch.lineup?.halvesCount === '3' || currentMatch.category === 'البراعم') {
+       return currentMatch; 
+    }
     const stoppage2 = parseInt(currentMatch.stoppageTime2 || '0');
-    const fullTime = 90 + stoppage2;
+    const baseDuration = parseInt(currentMatch.matchDuration || '90');
+    const fullTime = baseDuration + stoppage2;
     const newLineup = { ...currentMatch.lineup };
 
     newLineup.starters = newLineup.starters.map(s => {
@@ -77,19 +79,53 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     return { ...currentMatch, lineup: newLineup };
   };
 
+  const handleOpenMatch = (matchToOpen: Match) => {
+    let repairedMatch = { ...matchToOpen };
+    // Fix buggy Baraaem matches that were created with 11 starters
+    if (repairedMatch.lineup?.halvesCount === '3' || repairedMatch.category === 'البراعم') {
+      if (!repairedMatch.lineup) {
+         repairedMatch.lineup = { starters: [], half2Starters: [], half3Starters: [], halvesCount: '3', durationHalf1: '20', durationHalf2: '20', durationHalf3: '20', subs: [], staff: [], captain: '' };
+      }
+      if (repairedMatch.lineup.starters?.length === 11 && repairedMatch.lineup.starters.every(s => !s.playerId)) {
+         repairedMatch.lineup.starters = [];
+      }
+      if (!repairedMatch.lineup.halvesCount) repairedMatch.lineup.halvesCount = '3';
+    } else {
+      if (!repairedMatch.lineup) repairedMatch.lineup = { starters: [], subs: [], staff: [], captain: '' };
+      if (!repairedMatch.lineup.starters || repairedMatch.lineup.starters.length < 11) {
+         repairedMatch.lineup.starters = Array(11).fill(null).map((_, i) => repairedMatch.lineup.starters[i] || { playerId: '', name: '', number: '', minutesPlayed: '90' });
+      }
+    }
+    setActiveMatch(repairedMatch);
+  };
+
   const filteredMatches = useMemo(() => {
     return state.matches.filter(m => {
+      const isBaraaemMatch = m.lineup?.halvesCount === '3' || m.category === 'البراعم';
+      
+      // If we are in baraaem mode, only show baraaem matches
+      if (viewMode === 'baraaem') {
+        if (!isBaraaemMatch) return false;
+      } else {
+        if (isBaraaemMatch) return false;
+      }
+
       if (restrictedCat) return m.category === restrictedCat;
       return (state.globalCategoryFilter === 'الكل' || m.category === state.globalCategoryFilter);
     }).sort((a,b) => b.date.localeCompare(a.date));
-  }, [state.matches, state.globalCategoryFilter, restrictedCat]);
+  }, [state.matches, state.globalCategoryFilter, restrictedCat, viewMode]);
 
   const handleCreateMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.opponent || !formData.date || isViewer) return;
+    
+    // Always use Baraaem formatting if we are inside the Baraaem view, or if the selected category is Baraaem.
+    const isBaraaemFormat = viewMode === 'baraaem' || formData.category === 'البراعم';
+    const finalCategory = formData.category || categoriesToUse[0] || 'الرجال';
+    
     const newMatch: Match = {
       id: generateUUID(),
-      category: formData.category || state.categories[0],
+      category: finalCategory,
       matchType: (formData.matchType as MatchType) || 'دوري',
       opponent: formData.opponent,
       pitch: formData.pitch || 'ملعب الكرامة',
@@ -104,9 +140,18 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       opponentScore: '0',
       stoppageTime1: '0',
       stoppageTime2: '0',
+      squadSize: formData.squadSize || (isBaraaemFormat ? undefined : '18'),
+      matchDuration: formData.matchDuration || (isBaraaemFormat ? '60' : '90'),
+      isFinal: formData.isFinal || false,
       events: [],
       lineup: {
-        starters: Array(11).fill(null).map(() => ({ playerId: '', name: '', number: '', minutesPlayed: '90' })),
+        starters: isBaraaemFormat ? [] : Array(11).fill(null).map(() => ({ playerId: '', name: '', number: '', minutesPlayed: '90' })),
+        half2Starters: isBaraaemFormat ? [] : undefined,
+        half3Starters: isBaraaemFormat ? [] : undefined,
+        halvesCount: isBaraaemFormat ? '3' : formData.lineup?.halvesCount,
+        durationHalf1: isBaraaemFormat ? '20' : undefined,
+        durationHalf2: isBaraaemFormat ? '20' : undefined,
+        durationHalf3: isBaraaemFormat ? '20' : undefined,
         subs: [],
         staff: [],
         captain: ''
@@ -120,6 +165,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     setState(prev => ({ ...prev, matches: [newMatch, ...prev.matches] }));
     addLog?.('جدولة مباراة', `تمت جدولة مواجهة ضد ${newMatch.opponent}`, 'success');
     setIsAddOpen(false);
+    setActiveMatch(newMatch);
   };
 
   const deleteMatch = async (id: string) => {
@@ -135,6 +181,10 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const saveMatch = async (complete: boolean = false) => {
     if (!activeMatch || isViewer) return;
     const finalMatch = recalculateAllMinutes({ ...activeMatch, isCompleted: complete });
+    // Remove isBaraaem if it exists from older data
+    if ('isBaraaem' in finalMatch) {
+      delete (finalMatch as any).isBaraaem;
+    }
     const { error } = await supabase.from('matches').upsert(finalMatch);
     if (error) { alert('خطأ في الحفظ السحابي: ' + error.message); return; }
 
@@ -155,6 +205,49 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const removeEvent = (id: string) => {
     if (!activeMatch) return;
     setActiveMatch({ ...activeMatch, events: activeMatch.events.filter(e => e.id !== id) });
+  };
+
+  const updateHalfStarter = (half: 1 | 2 | 3, idx: number, playerId: string) => {
+    if (!activeMatch) return;
+    const player = state.people.find(p => p.id === playerId);
+    const newLineup = { ...activeMatch.lineup };
+    
+    let targetArrayName: 'starters' | 'half2Starters' | 'half3Starters' = 'starters';
+    if (half === 2) targetArrayName = 'half2Starters';
+    if (half === 3) targetArrayName = 'half3Starters';
+
+    if (!newLineup[targetArrayName]) {
+       newLineup[targetArrayName] = [];
+    }
+
+    if (player) {
+      newLineup[targetArrayName][idx] = { playerId: player.id, name: player.name, number: player.number?.toString() || '', minutesPlayed: '0' };
+    } else {
+      newLineup[targetArrayName] = newLineup[targetArrayName].filter((_, i) => i !== idx);
+    }
+    setActiveMatch({ ...activeMatch, lineup: newLineup });
+  };
+
+  const addPlayerToHalf = (half: 1 | 2 | 3, playerId: string) => {
+    if (!activeMatch || !playerId) return;
+    const player = state.people.find(p => p.id === playerId);
+    if (!player) return;
+    const newLineup = { ...activeMatch.lineup };
+    
+    let targetArrayName: 'starters' | 'half2Starters' | 'half3Starters' = 'starters';
+    if (half === 2) targetArrayName = 'half2Starters';
+    if (half === 3) targetArrayName = 'half3Starters';
+
+    if (!newLineup[targetArrayName]) {
+       newLineup[targetArrayName] = [];
+    }
+    newLineup[targetArrayName].push({
+      playerId: player.id,
+      name: player.name,
+      number: player.number?.toString() || '',
+      minutesPlayed: '0'
+    });
+    setActiveMatch({ ...activeMatch, lineup: newLineup });
   };
 
   const updateStarter = (idx: number, playerId: string) => {
@@ -189,33 +282,17 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   return (
     <div className="space-y-8 animate-in fade-in duration-500 font-['IBM_Plex_Sans_Arabic']" dir="rtl">
       {/* Header Section */}
-      <div className="modern-card p-8 flex flex-col md:flex-row justify-between items-center gap-6 border-b-4 border-orange-500/20">
+      <div className="modern-card p-6 md:p-8 flex items-center justify-between gap-4 border-b-4 border-orange-500/20">
         <div>
           <h2 className="text-2xl font-black text-blue-900 flex items-center gap-3">
-            <Trophy className="text-orange-600" size={32} /> إدارة مباريات وأنشطة النادي
+            <Trophy className="text-orange-600" size={32} /> {viewMode === 'baraaem' ? 'مباريات البراعم' : 'إدارة مباريات النادي'}
           </h2>
-          <p className="text-[10px] text-slate-600 font-black uppercase tracking-[0.3em] mt-1">Football Operations Hub</p>
         </div>
         {!isViewer && (
-          <button onClick={() => setIsAddOpen(true)} className="bg-orange-500 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-orange-500/10 hover:bg-orange-600 transition-all active:scale-95">
-            <Plus size={20}/> جدولة مباراة جديدة
+          <button onClick={() => setIsAddOpen(true)} className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-orange-600 active:scale-95 transition-all">
+            <Plus size={20}/> مباراة جديدة
           </button>
         )}
-      </div>
-
-      {/* Match Summary Bar */}
-      <div className="modern-card p-6 bg-slate-50/50">
-        <h3 className="text-xs font-black text-slate-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><ClipboardList size={14}/> ملخص المباريات السريع</h3>
-        <div className="space-y-2">
-           {filteredMatches.slice(0, 5).map(m => (
-             <div key={m.id} className="flex justify-between items-center text-[10px] font-bold py-2 border-b border-slate-100 last:border-0">
-                <span className="text-orange-600 w-24">{m.category}</span>
-                <span className="text-blue-950 flex-1 text-center font-black">الكرامة ({m.ourScore}) - ({m.opponentScore}) {m.opponent}</span>
-                <span className="text-slate-600 w-24 text-left tabular-nums">{m.date}</span>
-             </div>
-           ))}
-           {filteredMatches.length === 0 && <p className="text-center text-[10px] text-slate-400 italic">لا توجد مباريات مسجلة</p>}
-        </div>
       </div>
 
       {/* Matches Grid */}
@@ -223,13 +300,17 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         {filteredMatches.map(m => {
           const canEdit = isManager || (!m.isCompleted && !isViewer);
           return (
-            <div key={m.id} className="modern-card p-6 md:p-8 flex flex-col border-b-4 border-slate-200 hover:border-orange-500 transition-all group">
+            <div 
+              key={m.id} 
+              onClick={() => canEdit && handleOpenMatch(m)}
+              className={`modern-card p-6 md:p-8 flex flex-col border-b-4 border-slate-200 transition-all group cursor-pointer ${canEdit ? 'hover:border-orange-500' : ''}`}
+            >
                <div className="flex justify-between items-start mb-4 md:mb-6">
                   <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-3 py-1 rounded-full border border-orange-100 uppercase">{m.matchType}</span>
                   <span className="text-[10px] text-slate-500 font-bold tabular-nums">{m.date}</span>
                </div>
                <div className="text-center py-4 md:py-6">
-                  <div className="flex justify-center items-center gap-4 md:gap-6">
+                  <div className="flex justify-center items-center gap-4 md:gap-6 pointer-events-none">
                     <div className="text-3xl md:text-4xl font-black text-blue-900 tabular-nums">{m.ourScore}</div>
                     <div className="text-slate-300 font-black text-2xl">:</div>
                     <div className="text-3xl md:text-4xl font-black text-blue-900 tabular-nums">{m.opponentScore}</div>
@@ -239,7 +320,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                   
                   {/* Detailed Match Info Brief */}
                   <div className="mt-4 space-y-1">
-                    {m.referee && <p className="text-[9px] text-slate-600 font-bold flex items-center justify-center gap-1"><Gavel size={10}/> الحكم: {m.referee}</p>}
+                    {m.referee && <p className="text-[9px] text-slate-600 font-bold flex items-center justify-center gap-1"><Gavel size={10}/> ملعب: {m.referee}</p>}
                     {m.homeCoach && <p className="text-[9px] text-slate-600 font-bold flex items-center justify-center gap-1"><Briefcase size={10}/> مدربنا: {m.homeCoach}</p>}
                   </div>
 
@@ -248,12 +329,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                   </div>
                </div>
                <div className="mt-auto pt-6 border-t border-slate-100 flex gap-2 md:gap-3">
-                  <button onClick={() => setActiveMatch(m)} className="flex-1 bg-slate-100 hover:bg-orange-500 text-blue-900 hover:text-white py-3 rounded-xl font-black text-[10px] md:text-xs transition-all flex items-center justify-center gap-2 shadow-sm">
+                  <button onClick={(e) => { e.stopPropagation(); handleOpenMatch(m); }} className="flex-1 bg-slate-100 hover:bg-orange-500 text-blue-900 hover:text-white py-3 rounded-xl font-black text-[10px] md:text-xs transition-all flex items-center justify-center gap-2 shadow-sm">
                     {canEdit ? <Activity size={16}/> : <FileText size={16}/>}
                     {canEdit ? 'إدارة المباراة' : 'تقرير فني'}
                   </button>
                   {isManager && (
-                    <button onClick={() => deleteMatch(m.id)} className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all border border-red-100 shadow-sm">
+                    <button onClick={(e) => { e.stopPropagation(); deleteMatch(m.id); }} className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all border border-red-100 shadow-sm">
                       <Trash2 size={16}/>
                     </button>
                   )}
@@ -262,6 +343,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
           );
         })}
       </div>
+      {filteredMatches.length === 0 && (
+         <div className="text-center py-12 md:py-16">
+            <Trophy className="mx-auto text-slate-300 mb-4" size={48} />
+            <p className="text-orange-600 text-sm font-bold">لا يوجد مباريات. يرجى إضافة مباراة جديدة.</p>
+         </div>
+      )}
 
       {/* Modal: Add Match */}
       {isAddOpen && (
@@ -276,8 +363,8 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     <div>
                        <label className={labelStyle}>الفئة</label>
-                       <select required className={inputStyle} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
-                          {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                       <select required className={inputStyle} value={formData.category || restrictedCat || categoriesToUse[0] || ''} onChange={e => setFormData({...formData, category: e.target.value})} disabled={!!restrictedCat}>
+                          {categoriesToUse.map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div>
@@ -328,19 +415,15 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                    <div>
-                       <label className={labelStyle}>مدة المباراة (دقائق)</label>
-                       <input type="number" className={inputStyle} value={formData.matchDuration || ''} onChange={e => setFormData({...formData, matchDuration: e.target.value})} placeholder="90" />
-                    </div>
-                    <div>
-                       <label className={labelStyle}>عدد الأشواط</label>
-                       <input type="number" className={inputStyle} value={formData.halvesCount || ''} onChange={e => setFormData({...formData, halvesCount: e.target.value})} placeholder="2" />
-                    </div>
-                    <div>
-                       <label className={labelStyle}>عدد لاعبي قائمة المباراة</label>
-                       <input type="number" className={inputStyle} value={formData.squadSize || ''} onChange={e => setFormData({...formData, squadSize: e.target.value})} placeholder="18" />
-                    </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                          <div>
+                             <label className={labelStyle}>مدة المباراة (دقائق)</label>
+                             <input type="number" className={inputStyle} value={formData.matchDuration || ''} onChange={e => setFormData({...formData, matchDuration: e.target.value})} placeholder={viewMode === 'baraaem' ? "60" : "90"} />
+                          </div>
+                          <div>
+                             <label className={labelStyle}>عدد لاعبي قائمة المباراة</label>
+                             <input type="number" className={inputStyle} value={formData.squadSize || ''} onChange={e => setFormData({...formData, squadSize: e.target.value})} placeholder={viewMode === 'baraaem' ? "مفتوح" : "18"} />
+                          </div>
                  </div>
 
                  <label className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl cursor-pointer hover:border-orange-500 transition-all">
@@ -448,11 +531,11 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
                        {/* Match Officials */}
                        <div className="modern-card p-6 md:p-8 border-slate-200 bg-white">
-                          <h4 className="text-base md:text-lg font-black text-blue-900 mb-6 md:mb-8 border-r-4 border-orange-500 pr-4 flex items-center gap-3 uppercase"><Gavel size={20}/> طاقم المباراة</h4>
+                          <h4 className="text-base md:text-lg font-black text-blue-900 mb-6 md:mb-8 border-r-4 border-orange-500 pr-4 flex items-center gap-3 uppercase"><Gavel size={20}/> تفاصيل المباراة</h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 text-right">
                             <div>
-                               <label className={labelStyle}>حكم المباراة</label>
-                               <input type="text" className={inputStyle} value={activeMatch.referee || ''} onChange={e => setActiveMatch({...activeMatch, referee: e.target.value})} placeholder="اسم الحكم..." />
+                               <label className={labelStyle}>ملعب المباراة</label>
+                               <input type="text" className={inputStyle} value={activeMatch.referee || ''} onChange={e => setActiveMatch({...activeMatch, referee: e.target.value})} placeholder="الملعب ..." />
                             </div>
                             <div>
                                <label className={labelStyle}>مدرب الكرامة</label>
@@ -463,13 +546,27 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                <input type="text" className={inputStyle} value={activeMatch.awayCoach || ''} onChange={e => setActiveMatch({...activeMatch, awayCoach: e.target.value})} placeholder="اسم المدرب..." />
                             </div>
                           </div>
+                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-6 text-right mt-6">
+                                <div>
+                                   <label className={labelStyle}>مدة المباراة (دقائق)</label>
+                                   <input type="number" className={inputStyle} value={activeMatch.matchDuration || ''} onChange={e => setActiveMatch({...activeMatch, matchDuration: e.target.value})} placeholder={activeMatch.lineup?.halvesCount === '3' ? "60" : "90"} />
+                                </div>
+                                <div>
+                                   <label className={labelStyle}>حجم القائمة المسموح</label>
+                                   <input type="number" className={inputStyle} value={activeMatch.squadSize || ''} onChange={e => setActiveMatch({...activeMatch, squadSize: e.target.value})} placeholder={activeMatch.lineup?.halvesCount === '3' ? "مفتوح" : "18"} />
+                                </div>
+                             </div>
                        </div>
 
                        {/* Match Squad (Roster) */}
                        <div className="modern-card p-6 md:p-8 border-slate-200">
                           <div className="flex justify-between items-center mb-6 md:mb-8">
                              <h4 className="text-base md:text-lg font-black text-blue-900 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><ClipboardList size={20}/> قائمة المباراة (المستدعيين)</h4>
-                             <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">{activeMatch.squad?.length || 0} / {activeMatch.squadSize || 18}</span>
+                             {(activeMatch.lineup?.halvesCount === '3') ? (
+                                <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">العدد: {activeMatch.squad?.length || 0}</span>
+                             ) : (
+                                <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">{activeMatch.squad?.length || 0} / {activeMatch.squadSize || 18}</span>
+                             )}
                           </div>
                           
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -483,9 +580,10 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                     key={player.id}
                                     onClick={() => {
                                       const currentSquad = activeMatch.squad || [];
+                                      const limit = (activeMatch.lineup?.halvesCount === '3') ? 999 : parseInt(activeMatch.squadSize || '18');
                                       if (isSelected) {
                                         setActiveMatch({...activeMatch, squad: currentSquad.filter(id => id !== player.id)});
-                                      } else if (currentSquad.length < parseInt(activeMatch.squadSize || '18')) {
+                                      } else if (currentSquad.length < limit) {
                                         setActiveMatch({...activeMatch, squad: [...currentSquad, player.id]});
                                       }
                                     }}
@@ -527,20 +625,68 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
                        {/* Starting XI */}
                        <div className="modern-card p-6 md:p-8 border-slate-200">
-                          <h4 className="text-base md:text-lg font-black text-blue-900 mb-6 md:mb-8 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><Users size={20}/> التشكيلة الأساسية (11 لاعب)</h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                             {activeMatch.lineup.starters.map((s, i) => (
-                               <div key={i} className="flex gap-2 md:gap-3 bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm">
-                                  <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-lg md:rounded-xl flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{i+1}</div>
-                                  <select className={inputStyle} value={s.playerId} onChange={e => updateStarter(i, e.target.value)}>
-                                     <option value="">-- اختر لاعب --</option>
-                                     {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && (!activeMatch.squad?.length || activeMatch.squad.includes(p.id))).map(p => (
-                                       <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
-                                     ))}
-                                  </select>
-                               </div>
-                             ))}
-                          </div>
+                          {(activeMatch.lineup?.halvesCount === '3') ? (
+                             Array.from({ length: parseInt(activeMatch.lineup?.halvesCount || '3') }).map((_, halfIdx) => {
+                                const halfLabel = halfIdx === 0 ? 'الشوط الأول' : halfIdx === 1 ? 'الشوط الثاني' : 'الشوط الثالث';
+                                const halfNum = (halfIdx + 1) as 1 | 2 | 3;
+                                const targetArrayName = halfNum === 1 ? 'starters' : (halfNum === 2 ? 'half2Starters' : 'half3Starters');
+                                const currentLineupArray = (activeMatch.lineup[targetArrayName] || []).filter(s => s.playerId);
+                                
+                                return (
+                                   <div key={halfNum} className="mb-8 last:mb-0">
+                                      <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                                        <h4 className="text-base md:text-lg font-black text-blue-900 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><Users size={20}/> تشكيلة {halfLabel}</h4>
+                                        <div className="flex items-center gap-2">
+                                           <label className="text-xs font-bold text-slate-500">المدة:</label>
+                                           <input type="number" className="w-16 h-10 bg-slate-50 border border-slate-200 rounded-lg text-center font-black" value={halfNum === 1 ? (activeMatch.lineup?.durationHalf1 || '') : halfNum === 2 ? (activeMatch.lineup?.durationHalf2 || '') : (activeMatch.lineup?.durationHalf3 || '')} onChange={e => {
+                                              const newLineup = { ...activeMatch.lineup };
+                                              if (halfNum === 1) newLineup.durationHalf1 = e.target.value;
+                                              if (halfNum === 2) newLineup.durationHalf2 = e.target.value;
+                                              if (halfNum === 3) newLineup.durationHalf3 = e.target.value;
+                                              setActiveMatch({...activeMatch, lineup: newLineup});
+                                           }} placeholder="دقيقة" />
+                                        </div>
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-4">
+                                         {currentLineupArray.map((s, i) => (
+                                           <div key={i} className="flex justify-between items-center bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm">
+                                              <div className="flex items-center gap-3">
+                                                 <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-lg md:rounded-xl flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{s.number || i+1}</div>
+                                                 <span className="font-bold text-sm text-slate-800">{s.name}</span>
+                                              </div>
+                                              <button onClick={() => updateHalfStarter(halfNum, i, '')} className="text-red-500 bg-red-50 p-2 rounded-lg hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                                           </div>
+                                         ))}
+                                      </div>
+                                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                         <select className={inputStyle} value="" onChange={e => addPlayerToHalf(halfNum, e.target.value)}>
+                                            <option value="">+ إضافة لاعب إلى تشكيلة {halfLabel}</option>
+                                            {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && (!activeMatch.squad?.length || activeMatch.squad.includes(p.id)) && (!currentLineupArray.some(starter => starter.playerId === p.id))).map(p => (
+                                              <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
+                                            ))}
+                                         </select>
+                                      </div>
+                                   </div>
+                                )
+                             })
+                          ) : (
+                             <>
+                                <h4 className="text-base md:text-lg font-black text-blue-900 mb-6 md:mb-8 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><Users size={20}/> التشكيلة الأساسية (11 لاعب)</h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                                   {activeMatch.lineup.starters.map((s, i) => (
+                                     <div key={i} className="flex gap-2 md:gap-3 bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm">
+                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-lg md:rounded-xl flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{i+1}</div>
+                                        <select className={inputStyle} value={s.playerId} onChange={e => updateStarter(i, e.target.value)}>
+                                           <option value="">-- اختر لاعب --</option>
+                                           {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && (!activeMatch.squad?.length || activeMatch.squad.includes(p.id)) && (!activeMatch.lineup.starters.some(starter => starter.playerId === p.id && starter.playerId !== s.playerId))).map(p => (
+                                             <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
+                                           ))}
+                                        </select>
+                                     </div>
+                                   ))}
+                                </div>
+                             </>
+                          )}
                        </div>
 
                        {/* Substitutes Section */}

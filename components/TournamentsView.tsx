@@ -292,7 +292,7 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
               <div className="w-48">
                  <label className="block text-xs font-bold text-slate-500 mb-2">نوع المرحلة</label>
                  <select value={newStageIsGroup ? 'true' : 'false'} onChange={e=>setNewStageIsGroup(e.target.value === 'true')} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3">
-                    <option value="true">مجموعات (نظام تنقيط)</option>
+                    <option value="true">مجموعات (نظام نقاط)</option>
                     <option value="false">إقصائيات (بدون ترتيب)</option>
                  </select>
               </div>
