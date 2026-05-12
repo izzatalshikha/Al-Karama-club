@@ -226,13 +226,25 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                     </select>
                  </div>
                  {(userFormData.role === 'إداري فئة' || userFormData.role === 'مشاهد') && (
-                    <div className="space-y-2">
-                      <label className={labelClass}>الفئة المحصورة</label>
-                      <select className={fieldClass}
-                        value={userFormData.restrictedCategory || ''} onChange={e => setUserFormData({ ...userFormData, restrictedCategory: e.target.value })}>
-                        <option value="">-- فئة مخصصة --</option>
-                        {state.categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                      </select>
+                    <div className="space-y-4 col-span-2">
+                      <label className={labelClass}>الفئات المسموحة (اتركه فارغاً لتمكين الوصول الشامل)</label>
+                      <div className="flex flex-wrap gap-4 custom-scrollbar max-h-40 overflow-y-auto w-full">
+                        {state.categories.map(cat => {
+                           const currentCats = userFormData.restrictedCategory ? String(userFormData.restrictedCategory).split(',').filter(Boolean) : [];
+                           const isSelected = currentCats.includes(cat);
+                           return (
+                             <label key={cat} className={`flex items-center gap-3 px-5 py-4 rounded-2xl cursor-pointer transition-all border-2 ${isSelected ? 'bg-orange-50 border-orange-500 shadow-md shadow-orange-500/10' : 'bg-slate-50 border-slate-200 hover:border-orange-300'}`}>
+                               <input type="checkbox" checked={isSelected} onChange={(e) => {
+                                 let newCats = [...currentCats];
+                                 if (e.target.checked) newCats.push(cat);
+                                 else newCats = newCats.filter(c => c !== cat);
+                                 setUserFormData({...userFormData, restrictedCategory: newCats.join(',')});
+                               }} className="w-5 h-5 text-orange-500 rounded focus:ring-orange-500"/>
+                               <span className="font-bold text-sm text-blue-900">{cat}</span>
+                             </label>
+                           )
+                        })}
+                      </div>
                     </div>
                  )}
               </div>

@@ -18,7 +18,7 @@ interface TechnicalReportsProps {
 const TechnicalReports: React.FC<TechnicalReportsProps> = ({ state, setState, addLog }) => {
   const [activeTab, setActiveTab] = useState<'players' | 'technical' | 'matches' | 'warehouse' | 'reviews'>('players');
   const [selectedSeason, setSelectedSeason] = useState<string>('2025-2026');
-  const [selectedCategory, setSelectedCategory] = useState<string>(state.currentUser?.restrictedCategory || 'الكل');
+  const [selectedCategory, setSelectedCategory] = useState<string>((state.currentUser?.restrictedCategory ? String(state.currentUser.restrictedCategory).split(',')[0] : null) || 'الكل');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReport, setEditingReport] = useState<Partial<TechnicalReport> | null>(null);
@@ -166,7 +166,7 @@ const TechnicalReports: React.FC<TechnicalReportsProps> = ({ state, setState, ad
               className="w-full bg-white border-2 border-slate-900 rounded-xl md:rounded-2xl py-3 pr-10 pl-4 text-xs font-black outline-none focus:border-orange-600"
             />
          </div>
-         {!restrictedCat && (
+         {(!restrictedCat || String(restrictedCat).split(',').length > 1) && (
             <div className="flex items-center gap-2 bg-white p-1 rounded-xl md:rounded-2xl border-2 border-slate-900 px-3">
                <Filter size={16} className="text-slate-400 shrink-0" />
                <select 

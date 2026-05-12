@@ -19,7 +19,7 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ state, onMatchClick, onSessio
   const completedMatches = useMemo(() => {
     return state.matches
       .filter(m => m.isCompleted && 
-        (restrictedCat ? m.category === restrictedCat : (globalFilter === 'الكل' || m.category === globalFilter)) &&
+        (restrictedCat ? String(restrictedCat).split(',').includes(m.category) : (globalFilter === 'الكل' || m.category === globalFilter)) &&
         (m.opponent.includes(searchTerm) || m.matchType.includes(searchTerm))
       )
       .sort((a, b) => b.date.localeCompare(a.date));
@@ -28,7 +28,7 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ state, onMatchClick, onSessio
   const completedSessions = useMemo(() => {
     return state.sessions
       .filter(s => s.isCompleted && 
-        (restrictedCat ? s.category === restrictedCat : (globalFilter === 'الكل' || s.category === globalFilter)) &&
+        (restrictedCat ? String(restrictedCat).split(',').includes(s.category) : (globalFilter === 'الكل' || s.category === globalFilter)) &&
         (s.objective.includes(searchTerm))
       )
       .sort((a, b) => b.date.localeCompare(a.date));

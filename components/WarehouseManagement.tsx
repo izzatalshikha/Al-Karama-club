@@ -24,7 +24,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
   const isViewer = currentUser.role === 'مشاهد';
 
   const [formData, setFormData] = useState<Partial<WarehouseItem>>({
-    category: restrictedCat || 'المخزن العام',
+    category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'المخزن العام',
     condition: 'جديد',
     unit: 'قطعة',
     quantity: 0
@@ -33,7 +33,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
   const filteredItems = useMemo(() => {
     return state.warehouse.filter(item => {
       // إذا كان المستخدم محصوراً في فئة، يرى بيانات فئته + المخزن العام فقط
-      const canAccess = isManager || isWarehouseKeeper || item.category === restrictedCat || item.category === 'المخزن العام';
+      const canAccess = isManager || isWarehouseKeeper || (restrictedCat && String(restrictedCat).split(',').includes(item.category)) || item.category === 'المخزن العام';
       if (!canAccess) return false;
 
       const matchCat = localCategoryFilter === 'الكل' ? true : item.category === localCategoryFilter;
@@ -114,12 +114,12 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                >
                  <option value="الكل">جميع الأقسام</option>
                  <option value="المخزن العام">المخزن العام</option>
-                 {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                 {((restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : state.categories)).map(c => <option key={c} value={c}>{c}</option>)}
                </select>
              )}
 
              {!isViewer && (
-               <button onClick={() => { setEditingId(null); setFormData({ category: restrictedCat || 'المخزن العام', condition: 'جديد', unit: 'قطعة', quantity: 0 }); setIsModalOpen(true); }} className="flex-1 md:flex-none whitespace-nowrap bg-blue-900 text-white px-6 py-3 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all active:scale-95">
+               <button onClick={() => { setEditingId(null); setFormData({ category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'المخزن العام', condition: 'جديد', unit: 'قطعة', quantity: 0 }); setIsModalOpen(true); }} className="flex-1 md:flex-none whitespace-nowrap bg-blue-900 text-white px-6 py-3 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all active:scale-95">
                  <Plus size={20}/> إضافة صنف
                </button>
              )}
@@ -135,7 +135,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                    {item.category}
                  </span>
                  <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    {!isViewer && (isManager || isWarehouseKeeper || item.category === restrictedCat) && (
+                    {!isViewer && (isManager || isWarehouseKeeper || (restrictedCat && String(restrictedCat).split(',').includes(item.category))) && (
                       <>
                         <button onClick={() => { setEditingId(item.id); setFormData(item); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-blue-900 rounded-lg border border-slate-200 hover:bg-blue-900 hover:text-white transition-all"><Edit3 size={14}/></button>
                         <button onClick={async () => { 
@@ -186,13 +186,13 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                     <div className="space-y-1.5">
                        <label className={labelClass}>القسم / الفئة</label>
                        <select 
-                        disabled={!!restrictedCat && !isWarehouseKeeper}
+                        
                         className={fieldClass} 
                         value={formData.category || ''} 
                         onChange={e => setFormData({...formData, category: e.target.value as any})}
                        >
                           <option value="المخزن العام">المخزن العام</option>
-                          {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                          {((restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : state.categories)).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div className="space-y-1.5">

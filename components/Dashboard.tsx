@@ -60,25 +60,26 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const isManager = state.currentUser?.role === 'مدير';
   const isViewer = state.currentUser?.role === 'مشاهد';
   const restrictedCat = state.currentUser?.restrictedCategory;
+  const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : [];
   
-  const canSwitchCategory = isManager || (isViewer && !restrictedCat);
+  const canSwitchCategory = isManager || !restrictedCat || allowedCategories.length > 1;
 
   const todayStr = new Date().toLocaleDateString('en-CA');
 
   const upcomingMatches = useMemo(() => {
-    return state.matches.filter(m => (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && m.date >= todayStr)
+    return state.matches.filter(m => (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && m.date >= todayStr)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.matches, globalFilter, todayStr]);
+  }, [state.matches, globalFilter, todayStr, restrictedCat, allowedCategories]);
 
   const upcomingSessions = useMemo(() => {
-    return state.sessions.filter(s => (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && s.date >= todayStr)
+    return state.sessions.filter(s => (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && s.date >= todayStr)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.sessions, globalFilter, todayStr]);
+  }, [state.sessions, globalFilter, todayStr, restrictedCat, allowedCategories]);
 
   const stats = [
-    { label: 'الكوادر واللاعبين', value: state.people.filter(p => globalFilter === 'الكل' || p.category === globalFilter).length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { label: 'الكوادر واللاعبين', value: state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter)).length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { label: 'الأنشطة المجدولة', value: upcomingMatches.length + upcomingSessions.length, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-    { label: 'أصناف المستودع', value: state.warehouse.length, icon: Package, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+    { label: 'أصناف المستودع', value: state.warehouse.filter(w => (!restrictedCat || allowedCategories.includes(w.category)) && (globalFilter === 'الكل' || w.category === globalFilter)).length, icon: Package, color: 'text-purple-500', bg: 'bg-purple-500/10' },
   ];
 
   return (
@@ -92,8 +93,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
          {canSwitchCategory && (
            <select value={state.globalCategoryFilter} onChange={e => setState(prev => ({ ...prev, globalCategoryFilter: e.target.value }))}
              className="w-full lg:w-72 bg-white border border-slate-200 rounded-2xl p-4 font-bold text-blue-900 cursor-pointer outline-none hover:bg-slate-50 transition-all shadow-sm text-sm">
-              <option value="الكل">جميع فئات النادي</option>
-              {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="الكل">{restrictedCat ? 'الفئات المسموحة' : 'جميع فئات النادي'}</option>
+              {(restrictedCat ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}
            </select>
          )}
       </div>

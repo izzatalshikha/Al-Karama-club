@@ -37,11 +37,13 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
     const newId = generateId();
     
     // Determine category
-    let finalCategory = '';
+    let finalCategory = newTourCategory || state.globalCategoryFilter;
     if (currentUser?.restrictedCategory) {
-      finalCategory = currentUser.restrictedCategory;
+       const allowedArr = String(currentUser.restrictedCategory).split(',').filter(Boolean);
+       if (!allowedArr.includes(finalCategory)) {
+          finalCategory = allowedArr[0] || state.categories[0];
+       }
     } else {
-      finalCategory = newTourCategory || state.globalCategoryFilter;
       if (finalCategory === 'الكل' || !finalCategory) {
         finalCategory = state.categories[0];
       }
@@ -111,11 +113,11 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
             <label className="block text-xs font-bold text-slate-500 mb-2">اسم البطولة الجديدة</label>
             <input type="text" value={newTourName} onChange={e => setNewTourName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500" placeholder="مثال: دوري النخبة لفئة الشباب" />
           </div>
-          {!currentUser?.restrictedCategory && (
+          {(!currentUser?.restrictedCategory || String(currentUser.restrictedCategory).split(',').filter(Boolean).length > 1) && (
             <div className="w-full md:w-48">
               <label className="block text-xs font-bold text-slate-500 mb-2">فئة النادي المشاركة</label>
               <select value={newTourCategory || (state.globalCategoryFilter === 'الكل' ? state.categories[0] : state.globalCategoryFilter)} onChange={e => setNewTourCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
-                {state.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                {(currentUser?.restrictedCategory ? String(currentUser.restrictedCategory).split(',').filter(Boolean) : state.categories).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           )}

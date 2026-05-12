@@ -35,7 +35,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
 
   const sessions = state.sessions
     .filter(s => {
-      if (restrictedCat) return s.category === restrictedCat;
+      if (restrictedCat) return String(restrictedCat).split(',').includes(s.category);
       return (globalFilter === 'الكل' || s.category === globalFilter);
     })
     .sort((a, b) => b.date.localeCompare(a.date));

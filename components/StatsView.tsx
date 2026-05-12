@@ -40,7 +40,7 @@ const StatsView: React.FC<StatsViewProps> = ({ state, onOpenReport }) => {
   const playerStats = useMemo(() => {
     return state.people
       .filter(p => p.role === 'لاعب' && 
-        (restrictedCat ? p.category === restrictedCat : (globalFilter === 'الكل' || p.category === globalFilter)) &&
+        (restrictedCat ? String(restrictedCat).split(',').includes(p.category) : (globalFilter === 'الكل' || p.category === globalFilter)) &&
         (p.name.includes(searchTerm))
       )
       .map(player => {

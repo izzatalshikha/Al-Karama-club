@@ -95,6 +95,18 @@ export interface TechnicalReport {
   };
 }
 
+export interface CoachingCertificate {
+  id: string;
+  name: string;
+  date: string;
+}
+
+export interface PreviousExperience {
+  id: string;
+  employer: string;
+  position: string;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -125,6 +137,8 @@ export interface Person {
   coachingCertificate?: string;
   academicDegree?: string;
   monthlyReports?: { [key: string]: string };
+  certificates?: CoachingCertificate[];
+  experiences?: PreviousExperience[];
 }
 
 export interface AttendanceRecord {

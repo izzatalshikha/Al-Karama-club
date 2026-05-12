@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, Medal, 
+  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, Medal, Briefcase,
   Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
@@ -10,6 +10,7 @@ import { AppUser, AppState, Person, AppNotification } from './types';
 // Components
 import Dashboard from './components/Dashboard';
 import SquadManagement from './components/SquadManagement';
+import StaffManagement from './components/StaffManagement';
 import AttendanceTracker from './components/AttendanceTracker';
 import TrainingPlanner from './components/TrainingPlanner';
 import MatchPlanner from './components/MatchPlanner';
@@ -37,7 +38,18 @@ export const supabase = createClient(
 );
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('eagle_os_v3_tab') || 'dashboard');
+  
+  // Custom ref for main scrolling container
+  const mainRef = React.useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('eagle_os_v3_tab', activeTab);
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
+
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
   const [selectedPlayer, setSelectedPlayer] = useState<Person | null>(null);
@@ -273,13 +285,14 @@ const App: React.FC = () => {
     };
   }, [state.matches]);
 
-  if (!state.currentUser) return <Login onLoginAttempt={onLoginAttempt} />;
-
   const [isActivitiesOpen, setActivitiesOpen] = useState(false);
+
+  if (!state.currentUser) return <Login onLoginAttempt={onLoginAttempt} />;
 
   const navItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
-    { id: 'squad', label: 'الفريق', icon: Users },
+    { id: 'squad', label: 'اللاعبين', icon: Users },
+    { id: 'staff', label: 'المدربين والكوادر', icon: Briefcase },
     { id: 'training', label: 'التدريبات', icon: Calendar },
     { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
     { id: 'medical', label: 'الطبابة', icon: HeartPulse },
@@ -328,7 +341,15 @@ const App: React.FC = () => {
                 <p className="text-[8px] text-blue-100 uppercase font-black">{state.currentUser.role}</p>
              </div>
           </div>
-          <button onClick={() => setState(prev => ({ ...prev, currentUser: null }))} 
+          <button onClick={() => {
+              setState({
+                currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
+                people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
+                attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [],
+              });
+              localStorage.removeItem('eagle_os_v3');
+              localStorage.removeItem('eagle_os_v3_tab');
+            }} 
             className="w-full p-3 rounded-xl text-white bg-red-600/30 hover:bg-red-600 transition-all flex items-center justify-center gap-3 border border-red-500/30">
             <LogOut size={18} className="shrink-0" /> <span className={`text-sm font-semibold text-white whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 hidden'}`}>خروج</span>
           </button>
@@ -371,10 +392,11 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:px-8 md:pt-8 pb-32 md:pb-32 lg:pb-8 custom-scrollbar print:p-0 print:overflow-visible print:bg-white print:m-0">
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 md:px-8 md:pt-8 pb-32 md:pb-32 lg:pb-8 custom-scrollbar print:p-0 print:overflow-visible print:bg-white print:m-0">
           <div id="report-section" className="max-w-6xl mx-auto space-y-6 md:space-y-8">
             {activeTab === 'dashboard' && <Dashboard state={state} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
             {activeTab === 'squad' && <SquadManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
+            {activeTab === 'staff' && <StaffManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
             {activeTab === 'training' && <TrainingPlanner state={state} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} syncToCloud={syncToCloud} />}

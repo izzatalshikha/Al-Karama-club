@@ -1,22 +1,19 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
-  UserPlus, Trash2, Search, Edit2, MapPin, Calendar, ChevronRight, 
-  X, Save, Target, Phone, Ruler, Weight, Home, Fingerprint, 
-  BadgeCheck, Edit3, Wallet, HeartPulse, ShieldAlert, 
-  GraduationCap, Award, Activity, Loader2, Filter, Gavel, FileText, Hash, Globe, Briefcase
+  UserPlus, Trash2, Search, Edit2, ChevronRight, 
+  X, Save, Fingerprint, Activity, GraduationCap, Award, Loader2, Filter, Briefcase, Plus, Calendar
 } from 'lucide-react';
-import { AppState, Person, Role } from '../types';
+import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { generateUUID, supabase } from '../App';
 
-interface SquadManagementProps {
+interface StaffManagementProps {
   state: AppState;
   setState: (updater: (prev: AppState) => AppState) => void;
   onOpenReport?: (player: Person) => void;
   addLog?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOpenReport, addLog }) => {
+const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOpenReport, addLog }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [localCategoryFilter, setLocalCategoryFilter] = useState('الكل');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,9 +32,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     name: '', fatherName: '', motherName: '', birthDate: '', birthPlace: '', khana: '',
     nationalId: '', federalNumber: '', internationalId: '', address: '',
     category: defaultCategory,
-    role: 'لاعب', number: undefined, phone: '', joinDate: new Date().toISOString().split('T')[0],
-    height: '', weight: '', position: '', contractStart: '', contractEnd: '', contractValue: '',
-    medicalHistory: '', injuries: '', penalties: '', notes: '', coachingCertificate: '', academicDegree: ''
+    role: 'مدرب', phone: '', joinDate: new Date().toISOString().split('T')[0],
+    academicDegree: '', certificates: [], experiences: []
   };
 
   const [formData, setFormData] = useState<Partial<Person>>(initialFormState);
@@ -46,9 +42,9 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     return state.people.filter(p => {
       if (hasRestriction && !allowedCategories.includes(p.category)) return false;
       const matchCat = localCategoryFilter === 'الكل' || p.category === localCategoryFilter;
-      const matchSearch = p.name.includes(searchTerm) || (p.number?.toString() === searchTerm);
-      const matchSubTab = p.role === 'لاعب'; // Only show players
-      return matchCat && matchSearch && matchSubTab;
+      const matchSearch = p.name.includes(searchTerm) || (p.phone?.includes(searchTerm));
+      const matchRole = p.role !== 'لاعب';
+      return matchCat && matchSearch && matchRole;
     });
   }, [state.people, restrictedCat, localCategoryFilter, searchTerm]);
 
@@ -64,11 +60,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
       name: formData.name!.trim(),
     } as any;
 
-    ['number', 'height', 'weight', 'contractValue', 'birthDate', 'contractStart', 'contractEnd'].forEach(key => {
-      if (updatedPerson[key] === '') updatedPerson[key] = null;
-    });
-    if (Number.isNaN(updatedPerson.number)) updatedPerson.number = null;
-
     try {
       const { error } = await supabase.from('people').upsert(updatedPerson);
       if (error) throw error;
@@ -80,7 +71,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
           : [updatedPerson, ...prev.people]
       }));
 
-      addLog?.(editingId ? 'تم تحديث البيانات بنجاح' : 'تمت إضافة العضو بنجاح', 'success');
+      addLog?.(editingId ? 'تم تحديث البيانات بنجاح' : 'تمت الإضافة بنجاح', 'success');
       setIsModalOpen(false);
       setEditingId(null);
       setFormData(initialFormState);
@@ -106,7 +97,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   const openEdit = (p: Person) => {
     if (isViewer) return;
     setEditingId(p.id);
-    setFormData({ ...p });
+    setFormData({ ...p, certificates: p.certificates || [], experiences: p.experiences || [] });
     setIsModalOpen(true);
   };
 
@@ -120,7 +111,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
       <div className="modern-card p-4 md:p-6 flex flex-col md:flex-row gap-4 items-center">
          <div className="flex-1 relative w-full">
             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-            <input type="text" placeholder="البحث بالاسم أو الرقم..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            <input type="text" placeholder="البحث بالاسم..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-white border border-slate-200 rounded-xl py-3 md:py-4 pr-12 pl-6 text-slate-900 outline-none focus:ring-2 focus:ring-orange-500/10 transition-all font-bold shadow-sm text-sm" />
          </div>
 
@@ -153,15 +144,14 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
          {!isViewer && (
            <button onClick={() => { setEditingId(null); setFormData(initialFormState); setIsModalOpen(true); }}
              className="bg-orange-500 text-white px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-orange-500/10 hover:bg-orange-600 transition-all whitespace-nowrap w-full md:w-auto justify-center">
-              <UserPlus size={20}/> إضافة جديد
+              <UserPlus size={20}/> إضافة كادر جديد
            </button>
          )}
       </div>
 
-      {/* العنوان */}
       <div className="flex p-1 bg-slate-100 border border-slate-200 rounded-xl w-full sm:w-fit shadow-inner">
           <button className="flex-1 sm:flex-none px-4 md:px-10 py-2.5 rounded-lg font-black text-[10px] md:text-xs transition-all bg-white text-blue-950 shadow-md">
-            اللاعبين ({filteredMembers.length})
+            المدربين والكوادر ({filteredMembers.length})
           </button>
       </div>
 
@@ -178,12 +168,11 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                    <span className="text-xs text-slate-600 font-bold">{person.role}</span>
                 </div>
              </div>
-             <h3 className="text-lg md:text-xl font-black text-blue-950 mb-2 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name} {person.number && <span className="text-orange-600 text-sm">#{person.number}</span>}</h3>
-             <p className="text-[9px] md:text-[10px] text-slate-600 font-bold mb-2 italic">{person.position || 'بدون مركز محدد'}</p>
+             <h3 className="text-lg md:text-xl font-black text-blue-950 mb-2 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
+             <p className="text-[9px] md:text-[10px] text-slate-600 font-bold mb-2 italic">{person.academicDegree || 'بدون تحصيل'}</p>
              <div className="flex flex-wrap gap-1.5 md:gap-2 mb-4 md:mb-6">
-                {(person.nationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">وطني: {person.nationalId}</span>}
-                {(person.federalNumber || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">اتحادي: {person.federalNumber}</span>}
-                {(person.internationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">دولي: {person.internationalId}</span>}
+                {person.certificates && person.certificates.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">{person.certificates.length} شهادات تدريبية</span>}
+                {person.experiences && person.experiences.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">{person.experiences.length} خبرات سابقة</span>}
              </div>
              <div className="mt-auto pt-4 md:pt-6 border-t border-slate-100 flex justify-between items-center gap-2">
                 <button onClick={() => onOpenReport?.(person)} className="text-[10px] md:text-xs font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={14}/></button>
@@ -206,22 +195,21 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         )}
       </div>
 
-      {/* المودال: نموذج الإضافة والتعديل الشامل (26 حقل) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center lg:p-4">
           <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full h-full lg:h-auto lg:max-w-5xl lg:max-h-[90vh] lg:rounded-[2.5rem] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
             <div className="p-5 md:p-6 border-b border-slate-100 bg-white flex justify-between items-center">
-              <h3 className="text-base md:text-xl font-black text-blue-900 flex items-center gap-2 md:gap-3 italic uppercase"><UserPlus className="text-orange-500 w-5 h-5 md:w-6 md:h-6" /> {editingId ? 'تعديل السجل' : 'إضافة سجل جديد'}</h3>
+              <h3 className="text-base md:text-xl font-black text-blue-900 flex items-center gap-2 md:gap-3 italic uppercase"><UserPlus className="text-orange-500 w-5 h-5 md:w-6 md:h-6" /> {editingId ? 'تعديل سجل الكادر' : 'إضافة كادر جديد'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2.5 bg-slate-100 hover:bg-red-500 text-slate-600 hover:text-white rounded-xl transition-all shadow-sm"><X size={20}/></button>
             </div>
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 md:p-10 space-y-2 custom-scrollbar bg-slate-50 text-right pb-32 lg:pb-10" dir="rtl">
               
               {/* القسم 1: الهوية */}
-              <h4 className={sectionHeader}><Fingerprint size={16}/> 1. معلومات الهوية</h4>
+              <h4 className={sectionHeader}><Fingerprint size={16}/> 1. معلومات الهوية والنقابة</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الاسم الثلاثي</label><input required className={inputClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الاسم الثنائي/الثلاثي</label><input required className={inputClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>اسم الأب</label><input className={inputClass} value={formData.fatherName || ''} onChange={e => setFormData({...formData, fatherName: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>اسم الأم</label><input className={inputClass} value={formData.motherName || ''} onChange={e => setFormData({...formData, motherName: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الميلاد</label><input type="date" className={inputClass} value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
@@ -230,45 +218,93 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 <div className="space-y-1"><label className={labelClass}>الرقم الوطني</label><input className={inputClass} value={formData.nationalId || ''} onChange={e => setFormData({...formData, nationalId: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>الرقم الاتحادي</label><input className={inputClass} value={formData.federalNumber || ''} onChange={e => setFormData({...formData, federalNumber: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>الرقم الدولي</label><input className={inputClass} value={formData.internationalId || ''} onChange={e => setFormData({...formData, internationalId: e.target.value})} /></div>
+                <div className="sm:col-span-1 space-y-1"><label className={labelClass}>رقم الهاتف</label><input className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>العنوان التفصيلي</label><input className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
               </div>
 
               {/* القسم 2: الرياضة */}
-              <h4 className={sectionHeader}><Activity size={16}/> 2. البيانات الرياضية</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option></select></div>
+              <h4 className={sectionHeader}><Activity size={16}/> 2. التوصيف الوظيفي بالنادي</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="مدرب">مدرب</option><option value="مساعد مدرب">مساعد مدرب</option><option value="مدرب حراس">مدرب حراس</option><option value="مدرب لياقة">مدرب لياقة</option><option value="إداري">إداري</option><option value="طبيب">طبيب</option><option value="معالج">معالج</option><option value="منسق إعلامي">منسق إعلامي</option><option value="مرافق">مرافق</option></select></div>
                 <div className="space-y-1"><label className={labelClass}>الفئة</label><select className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
-                <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الوزن (كغ)</label><input className={inputClass} value={formData.weight || ''} onChange={e => setFormData({...formData, weight: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الشهادة التدريبية</label><input className={inputClass} value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
-                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>التحصيل العلمي</label><input className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
-                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>رقم الهاتف</label><input className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-                <div className="sm:col-span-full space-y-1"><label className={labelClass}>عنوان السكن التفصيلي</label><input className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
+                <div className="sm:col-span-3 space-y-1"><label className={labelClass}>الشهادة العلمية</label><input className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
               </div>
 
-              {/* القسم 3: العقود */}
-              <h4 className={sectionHeader}><Wallet size={16}/> 3. السجل المالي</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>بداية العقد</label><input type="date" className={inputClass} value={formData.contractStart || ''} onChange={e => setFormData({...formData, contractStart: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>نهاية العقد</label><input type="date" className={inputClass} value={formData.contractEnd || ''} onChange={e => setFormData({...formData, contractEnd: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>القيمة / الراتب</label><input className={inputClass} value={formData.contractValue || ''} onChange={e => setFormData({...formData, contractValue: e.target.value})} /></div>
+              {/* الشهادات التدريبية */}
+              <div className="mt-8 flex justify-between items-center bg-orange-50 px-3 py-2 rounded-l-lg border-r-4 border-orange-500 mb-6 w-full">
+                <h4 className="text-orange-700 font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 m-0"><Award size={16}/> 3. الشهادات التدريبية</h4>
+                <button type="button" onClick={() => setFormData({...formData, certificates: [...(formData.certificates || []), { id: generateUUID(), name: '', date: '' }]})} className="bg-orange-500 text-white p-1 rounded hover:bg-orange-600 transition-all"><Plus size={16}/></button>
+              </div>
+              
+              <div className="space-y-3">
+                {(!formData.certificates || formData.certificates.length === 0) && <p className="text-sm text-slate-500 italic p-4 bg-slate-100 rounded-xl border border-slate-200">لا يوجد شهادات تدريبية مضافة</p>}
+                {(formData.certificates || []).map((cert, index) => (
+                  <div key={cert.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                    <div className="flex-1 space-y-1">
+                      <label className={labelClass}>اسم الشهادة التدريبية</label>
+                      <input className={inputClass} placeholder="مثال: رخصة تدريب A من الاتحاد الآسيوي" value={cert.name} onChange={e => {
+                        const newCerts = [...(formData.certificates || [])];
+                        newCerts[index].name = e.target.value;
+                        setFormData({...formData, certificates: newCerts});
+                      }} />
+                    </div>
+                    <div className="w-full md:w-1/3 space-y-1">
+                      <label className={labelClass}>تاريخ الشهادة</label>
+                      <input type="date" className={inputClass} value={cert.date} onChange={e => {
+                        const newCerts = [...(formData.certificates || [])];
+                        newCerts[index].date = e.target.value;
+                        setFormData({...formData, certificates: newCerts});
+                      }} />
+                    </div>
+                    <button type="button" onClick={() => {
+                       const newCerts = [...(formData.certificates || [])];
+                       newCerts.splice(index, 1);
+                       setFormData({...formData, certificates: newCerts});
+                    }} className="mt-6 p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all self-end h-min"><Trash2 size={18}/></button>
+                  </div>
+                ))}
               </div>
 
-              {/* القسم 4: الطبي والانضباط */}
-              <h4 className={sectionHeader}><ShieldAlert size={16}/> 4. الحالة الطبية والسلوك</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>السجل الطبي</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.medicalHistory || ''} onChange={e => setFormData({...formData, medicalHistory: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الإصابات الحالية</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.injuries || ''} onChange={e => setFormData({...formData, injuries: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>العقوبات السابقة</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.penalties || ''} onChange={e => setFormData({...formData, penalties: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>ملاحظات للمدرب</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} /></div>
+              {/* الخبرات السابقة */}
+              <div className="mt-8 flex justify-between items-center bg-orange-50 px-3 py-2 rounded-l-lg border-r-4 border-orange-500 mb-6 w-full">
+                <h4 className="text-orange-700 font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 m-0"><Briefcase size={16}/> 4. الخبرات السابقة</h4>
+                <button type="button" onClick={() => setFormData({...formData, experiences: [...(formData.experiences || []), { id: generateUUID(), employer: '', position: '' }]})} className="bg-orange-500 text-white p-1 rounded hover:bg-orange-600 transition-all"><Plus size={16}/></button>
+              </div>
+
+              <div className="space-y-3">
+                {(!formData.experiences || formData.experiences.length === 0) && <p className="text-sm text-slate-500 italic p-4 bg-slate-100 rounded-xl border border-slate-200">لا يوجد خبرات سابقة مضافة</p>}
+                {(formData.experiences || []).map((exp, index) => (
+                  <div key={exp.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                    <div className="flex-1 space-y-1">
+                      <label className={labelClass}>جهة العمل النادي / المنتخب</label>
+                      <input className={inputClass} placeholder="مثال: نادي تشرين" value={exp.employer} onChange={e => {
+                        const newExps = [...(formData.experiences || [])];
+                        newExps[index].employer = e.target.value;
+                        setFormData({...formData, experiences: newExps});
+                      }} />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className={labelClass}>المنصب / الصفة الوظيفية</label>
+                      <input className={inputClass} placeholder="مثال: مدرب لياقة" value={exp.position} onChange={e => {
+                        const newExps = [...(formData.experiences || [])];
+                        newExps[index].position = e.target.value;
+                        setFormData({...formData, experiences: newExps});
+                      }} />
+                    </div>
+                    <button type="button" onClick={() => {
+                       const newExps = [...(formData.experiences || [])];
+                       newExps.splice(index, 1);
+                       setFormData({...formData, experiences: newExps});
+                    }} className="mt-6 p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all self-end h-min"><Trash2 size={18}/></button>
+                  </div>
+                ))}
               </div>
 
               <div className="pt-8 md:pt-10">
                 <button type="submit" disabled={isSaving} className="w-full bg-blue-900 text-white py-5 md:py-6 rounded-xl md:rounded-2xl font-black text-lg md:text-xl shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all flex items-center justify-center gap-3 active:scale-[0.98]">
                   {isSaving ? <Loader2 size={24} className="animate-spin" /> : <Save size={24}/>} 
-                  تثبيت السجل المركزي
+                  تثبيت سجل الكادر المركزي
                 </button>
               </div>
             </form>
@@ -279,4 +315,4 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   );
 };
 
-export default SquadManagement;
+export default StaffManagement;

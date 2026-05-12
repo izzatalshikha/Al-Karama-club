@@ -298,16 +298,44 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
 
             {/* المواصفات الفنية والبدنية */}
             <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">
-               <SectionTitle icon={Activity} title="المواصفات الفنية" color="text-emerald-500" />
+               <SectionTitle icon={Activity} title="التوصيف الوظيفي والبدني" color="text-emerald-500" />
                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                   <InfoBlock icon={Target} label="المركز" value={player.position} />
-                  <InfoBlock icon={CalendarCheck} label="الانضمام" value={player.joinDate} />
+                  <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
                   <InfoBlock icon={Ruler} label="الطول" value={player.height} color="text-emerald-700" />
                   <InfoBlock icon={Weight} label="الوزن" value={player.weight} color="text-emerald-700" />
-                  <InfoBlock icon={GraduationCap} label="الشهادة" value={player.coachingCertificate} />
-                  <InfoBlock icon={Medal} label="الدرجة" value={player.academicDegree} />
+                  <InfoBlock icon={GraduationCap} label="الشهادة العلمية" value={player.academicDegree} />
+                  <InfoBlock icon={Medal} label="التحصيل" value={player.coachingCertificate} />
                </div>
             </div>
+
+            {player.role !== 'لاعب' && !!player.certificates?.length && (
+              <div className="modern-card p-6 md:p-8 border-r-8 border-orange-500 bg-orange-50">
+                 <SectionTitle icon={Medal} title="الشهادات التدريبية المعتمدة" color="text-orange-500" />
+                 <div className="space-y-3 mt-4">
+                    {player.certificates.map(cert => (
+                      <div key={cert.id} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <span className="font-bold text-slate-900">{cert.name}</span>
+                        <span className="text-sm text-slate-500">{cert.date}</span>
+                      </div>
+                    ))}
+                 </div>
+              </div>
+            )}
+
+            {player.role !== 'لاعب' && !!player.experiences?.length && (
+              <div className="modern-card p-6 md:p-8 border-r-8 border-blue-500 bg-blue-50">
+                 <SectionTitle icon={Medal} title="الخبرات السابقة" color="text-blue-500" />
+                 <div className="space-y-3 mt-4">
+                    {player.experiences.map(exp => (
+                      <div key={exp.id} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <span className="font-bold text-slate-900">{exp.employer}</span>
+                        <span className="text-sm text-blue-900 font-bold px-3 py-1 bg-blue-100 rounded-lg">{exp.position}</span>
+                      </div>
+                    ))}
+                 </div>
+              </div>
+            )}
 
             {/* السجل المالي والتعاقدي */}
             <div className="modern-card p-6 md:p-8 border-r-8 border-yellow-600 bg-yellow-600/5">

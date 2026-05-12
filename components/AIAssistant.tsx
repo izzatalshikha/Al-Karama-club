@@ -13,7 +13,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiMode, setAiMode] = useState<'fast' | 'deep' | 'tactical'>('fast');
-  const [selectedCategory, setSelectedCategory] = useState<string>(state.currentUser?.restrictedCategory || state.globalCategoryFilter || 'الكل');
+  const [selectedCategory, setSelectedCategory] = useState<string>((state.currentUser?.restrictedCategory ? String(state.currentUser.restrictedCategory).split(',')[0] : null) || state.globalCategoryFilter || 'الكل');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const currentUser = state.currentUser;
@@ -22,7 +22,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
 
   useEffect(() => {
     if (restrictedCat) {
-      setSelectedCategory(restrictedCat);
+      setSelectedCategory(String(restrictedCat).split(',')[0]);
     }
   }, [restrictedCat]);
 
@@ -149,13 +149,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
           <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl border border-slate-200">
             <Filter size={14} className="text-slate-500" />
             <select 
-              disabled={!!restrictedCat}
+              disabled={!!restrictedCat && String(restrictedCat).split(',').length === 1}
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="bg-transparent font-black text-[10px] outline-none cursor-pointer text-slate-700"
             >
               {isManager && <option value="الكل">Eagle View: All</option>}
-              {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(cat => (
+              {state.categories.filter(c => !restrictedCat || String(restrictedCat).split(',').includes(c)).map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>

@@ -28,7 +28,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   
   const [reportType, setReportType] = useState<'category' | 'player' | 'discipline' | 'multi_player' | 'matches_custom'>('category');
-  const [selectedCatForReport, setSelectedCatForReport] = useState<string>(restrictedCat || state.categories[0] || '');
+  const [selectedCatForReport, setSelectedCatForReport] = useState<string>(restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : (state.categories[0] || ''));
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>('');
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   
@@ -38,7 +38,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const [printData, setPrintData] = useState<any>(null);
 
   const [formData, setFormData] = useState<Partial<TrainingSession>>({
-    category: restrictedCat || (state.categories.length > 0 ? state.categories[0] : 'الرجال'),
+    category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] || 'الرجال' : (state.categories.length > 0 ? state.categories[0] : 'الرجال'),
     date: new Date().toISOString().split('T')[0],
     time: '16:00',
     pitch: ''
@@ -48,7 +48,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
     e.preventDefault();
     if (!formData.date || !formData.time || isViewer) return;
 
-    const finalCategory = restrictedCat || formData.category;
+    const finalCategory = formData.category || (restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'الرجال');
     const sessionData = {
       ...formData,
       category: finalCategory,
@@ -103,7 +103,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const toggleSessionComplete = async (id: string, currentStatus: boolean) => {
     if (isViewer) return;
     const session = state.sessions.find(s => s.id === id);
-    if (isCatAdmin && session?.category !== restrictedCat) return;
+    if (isCatAdmin && session && restrictedCat && !String(restrictedCat).split(',').includes(session.category)) return;
 
     const { error } = await supabase.from('sessions').upsert({ id, isCompleted: !currentStatus });
     if (error) { alert('فشل التحديث: ' + error.message); return; }
@@ -116,7 +116,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
 
   const filteredSessions = useMemo(() => {
     return (restrictedCat 
-      ? state.sessions.filter(s => s.category === restrictedCat)
+      ? state.sessions.filter(s => String(restrictedCat).split(',').includes(s.category))
       : state.sessions.filter(s => (state.globalCategoryFilter === 'الكل' || s.category === state.globalCategoryFilter)))
       .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [state.sessions, restrictedCat, state.globalCategoryFilter]);
@@ -358,7 +358,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 no-print">
             {filteredSessions.map(session => {
               const isComp = session.isCompleted;
-              const canEditThis = isManager || (!isComp && isCatAdmin && session.category === restrictedCat);
+              const canEditThis = isManager || (!isComp && isCatAdmin && restrictedCat && String(restrictedCat).split(',').includes(session.category));
               const canDeleteThis = isManager;
 
               return (
@@ -419,8 +419,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <label className={labelClass}>الفئة</label>
-                       <select required disabled={!!restrictedCat} className={fieldClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
-                          {state.categories.filter(c => !restrictedCat || c === restrictedCat).map(c => <option key={c} value={c}>{c}</option>)}
+                       <select required className={fieldClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
+                          {state.categories.filter(c => !restrictedCat || String(restrictedCat).split(',').includes(c)).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div className="space-y-1">

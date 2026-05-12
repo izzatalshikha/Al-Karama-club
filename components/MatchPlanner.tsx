@@ -36,12 +36,13 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const isManager = currentUser?.role === 'مدير';
   const isViewer = currentUser?.role === 'مشاهد';
   const restrictedCat = currentUser?.restrictedCategory;
-
-  const categoriesToUse = state.categories;
+  const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
+  const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
+  const defaultCategory = hasRestriction ? allowedCategories[0] : (categoriesToUse[0] || 'الرجال');
 
   const [formData, setFormData] = useState<Partial<Match>>({ 
     matchType: 'دوري', 
-    category: restrictedCat || categoriesToUse[0] || 'الرجال',
+    category: defaultCategory,
     pitch: 'ملعب الكرامة',
     date: new Date().toISOString().split('T')[0],
     time: '16:00',
@@ -110,18 +111,26 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         if (isBaraaemMatch) return false;
       }
 
-      if (restrictedCat) return m.category === restrictedCat;
+      if (restrictedCat) return String(restrictedCat).split(',').includes(m.category);
       return (state.globalCategoryFilter === 'الكل' || m.category === state.globalCategoryFilter);
     }).sort((a,b) => b.date.localeCompare(a.date));
   }, [state.matches, state.globalCategoryFilter, restrictedCat, viewMode]);
 
   const handleCreateMatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.opponent || !formData.date || isViewer) return;
+    if (isViewer) return;
+    if (!formData.opponent) {
+      alert('يرجى إدخال اسم الفريق الخصم');
+      return;
+    }
+    if (!formData.date) {
+      alert('يرجى تحديد تاريخ المباراة');
+      return;
+    }
     
     // Always use Baraaem formatting if we are inside the Baraaem view, or if the selected category is Baraaem.
     const isBaraaemFormat = viewMode === 'baraaem' || formData.category === 'البراعم';
-    const finalCategory = formData.category || categoriesToUse[0] || 'الرجال';
+    const finalCategory = formData.category || defaultCategory;
     
     const newMatch: Match = {
       id: generateUUID(),
@@ -363,8 +372,8 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     <div>
                        <label className={labelStyle}>الفئة</label>
-                       <select required className={inputStyle} value={formData.category || restrictedCat || categoriesToUse[0] || ''} onChange={e => setFormData({...formData, category: e.target.value})} disabled={!!restrictedCat}>
-                          {categoriesToUse.map(c => <option key={c} value={c}>{c}</option>)}
+                       <select className={inputStyle} value={formData.category || defaultCategory || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
+                          {(hasRestriction ? allowedCategories : categoriesToUse).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div>
@@ -379,7 +388,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     <div>
                        <label className={labelStyle}>اسم الخصم</label>
-                       <input required type="text" className={inputStyle} value={formData.opponent || ''} onChange={e => setFormData({...formData, opponent: e.target.value})} placeholder="أدخل اسم النادي..." />
+                       <input type="text" className={inputStyle} value={formData.opponent || ''} onChange={e => setFormData({...formData, opponent: e.target.value})} placeholder="أدخل اسم النادي..." />
                     </div>
                     <div>
                        <label className={labelStyle}>السلفة (ل.س)</label>
@@ -407,7 +416,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     <div>
                        <label className={labelStyle}>التاريخ</label>
-                       <input required type="date" className={inputStyle} value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+                       <input type="date" className={inputStyle} value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
                     </div>
                     <div>
                        <label className={labelStyle}>التوقيت</label>
