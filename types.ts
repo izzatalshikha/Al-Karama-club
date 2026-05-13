@@ -2,7 +2,7 @@
 export type Category = string;
 export type Role = 'لاعب' | 'مدير' | 'مساعد مدرب' | 'مدرب حراس' | 'مدرب لياقة' | 'إداري' | 'طبيب' | 'معالج' | 'منسق إعلامي' | 'مرافق';
 export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب' | 'غياب بعذر';
-export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد' | 'أمين مستودع';
+export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد' | 'أمين مستودع' | 'مسؤول تجهيزات' | 'معالج';
 export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية' | 'مباراة دولية' | 'مباراة بطولة';
 
 export interface Tournament {
@@ -254,6 +254,7 @@ export interface DirectoryService {
 }
 
 export interface AppState {
+  appMode?: 'club' | 'academy';
   people: Person[];
   attendance: AttendanceRecord[];
   sessions: TrainingSession[];

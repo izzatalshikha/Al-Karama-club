@@ -36,16 +36,17 @@ export const supabase = createClient(
 );
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('eagle_os_v3_tab') || 'dashboard');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [appMode, setAppMode] = useState<'club'|'academy'>(() => (localStorage.getItem('eagle_os_v3_mode') as 'club'|'academy') || 'club');
   
   const mainRef = React.useRef<HTMLElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('eagle_os_v3_tab', activeTab);
+    localStorage.setItem('eagle_os_v3_mode', appMode);
     if (mainRef.current) {
       mainRef.current.scrollTop = 0;
     }
-  }, [activeTab]);
+  }, [activeTab, appMode]);
 
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
@@ -64,6 +65,25 @@ const App: React.FC = () => {
     };
   });
 
+  const derivedState = React.useMemo(() => {
+    const isAcademyCat = (c: string) => c.startsWith('أكاديمية');
+    const filterFn = appMode === 'academy' ? isAcademyCat : (c: string) => !isAcademyCat(c);
+
+    const filteredCategories = state.categories.filter(filterFn);
+    
+    return {
+      ...state,
+      appMode,
+      categories: filteredCategories,
+      people: state.people.filter(p => !p.category || filterFn(p.category)),
+      sessions: state.sessions.filter(s => filterFn(s.category)),
+      matches: state.matches.filter(m => filterFn(m.category)),
+      warehouse: state.warehouse.filter(w => !w.category || w.category === 'المخزن العام' || filterFn(w.category)),
+      tacticalPlans: state.tacticalPlans.filter(t => filterFn(t.category)),
+      tournaments: state.tournaments.filter(t => filterFn(t.category)),
+    };
+  }, [state, appMode]);
+
   const addNotify = useCallback((message: string, type: AppNotification['type'] = 'info') => {
     const id = generateUUID();
     setNotifications(prev => [{ id, message, type, timestamp: Date.now() }, ...prev].slice(0, 3));
@@ -75,7 +95,8 @@ const App: React.FC = () => {
     if (!silent) setSyncStatus('syncing');
     try {
       const isManager = user.role === 'مدير';
-      const isWarehouse = user.role === 'أمين مستودع';
+      const isWarehouse = user.role === 'أمين مستودع' || user.role === 'مسؤول تجهيزات';
+      const isMedic = user.role === 'معالج';
       const cat = user.restrictedCategory;
 
       let peopleQ = supabase.from('people').select('*');
@@ -109,21 +130,41 @@ const App: React.FC = () => {
         tourSTeamsQ = tourSTeamsQ.limit(0);
         tourMatchesQ = tourMatchesQ.limit(0);
         servicesQ = servicesQ.limit(0);
-      } else if (cat) {
+      } else if (isMedic) {
+        matchesQ = matchesQ.limit(0);
+        sessionsQ = sessionsQ.limit(0);
+        attendanceQ = attendanceQ.limit(0);
+        warehouseQ = warehouseQ.limit(0);
+        tacticalQ = tacticalQ.limit(0);
+        tournamentsQ = tournamentsQ.limit(0);
+        tourStagesQ = tourStagesQ.limit(0);
+        tourTeamsQ = tourTeamsQ.limit(0);
+        tourSTeamsQ = tourSTeamsQ.limit(0);
+        tourMatchesQ = tourMatchesQ.limit(0);
+      }
+      
+      if (cat && !isManager) {
         // --- التعديل الجوهري هنا لدعم تعدد الفئات ---
         const categoriesArray = cat.split(',').filter(Boolean);
         
-        peopleQ = peopleQ.in('category', categoriesArray);
-        matchesQ = matchesQ.in('category', categoriesArray);
-        sessionsQ = sessionsQ.in('category', categoriesArray);
+        if (!isWarehouse && !isMedic) {
+          peopleQ = peopleQ.in('category', categoriesArray);
+          matchesQ = matchesQ.in('category', categoriesArray);
+          sessionsQ = sessionsQ.in('category', categoriesArray);
+          tacticalQ = tacticalQ.in('category', categoriesArray);
+          tournamentsQ = tournamentsQ.in('category', categoriesArray);
+        }
+
+        if (isMedic || (!isWarehouse && !isMedic)) {
+           peopleQ = peopleQ.in('category', categoriesArray);
+           injuriesQ = injuriesQ.in('category', categoriesArray);
+        }
         
-        // المستودع يرى فئاته + المخزن العام
-        const warehouseAllowed = [...categoriesArray, 'المخزن العام'];
-        warehouseQ = warehouseQ.in('category', warehouseAllowed);
-        
-        injuriesQ = injuriesQ.in('category', categoriesArray);
-        tacticalQ = tacticalQ.in('category', categoriesArray);
-        tournamentsQ = tournamentsQ.in('category', categoriesArray);
+        if (isWarehouse || (!isWarehouse && !isMedic)) {
+          // المستودع يرى فئاته + المخزن العام
+          const warehouseAllowed = [...categoriesArray, 'المخزن العام'];
+          warehouseQ = warehouseQ.in('category', warehouseAllowed);
+        }
       }
 
       const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq] = await Promise.all([
@@ -184,9 +225,81 @@ const App: React.FC = () => {
     if (!state.currentUser) return;
     let debounceTimer: any;
     const channel = supabase.channel('global-changes')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => fetchAllData(state.currentUser!, true), 2000);
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        const table = payload.table;
+
+        // الجداول المعقدة نحدثها بالكامل
+        if (table === 'app_users' || table === 'categories') {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => fetchAllData(state.currentUser!, true), 2000);
+          return;
+        }
+
+        const tableMap: Record<string, keyof AppState> = {
+          'people': 'people',
+          'matches': 'matches',
+          'training_sessions': 'sessions',
+          'attendance_records': 'attendance',
+          'warehouse_items': 'warehouse',
+          'injury_records': 'injuries',
+          'tactical_plans': 'tacticalPlans',
+          'tournaments': 'tournaments',
+          'tournament_stages': 'tournamentStages',
+          'tournament_teams': 'tournamentTeams',
+          'tournament_stage_teams': 'tournamentStageTeams',
+          'tournament_matches': 'tournamentMatches',
+          'services_directory': 'servicesDirectory'
+        };
+
+        const stateKey = tableMap[table];
+        if (!stateKey) return;
+
+        setState(prev => {
+          const user = prev.currentUser;
+          if (!user) return prev;
+          
+          const isManager = user.role === 'مدير';
+          const isWarehouse = user.role === 'أمين مستودع' || user.role === 'مسؤول تجهيزات';
+          const isMedic = user.role === 'معالج';
+          const cat = user.restrictedCategory;
+          const allowedCategories = cat ? String(cat).split(',').filter(Boolean) : null;
+
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const newItem = payload.new as any;
+            
+            // فلترة الصلاحيات
+            if (!isManager) {
+              if (isWarehouse) {
+                if (table !== 'warehouse_items' && table !== 'app_users' && table !== 'categories') return prev;
+                if (allowedCategories && table === 'warehouse_items') {
+                  const warehouseAllowed = [...allowedCategories, 'المخزن العام'];
+                  if (!warehouseAllowed.includes(newItem.category)) return prev;
+                }
+              } else if (isMedic) {
+                if (table !== 'injury_records' && table !== 'people') return prev;
+                if (allowedCategories && newItem.category && !allowedCategories.includes(newItem.category)) return prev;
+              } else {
+                if (table === 'warehouse_items' || table === 'app_users') return prev;
+                if (allowedCategories && newItem.category && !allowedCategories.includes(newItem.category)) return prev;
+              }
+            }
+            
+            const currentList = prev[stateKey] as any[];
+            if (payload.eventType === 'INSERT') {
+              if (currentList.some(item => item.id === newItem.id)) return prev;
+              return { ...prev, [stateKey]: [...currentList, newItem] };
+            } else {
+              return { ...prev, [stateKey]: currentList.map(item => item.id === newItem.id ? newItem : item) };
+            }
+          }
+
+          if (payload.eventType === 'DELETE') {
+            const currentList = prev[stateKey] as any[];
+            return { ...prev, [stateKey]: currentList.filter(item => item.id !== payload.old.id) };
+          }
+
+          return prev;
+        });
       })
       .subscribe();
     return () => {
@@ -261,7 +374,13 @@ const App: React.FC = () => {
     { id: 'services', label: 'خدمات', icon: MapPin },
     { id: 'warehouse', label: 'المستودع', icon: Package },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
-  ].filter(item => state.currentUser?.role === 'مدير' || item.id !== 'settings');
+  ].filter(item => {
+    const role = state.currentUser?.role;
+    if (role === 'مدير') return true;
+    if (role === 'مسؤول تجهيزات') return ['warehouse', 'dashboard'].includes(item.id);
+    if (role === 'معالج') return ['squad', 'medical', 'dashboard'].includes(item.id);
+    return item.id !== 'settings';
+  });
 
   return (
     <div className="flex h-[100dvh] bg-slate-50 text-slate-900 font-['IBM_Plex_Sans_Arabic'] overflow-hidden print:h-auto print:block print:overflow-visible" dir="rtl">
@@ -270,6 +389,16 @@ const App: React.FC = () => {
            <ClubLogo size={45} />
            {isSidebarOpen && <span className="text-xl font-black text-white tracking-tight whitespace-nowrap">EAGLE OS</span>}
         </div>
+        
+        {isSidebarOpen && (
+          <div className="px-4 mb-4 shrink-0 animate-in fade-in">
+            <div className="flex bg-blue-950/50 rounded-xl p-1 text-[11px] font-bold">
+              <button onClick={() => { setAppMode('club'); setActiveTab('dashboard'); }} className={`flex-1 rounded-lg py-2 transition-all ${appMode === 'club' ? 'bg-orange-500 text-white shadow-lg' : 'text-blue-200 hover:text-white hover:bg-white/5'}`}>النادي</button>
+              <button onClick={() => { setAppMode('academy'); setActiveTab('dashboard'); }} className={`flex-1 rounded-lg py-2 transition-all ${appMode === 'academy' ? 'bg-orange-500 text-white shadow-lg' : 'text-blue-200 hover:text-white hover:bg-white/5'}`}>الأكاديمية الصيفية</button>
+            </div>
+          </div>
+        )}
+
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map(item => (
             <button key={item.id} onClick={() => { setActiveTab(item.id); if (window.innerWidth < 1024) setSidebarOpen(false); }}
@@ -310,7 +439,10 @@ const App: React.FC = () => {
              <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white transition-all">
                 <Menu size={20} />
              </button>
-             <h1 className="text-sm md:text-xl font-bold text-blue-900">{navItems.find(n => n.id === activeTab)?.label}</h1>
+             <div className="flex items-center gap-3">
+               <ClubLogo size={40} className="" />
+               <h1 className="text-sm md:text-xl font-bold text-blue-900 border-r-2 border-slate-200 pr-3 md:pr-4 mx-2 md:mx-0">{navItems.find(n => n.id === activeTab)?.label}</h1>
+             </div>
           </div>
           <div className="flex items-center gap-2">
              <button onClick={() => state.currentUser && fetchAllData(state.currentUser)} className="p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white">
@@ -324,19 +456,19 @@ const App: React.FC = () => {
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar print:p-0">
           <div className="max-w-6xl mx-auto space-y-8">
-            {activeTab === 'dashboard' && <Dashboard state={state} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
-            {activeTab === 'squad' && <SquadManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
-            {activeTab === 'staff' && <StaffManagement state={state} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
-            {activeTab === 'training' && <TrainingPlanner state={state} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'attendance' && <AttendanceTracker state={state} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'medical' && <MedicalCenter state={state} setState={updateState} syncToCloud={syncToCloud} />}
-            {activeTab === 'tournaments' && <TournamentsView state={state} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} />}
-            {activeTab === 'services' && <ServicesView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
-            {activeTab === 'baraaem-matches' && <MatchPlanner state={state} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
-            {activeTab === 'warehouse' && <WarehouseManagement state={state} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'settings' && <SettingsView state={state} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={state} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}
+            {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
+            {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
+            {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
+            {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
+            {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
+            {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
+            {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} />}
+            {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+            {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
+            {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
+            {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
+            {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}
           </div>
         </main>
 

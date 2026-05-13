@@ -27,7 +27,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
     restrictedCategory: ''
   });
 
-  const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع'];
+  const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع', 'مسؤول تجهيزات', 'معالج'];
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +65,10 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
-    const catName = newCatName.trim();
+    let catName = newCatName.trim();
+    if (state.appMode === 'academy' && !catName.startsWith('أكاديمية')) {
+       catName = `أكاديمية - ${catName}`;
+    }
     if (state.categories.includes(catName)) return alert('هذه الفئة موجودة مسبقاً.');
     
     // Update local state early for responsiveness

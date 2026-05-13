@@ -64,17 +64,21 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   
   const canSwitchCategory = isManager || !restrictedCat || allowedCategories.length > 1;
 
-  const todayStr = new Date().toLocaleDateString('en-CA');
+  const threshold = new Date(new Date().getTime() - 60 * 60 * 1000); // 1 hour ago
+
+  const parseDateTime = (date: string, time?: string) => {
+    return new Date(`${date}T${time || '00:00'}`);
+  };
 
   const upcomingMatches = useMemo(() => {
-    return state.matches.filter(m => (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && m.date >= todayStr)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.matches, globalFilter, todayStr, restrictedCat, allowedCategories]);
+    return state.matches.filter(m => (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && parseDateTime(m.date, m.time) >= threshold)
+      .sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
+  }, [state.matches, globalFilter, restrictedCat, allowedCategories]);
 
   const upcomingSessions = useMemo(() => {
-    return state.sessions.filter(s => (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && s.date >= todayStr)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.sessions, globalFilter, todayStr, restrictedCat, allowedCategories]);
+    return state.sessions.filter(s => (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && parseDateTime(s.date, s.time) >= threshold)
+      .sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
+  }, [state.sessions, globalFilter, restrictedCat, allowedCategories]);
 
   const stats = [
     { label: 'الكوادر واللاعبين', value: state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter)).length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },

@@ -1,0 +1,5 @@
+ALTER TABLE IF EXISTS people DROP CONSTRAINT IF EXISTS people_role_check;
+
+ALTER TABLE IF EXISTS app_users DROP CONSTRAINT IF EXISTS app_users_role_check;
+ALTER TABLE IF EXISTS app_users DROP CONSTRAINT IF EXISTS users_role_check;
+

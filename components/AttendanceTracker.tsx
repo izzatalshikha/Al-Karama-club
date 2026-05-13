@@ -3,10 +3,21 @@ import React, { useState, useMemo } from 'react';
 import { 
   ClipboardCheck, Save, History, Lock, Clock, Calendar as CalendarIcon, 
   Printer, ChevronRight, FileText, Users, Edit3, Shield as ShieldIcon,
-  Check, UserX, PieChart, LayoutList, AlertCircle
+  Check, UserX, PieChart, LayoutList, AlertCircle, MessageCircle
 } from 'lucide-react';
 import { AppState, AttendanceStatus, AttendanceRecord, TrainingSession, Person } from '../types';
 import { generateUUID, supabase } from '../App';
+
+export const getWhatsAppUrl = (phone: string | undefined, message: string) => {
+  if (!phone) return null;
+  const cleanedPhone = phone.replace(/[^0-9+]/g, '');
+  if (cleanedPhone.length < 8) return null;
+  const formattedPhone = cleanedPhone.startsWith('00') ? cleanedPhone.substring(2) : 
+                        cleanedPhone.startsWith('+') ? cleanedPhone.substring(1) : 
+                        cleanedPhone.startsWith('0') ? '963' + cleanedPhone.substring(1) : 
+                        cleanedPhone;
+  return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+};
 
 interface AttendanceTrackerProps {
   state: AppState;
@@ -26,6 +37,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const [localRecords, setLocalRecords] = useState<Record<string, { status: AttendanceStatus | null; excuse?: string; time?: string; date?: string }>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [adminEditOverride, setAdminEditOverride] = useState(false);
+  const [showEndSessionModal, setShowEndSessionModal] = useState(false);
   
   const currentUser = state.currentUser!;
   const globalFilter = state.globalCategoryFilter;
@@ -48,8 +60,23 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const savedRecords = state.attendance.filter(r => r.sessionId === selectedSessionId);
   
   const isLocked = activeSession?.isCompleted;
-  // المشاهد لا يمكنه التعديل أبداً
   const canEditNow = isViewer ? false : (isManager ? (adminEditOverride || !isLocked) : !isLocked);
+
+  const sendIndividualWhatsApp = (p: Person, status: AttendanceStatus, time: string) => {
+    if (!activeSession) return;
+    const msgs: Record<AttendanceStatus, string> = {
+      'حاضر': `السادة أولياء الأمور الكرام،\nنعلمكم بحضور اللاعب (${p.name}) لتدريب اليوم الموافق ${activeSession.date} في تمام الساعة ${time}.\nإدارة النادي تتمنى له تدريباً موفقاً.`,
+      'متأخر': `السادة أولياء الأمور الكرام،\nتسجيل حضور: اللاعب (${p.name}) حضر لتدريب اليوم الموافق ${activeSession.date} متأخراً في تمام الساعة ${time}.\nنرجو الحرص على الحضور بالموعد المحدد لضمان الاستفادة القصوى.`,
+      'غائب': `السادة أولياء الأمور الكرام،\nنأسف لإبلاغكم بتسجيل غياب اللاعب (${p.name}) عن تدريب اليوم الموافق ${activeSession.date}.\nيرجى مراجعة الجهاز الإداري في حال وجود مبرر.`,
+      'غياب بعذر': `السادة أولياء الأمور الكرام،\nتم تسجيل إجازة (غياب بعذر) للاعب (${p.name}) عن تدريب اليوم الموافق ${activeSession.date}.\nتمنياتنا للجميع بدوام التوفيق.`
+    };
+    const url = getWhatsAppUrl(p.phone, msgs[status]);
+    if (url) {
+      window.open(url, '_blank');
+    } else {
+      alert(`رقم هاتف اللاعب ${p.name} غير مسجل أو غير صالح.`);
+    }
+  };
 
   const sessionStats = useMemo(() => {
     const stats = { 'حاضر': 0, 'متأخر': 0, 'غائب': 0, 'غياب بعذر': 0, 'لم يرصد': 0 };
@@ -171,11 +198,16 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                  <p className="text-[10px] md:text-xs font-black text-orange-600 uppercase tracking-[0.2em] mt-1">{activeSession.category} • {activeSession.date}</p>
                </div>
              </div>
-             <div className="flex gap-3 items-center">
+             <div className="flex flex-wrap gap-3 items-center">
                 {isLocked && <span className="bg-red-50 text-red-600 px-6 py-2 rounded-full text-[10px] font-black flex items-center gap-2 uppercase border border-red-100"><Lock size={14}/> سجل مقفل إدارياً</span>}
                 {isManager && selectedSessionId && (
                   <button onClick={() => setAdminEditOverride(!adminEditOverride)} className={`px-6 py-2 rounded-full font-black text-[10px] border transition-all shadow-sm ${adminEditOverride ? 'bg-orange-500 text-white border-orange-400' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50'}`}>
                     {adminEditOverride ? 'إيقاف التعديل الاستثنائي' : 'تعديل السجل المقفل'}
+                  </button>
+                )}
+                {activeSession && (
+                  <button onClick={() => setShowEndSessionModal(true)} className="bg-emerald-50 text-emerald-700 px-6 py-2 rounded-full font-black text-[10px] border border-emerald-200 hover:bg-emerald-500 hover:text-white transition-all shadow-sm flex items-center gap-2">
+                    <MessageCircle size={14} /> إشعارات انتهاء التمرين
                   </button>
                 )}
              </div>
@@ -232,9 +264,16 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                         </div>
                       </td>
                       <td className="px-8 py-6 text-center">
-                         <span className={`text-[11px] font-black px-4 py-2 rounded-xl border tabular-nums ${currentStatus ? 'bg-blue-900 text-white border-blue-950 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-                            {currentTime}
-                         </span>
+                         <div className="flex items-center justify-center gap-2">
+                           <span className={`text-[11px] font-black px-4 py-2 rounded-xl border tabular-nums ${currentStatus ? 'bg-blue-900 text-white border-blue-950 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                              {currentTime}
+                           </span>
+                           {currentStatus && (
+                             <button onClick={() => sendIndividualWhatsApp(p, currentStatus, currentTime)} className="text-emerald-600 bg-emerald-50 p-2 rounded-xl border border-emerald-200 hover:bg-emerald-500 hover:text-white transition-all transform hover:scale-105 active:scale-95 shadow-sm" title="إرسال إشعار للمشترك عبر واتساب">
+                               <MessageCircle size={16} />
+                             </button>
+                           )}
+                         </div>
                       </td>
                       <td className="px-8 py-6">
                         <div className="relative group/input">
@@ -272,9 +311,16 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                           <p className="text-[9px] font-bold text-slate-600 uppercase">{p.role} {p.position ? `| ${p.position}` : ''}</p>
                         </div>
                       </div>
-                      <span className={`text-[10px] font-black px-2 py-1 rounded-lg border tabular-nums ${currentStatus ? 'bg-blue-900 text-white' : 'bg-slate-50 text-slate-400'}`}>
-                        {currentTime}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-black px-2 py-1 rounded-lg border tabular-nums ${currentStatus ? 'bg-blue-900 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                          {currentTime}
+                        </span>
+                        {currentStatus && (
+                          <button onClick={() => sendIndividualWhatsApp(p, currentStatus, currentTime)} className="text-emerald-600 bg-emerald-50 p-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-500 hover:text-white transition-all shadow-sm" title="إرسال إشعار للمشترك عبر واتساب">
+                            <MessageCircle size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -301,6 +347,62 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEndSessionModal && activeSession && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <MessageCircle className="text-emerald-500" /> إرسال إشعارات انتهاء التمرين
+              </h2>
+              <button onClick={() => setShowEndSessionModal(false)} className="bg-slate-200 text-slate-600 p-2 rounded-xl hover:bg-slate-300 transition-all">
+                <UserX size={16} /> 
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-3">
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4 text-xs font-bold text-blue-800 leading-relaxed">
+                ستظهر هنا قائمة باللاعبين الذين سجلوا (حاضر) أو (متأخر). سيتم تجهيز رسالة تفيد بانتهاء التمرين وجاهزيتهم للمغادرة.
+              </div>
+              {categoryMembers.filter(p => {
+                const saved = savedRecords.find(r => r.personId === p.id);
+                const local = localRecords[p.id];
+                const currentStatus = local?.status || saved?.status || null;
+                return currentStatus === 'حاضر' || currentStatus === 'متأخر';
+              }).map(p => {
+                const sendMsg = () => {
+                  const url = getWhatsAppUrl(p.phone, `السادة أولياء الأمور الكرام،\nنعلمكم بانتهاء التدريب الخاص باللاعب (${p.name}) بنجاح، وهو الآن جاهز للمغادرة.\nنشكر لكم حسن تعاونكم الدائم مع إدارة النادي.`);
+                  if (url) window.open(url, '_blank');
+                  else alert(`رقم هاتف اللاعب ${p.name} غير مسجل أو غير صالح.`);
+                };
+                return (
+                  <div key={p.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">
+                        {p.number || '0'}
+                      </div>
+                      <span className="font-black text-sm text-slate-900">{p.name}</span>
+                    </div>
+                    <button onClick={sendMsg} className="w-full sm:w-auto bg-emerald-500 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-sm">
+                      <MessageCircle size={14} /> إرسال واتساب
+                    </button>
+                  </div>
+                );
+              })}
+              {categoryMembers.filter(p => {
+                const saved = savedRecords.find(r => r.personId === p.id);
+                const local = localRecords[p.id];
+                const currentStatus = local?.status || saved?.status || null;
+                return currentStatus === 'حاضر' || currentStatus === 'متأخر';
+              }).length === 0 && (
+                <div className="text-center p-8 text-slate-400 font-bold text-sm">
+                  لا يوجد لاعبين حاضرين في هذا التمرين بعد.
+                </div>
+              )}
             </div>
           </div>
         </div>

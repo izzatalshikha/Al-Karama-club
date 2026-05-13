@@ -25,7 +25,10 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
   const currentUser = state.currentUser!;
   const isManager = currentUser.role === 'مدير';
+  const isMedic = currentUser.role === 'معالج';
   const isViewer = currentUser.role === 'مشاهد';
+  const canAddOrDelete = isManager || (!isViewer && !isMedic);
+  const canEdit = !isViewer;
   const restrictedCat = currentUser.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
@@ -54,7 +57,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name?.trim() || isSaving || isViewer) return;
+    if (!formData.name?.trim() || isSaving || !canEdit) return;
 
     setIsSaving(true);
     const updatedPerson = {
@@ -92,7 +95,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`هل أنت متأكد من حذف سجل ${name} نهائياً؟`) || isViewer) return;
+    if (!confirm(`هل أنت متأكد من حذف سجل ${name} نهائياً؟`) || !canAddOrDelete) return;
     try {
       const { error } = await supabase.from('people').delete().eq('id', id);
       if (error) throw error;
@@ -104,7 +107,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   };
 
   const openEdit = (p: Person) => {
-    if (isViewer) return;
+    if (!canEdit) return;
     setEditingId(p.id);
     setFormData({ ...p });
     setIsModalOpen(true);
@@ -150,7 +153,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
            </div>
          )}
 
-         {!isViewer && (
+         {canAddOrDelete && (
            <button onClick={() => { setEditingId(null); setFormData(initialFormState); setIsModalOpen(true); }}
              className="bg-orange-500 text-white px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-orange-500/10 hover:bg-orange-600 transition-all whitespace-nowrap w-full md:w-auto justify-center">
               <UserPlus size={20}/> إضافة جديد
@@ -188,10 +191,12 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
              <div className="mt-auto pt-4 md:pt-6 border-t border-slate-100 flex justify-between items-center gap-2">
                 <button onClick={() => onOpenReport?.(person)} className="text-[10px] md:text-xs font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={14}/></button>
                 <div className="flex gap-1 md:gap-2">
-                   {!isViewer && (
+                   {canEdit && (
                      <>
                        <button onClick={() => openEdit(person)} className="p-2 md:p-2.5 bg-blue-50 text-blue-600 rounded-lg md:rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={14} className="md:w-4 md:h-4"/></button>
-                       <button onClick={() => handleDelete(person.id, person.name)} className="p-2 md:p-2.5 bg-red-50 text-red-600 rounded-lg md:rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={14} className="md:w-4 md:h-4"/></button>
+                       {canAddOrDelete && (
+                         <button onClick={() => handleDelete(person.id, person.name)} className="p-2 md:p-2.5 bg-red-50 text-red-600 rounded-lg md:rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={14} className="md:w-4 md:h-4"/></button>
+                       )}
                      </>
                    )}
                 </div>
