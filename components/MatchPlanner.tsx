@@ -38,7 +38,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const restrictedCat = currentUser?.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
-  const defaultCategory = hasRestriction ? allowedCategories[0] : (categoriesToUse[0] || 'الرجال');
+  const defaultCategory = hasRestriction ? allowedCategories[0] : (state.categories[0] || 'الرجال');
 
   const [formData, setFormData] = useState<Partial<Match>>({ 
     matchType: 'دوري', 
@@ -373,7 +373,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     <div>
                        <label className={labelStyle}>الفئة</label>
                        <select className={inputStyle} value={formData.category || defaultCategory || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
-                          {(hasRestriction ? allowedCategories : categoriesToUse).map(c => <option key={c} value={c}>{c}</option>)}
+                          {(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div>

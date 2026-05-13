@@ -20,7 +20,6 @@ import TournamentsView from './components/TournamentsView';
 import ServicesView from './components/ServicesView';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
-import ChatBot from './components/ChatBot';
 import MedicalCenter from './components/MedicalCenter';
 
 export const generateUUID = () => {
@@ -356,7 +355,6 @@ const App: React.FC = () => {
            ))}
         </nav>
       </div>
-      <ChatBot state={state} />
     </div>
   );
 };
