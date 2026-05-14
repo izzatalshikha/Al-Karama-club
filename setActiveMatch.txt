@@ -1,0 +1,33 @@
+24:  const [activeMatch, setActiveMatch] = useState<Match | null>(null);
+100:    setActiveMatch(repairedMatch);
+177:    setActiveMatch(newMatch);
+204:    setActiveMatch(null);
+211:    setActiveMatch({ ...activeMatch, events: [...activeMatch.events, newEvent] });
+216:    setActiveMatch({ ...activeMatch, events: activeMatch.events.filter(e => e.id !== id) });
+237:    setActiveMatch({ ...activeMatch, lineup: newLineup });
+259:    setActiveMatch({ ...activeMatch, lineup: newLineup });
+271:    setActiveMatch({ ...activeMatch, lineup: newLineup });
+278:    setActiveMatch({ ...activeMatch, lineup: newLineup });
+285:    setActiveMatch({ ...activeMatch, lineup: newLineup });
+458:                       <button onClick={() => setActiveMatch(null)} className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl hover:bg-orange-500 text-blue-900 hover:text-white transition-all shadow-sm"><Undo2 size={24}/></button>
+493:                                      <input type="number" className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 border border-slate-200 rounded-3xl text-center text-3xl md:text-5xl font-black text-blue-950 outline-none focus:border-orange-500 transition-all shadow-inner" value={activeMatch.ourScore || ''} onChange={e => setActiveMatch({...activeMatch, ourScore: e.target.value})} />
+498:                                      <input type="number" className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 border border-slate-200 rounded-3xl text-center text-3xl md:text-5xl font-black text-blue-950 outline-none focus:border-orange-500 transition-all shadow-inner" value={activeMatch.opponentScore || ''} onChange={e => setActiveMatch({...activeMatch, opponentScore: e.target.value})} />
+508:                                         <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 text-center text-lg font-black text-blue-900 outline-none focus:border-orange-500 transition-all" value={activeMatch.stoppageTime1 || ''} onChange={e => setActiveMatch({...activeMatch, stoppageTime1: e.target.value})} />
+512:                                         <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 text-center text-lg font-black text-blue-900 outline-none focus:border-orange-500 transition-all" value={activeMatch.stoppageTime2 || ''} onChange={e => setActiveMatch({...activeMatch, stoppageTime2: e.target.value})} />
+517:                                      <input type="text" className="w-full bg-emerald-50 border border-emerald-100 rounded-2xl py-4 text-center text-xl font-black text-emerald-700 outline-none focus:border-emerald-500 transition-all" value={activeMatch.advancePayment || ''} onChange={e => setActiveMatch({...activeMatch, advancePayment: e.target.value})} />
+530:                                   <input type="number" className="w-16 h-16 bg-white border border-orange-300 rounded-2xl text-center text-2xl font-black text-blue-950 outline-none focus:border-orange-500 transition-all shadow-inner" value={activeMatch.ourPenaltiesScore || ''} onChange={e => setActiveMatch({...activeMatch, ourPenaltiesScore: e.target.value})} />
+535:                                   <input type="number" className="w-16 h-16 bg-white border border-orange-300 rounded-2xl text-center text-2xl font-black text-blue-950 outline-none focus:border-orange-500 transition-all shadow-inner" value={activeMatch.opponentPenaltiesScore || ''} onChange={e => setActiveMatch({...activeMatch, opponentPenaltiesScore: e.target.value})} />
+547:                               <input type="text" className={inputStyle} value={activeMatch.referee || ''} onChange={e => setActiveMatch({...activeMatch, referee: e.target.value})} placeholder="الملعب ..." />
+551:                               <input type="text" className={inputStyle} value={activeMatch.homeCoach || ''} onChange={e => setActiveMatch({...activeMatch, homeCoach: e.target.value})} placeholder="اسم المدرب..." />
+555:                               <input type="text" className={inputStyle} value={activeMatch.awayCoach || ''} onChange={e => setActiveMatch({...activeMatch, awayCoach: e.target.value})} placeholder="اسم المدرب..." />
+561:                                   <input type="number" className={inputStyle} value={activeMatch.matchDuration || ''} onChange={e => setActiveMatch({...activeMatch, matchDuration: e.target.value})} placeholder={activeMatch.lineup?.halvesCount === '3' ? "60" : "90"} />
+565:                                   <input type="number" className={inputStyle} value={activeMatch.squadSize || ''} onChange={e => setActiveMatch({...activeMatch, squadSize: e.target.value})} placeholder={activeMatch.lineup?.halvesCount === '3' ? "مفتوح" : "18"} />
+594:                                        setActiveMatch({...activeMatch, squad: currentSquad.filter(id => id !== player.id)});
+596:                                        setActiveMatch({...activeMatch, squad: [...currentSquad, player.id]});
+655:                                              setActiveMatch({...activeMatch, lineup: newLineup});
+717:                                       setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup, subs: newSubs}});
+730:                                       setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup, subs: newSubs}});
+743:                                       setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup, subs: newSubs}});
+792:                                        setActiveMatch({...activeMatch, events: newEvents});
+797:                                     setActiveMatch({...activeMatch, events: newEvents});
+817:                            onChange={e => setActiveMatch({...activeMatch, notes: e.target.value})}

@@ -477,7 +477,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     )}
                  </div>
 
-                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
+                 <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 ${(!isManager && activeMatch.isCompleted) ? 'pointer-events-none opacity-80 select-none grayscale-[0.2]' : ''}`}>
                     
                     {/* Column 1: Score & Lineup */}
                     <div className="lg:col-span-8 space-y-6 md:space-y-8">

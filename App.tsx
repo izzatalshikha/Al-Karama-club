@@ -21,6 +21,7 @@ import ServicesView from './components/ServicesView';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 import MedicalCenter from './components/MedicalCenter';
+import PublicPlayerView from './components/PublicPlayerView';
 
 export const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -64,6 +65,18 @@ const App: React.FC = () => {
       globalCategoryFilter: 'الكل'
     };
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pId = params.get('playerId');
+    if (pId && state.people.length > 0) {
+      const p = state.people.find(x => x.id === pId);
+      if (p && !selectedPlayer) { // avoid re-setting and breaking navigation
+        setSelectedPlayer(p);
+        setActiveTab('report');
+      }
+    }
+  }, [state.people.length, selectedPlayer]);
 
   const derivedState = React.useMemo(() => {
     const isAcademyCat = (c: string) => c.startsWith('أكاديمية');
@@ -359,7 +372,14 @@ const App: React.FC = () => {
     return { isSuspended: suspendedForNext || hasActiveRed, currentYellows: accumulatedYellows, hasActiveRed };
   }, [state.matches]);
 
-  if (!state.currentUser) return <Login onLoginAttempt={onLoginAttempt} />;
+  if (!state.currentUser) {
+    const params = new URLSearchParams(window.location.search);
+    const pId = params.get('playerId');
+    if (pId) {
+      return <PublicPlayerView playerId={pId} />;
+    }
+    return <Login onLoginAttempt={onLoginAttempt} />;
+  }
 
   const navItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },

@@ -13,6 +13,7 @@ import {
 import { AppState, Person, Match } from '../types';
 import { supabase } from '../App';
 import ClubLogo from './ClubLogo';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface PlayerReportProps {
   state: AppState;
@@ -192,6 +193,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                <p className="text-orange-500 font-black mt-3 tracking-widest uppercase bg-orange-500/10 inline-block px-4 py-1 rounded-full text-[10px]">
                  {player.role} • {player.category}
                </p>
+               
+               {/* QR Code Section */}
+               <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center justify-center print:hidden">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">امسح الكود لفتح ملف {player.role}</p>
+                  <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
+                     <QRCodeSVG value={`${window.location.origin}${window.location.pathname}?playerId=${player.id}`} size={120} level="H" includeMargin={false} fgColor="#0f172a" />
+                  </div>
+               </div>
             </div>
 
             {/* تحليل الالتزام */}
@@ -242,7 +251,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
          <div className="lg:col-span-8 space-y-6 md:space-y-8">
             
             {/* مؤشرات الأداء السريعة */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            <div className={`grid gap-3 md:gap-4 ${player.role === 'لاعب' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1'}`}>
                <div className="modern-card p-4 md:p-6 border-t-4 border-emerald-500 text-center group transition-all">
                   <p className="text-[8px] md:text-[9px] font-black text-slate-500 mb-1 uppercase">الأداء</p>
                   <p className="text-2xl md:text-4xl font-black text-emerald-500">%{attendanceStats.rate}</p>
@@ -250,25 +259,30 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                      <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${attendanceStats.rate}%` }}></div>
                   </div>
                </div>
-               <div className="modern-card p-4 md:p-6 border-t-4 border-orange-500 text-center group transition-all">
-                  <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">أهداف</p>
-                  <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.goals}</p>
-                  <Zap size={14} className="text-orange-600 mx-auto mt-1" />
-               </div>
-               <div className="modern-card p-4 md:p-6 border-t-4 border-blue-500 text-center group transition-all">
-                  <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">صناعة</p>
-                  <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.assists}</p>
-                  <TrendingUp size={14} className="text-blue-600 mx-auto mt-1" />
-               </div>
-               <div className="modern-card p-4 md:p-6 border-t-4 border-purple-500 text-center group transition-all">
-                  <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">دقائق</p>
-                  <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.totalMins}</p>
-                  <Timer size={14} className="text-purple-600 mx-auto mt-1" />
-               </div>
+               
+               {player.role === 'لاعب' && (
+                 <>
+                   <div className="modern-card p-4 md:p-6 border-t-4 border-orange-500 text-center group transition-all">
+                      <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">أهداف</p>
+                      <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.goals}</p>
+                      <Zap size={14} className="text-orange-600 mx-auto mt-1" />
+                   </div>
+                   <div className="modern-card p-4 md:p-6 border-t-4 border-blue-500 text-center group transition-all">
+                      <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">صناعة</p>
+                      <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.assists}</p>
+                      <TrendingUp size={14} className="text-blue-600 mx-auto mt-1" />
+                   </div>
+                   <div className="modern-card p-4 md:p-6 border-t-4 border-purple-500 text-center group transition-all">
+                      <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">دقائق</p>
+                      <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.totalMins}</p>
+                      <Timer size={14} className="text-purple-600 mx-auto mt-1" />
+                   </div>
+                 </>
+               )}
             </div>
 
             {/* إحصائيات المباريات المفصلة حسب البطولة/النوع */}
-            {Object.keys(stats.groupedStats).length > 0 && (
+            {player.role === 'لاعب' && Object.keys(stats.groupedStats).length > 0 && (
                <div className="modern-card p-6 md:p-8 border-r-8 border-blue-600">
                   <SectionTitle icon={Trophy} title="سجل المباريات المفصل" color="text-blue-500" />
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -348,95 +362,99 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             </div>
 
             {/* الحالة الطبية */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-red-600 bg-red-600/5">
-               <SectionTitle icon={ShieldAlert} title="الحالة الطبية والانضباط" color="text-red-500" />
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                  <div className="space-y-2">
-                     <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><HeartPulse size={12}/> السجل الطبي</p>
-                     <div className="bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-red-950">
-                        {player.medicalHistory || 'لا يوجد سجلات طبية.'}
-                     </div>
-                  </div>
-                  <div className="space-y-2">
-                     <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><AlertCircle size={12}/> الإصابات</p>
-                     <div className="bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-red-950">
-                        {player.injuries || 'لا يوجد إصابات.'}
-                     </div>
-                  </div>
-                  <div className="space-y-2">
-                     <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><Gavel size={12}/> العقوبات</p>
-                     <div className="bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-red-950">
-                        {player.penalties || 'نظيف.'}
-                     </div>
-                  </div>
-                  <div className="space-y-2">
-                     <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><StickyNote size={12}/> ملاحظات</p>
-                     <div className="bg-slate-50 p-3 md:p-4 rounded-xl border border-slate-200 min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-slate-700 shadow-sm">
-                        {player.notes || 'لا ملاحظات.'}
-                     </div>
-                  </div>
-               </div>
-            </div>
-
-            {/* سجل المشاركة التنافسي */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-orange-600 overflow-hidden shadow-2xl">
-               <SectionTitle icon={Trophy} title="سجل المشاركة" color="text-orange-500" />
-               
-               {/* Mobile Cards for Match History */}
-               <div className="block md:hidden space-y-3">
-                  {stats.matchHistory.map((m, i) => (
-                    <div key={i} className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-200 shadow-sm">
-                       <div className="flex justify-between items-center">
-                          <div>
-                             <p className="text-[11px] font-black text-blue-950">{m.opponent}</p>
-                             <p className="text-[8px] text-slate-600 font-bold">{m.date}</p>
-                          </div>
-                          <span className="text-xs font-black text-orange-600">{m.score}</span>
-                       </div>
-                       <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-black">
-                          <div className="text-slate-600">{m.mins}د</div>
-                          <div className="text-emerald-600">⚽ {m.goals || '-'}</div>
-                          <div className="text-blue-600">👟 {m.assists || '-'}</div>
-                          <div className="text-slate-700">🟨{m.cards.y} 🟥{m.cards.r}</div>
+            {player.role === 'لاعب' && (
+              <div className="modern-card p-6 md:p-8 border-r-8 border-red-600 bg-red-600/5">
+                 <SectionTitle icon={ShieldAlert} title="الحالة الطبية والانضباط" color="text-red-500" />
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                    <div className="space-y-2">
+                       <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><HeartPulse size={12}/> السجل الطبي</p>
+                       <div className="bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-red-950">
+                          {player.medicalHistory || 'لا يوجد سجلات طبية.'}
                        </div>
                     </div>
-                  ))}
-                  {stats.matchHistory.length === 0 && <p className="p-6 text-center text-slate-500 text-xs italic">لا مشاركات مسجلة.</p>}
-               </div>
+                    <div className="space-y-2">
+                       <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><AlertCircle size={12}/> الإصابات</p>
+                       <div className="bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-red-950">
+                          {player.injuries || 'لا يوجد إصابات.'}
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><Gavel size={12}/> العقوبات</p>
+                       <div className="bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-red-950">
+                          {player.penalties || 'نظيف.'}
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><StickyNote size={12}/> ملاحظات</p>
+                       <div className="bg-slate-50 p-3 md:p-4 rounded-xl border border-slate-200 min-h-[60px] text-[10px] md:text-xs font-medium leading-relaxed italic text-slate-700 shadow-sm">
+                          {player.notes || 'لا ملاحظات.'}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            )}
 
-               {/* Desktop Table View */}
-               <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-right">
-                     <thead className="bg-slate-50 text-slate-700 text-[9px] font-black uppercase tracking-widest border-b border-slate-200">
-                        <tr>
-                           <th className="p-4 rounded-tr-xl">المنافس</th>
-                           <th className="p-4 text-center">النتيجة</th>
-                           <th className="p-4 text-center">دقائق</th>
-                           <th className="p-4 text-center text-emerald-600">⚽</th>
-                           <th className="p-4 text-center text-blue-600">👟</th>
-                           <th className="p-4 text-center rounded-tl-xl">🟨/🟥</th>
-                        </tr>
-                     </thead>
-                     <tbody className="divide-y divide-slate-100 font-bold text-[11px] text-blue-950">
-                        {stats.matchHistory.map((m, i) => (
-                           <tr key={i} className="hover:bg-slate-50 transition-colors">
-                              <td className="p-4 font-black">{m.opponent} <span className="text-[9px] text-slate-500 block font-medium">{m.date}</span></td>
-                              <td className="p-4 text-center tabular-nums">{m.score}</td>
-                              <td className="p-4 text-center tabular-nums text-slate-600">{m.mins} د</td>
-                              <td className="p-4 text-center tabular-nums text-emerald-600">{m.goals || '-'}</td>
-                              <td className="p-4 text-center tabular-nums text-blue-600">{m.assists || '-'}</td>
-                              <td className="p-4 text-center tabular-nums">
-                                 <span className="text-amber-500">{m.cards.y}</span>/<span className="text-red-600">{m.cards.r}</span>
-                              </td>
-                           </tr>
-                        ))}
-                        {stats.matchHistory.length === 0 && (
-                           <tr><td colSpan={6} className="p-10 text-center text-slate-500 italic">لا مشاركات مسجلة.</td></tr>
-                        )}
-                     </tbody>
-                  </table>
-               </div>
-            </div>
+            {/* سجل المشاركة التنافسي */}
+            {player.role === 'لاعب' && (
+              <div className="modern-card p-6 md:p-8 border-r-8 border-orange-600 overflow-hidden shadow-2xl">
+                 <SectionTitle icon={Trophy} title="سجل المشاركة" color="text-orange-500" />
+                 
+                 {/* Mobile Cards for Match History */}
+                 <div className="block md:hidden space-y-3">
+                    {stats.matchHistory.map((m, i) => (
+                      <div key={i} className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-200 shadow-sm">
+                         <div className="flex justify-between items-center">
+                            <div>
+                               <p className="text-[11px] font-black text-blue-950">{m.opponent}</p>
+                               <p className="text-[8px] text-slate-600 font-bold">{m.date}</p>
+                            </div>
+                            <span className="text-xs font-black text-orange-600">{m.score}</span>
+                         </div>
+                         <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-black">
+                            <div className="text-slate-600">{m.mins}د</div>
+                            <div className="text-emerald-600">⚽ {m.goals || '-'}</div>
+                            <div className="text-blue-600">👟 {m.assists || '-'}</div>
+                            <div className="text-slate-700">🟨{m.cards.y} 🟥{m.cards.r}</div>
+                         </div>
+                      </div>
+                    ))}
+                    {stats.matchHistory.length === 0 && <p className="p-6 text-center text-slate-500 text-xs italic">لا مشاركات مسجلة.</p>}
+                 </div>
+
+                 {/* Desktop Table View */}
+                 <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-right">
+                       <thead className="bg-slate-50 text-slate-700 text-[9px] font-black uppercase tracking-widest border-b border-slate-200">
+                          <tr>
+                             <th className="p-4 rounded-tr-xl">المنافس</th>
+                             <th className="p-4 text-center">النتيجة</th>
+                             <th className="p-4 text-center">دقائق</th>
+                             <th className="p-4 text-center text-emerald-600">⚽</th>
+                             <th className="p-4 text-center text-blue-600">👟</th>
+                             <th className="p-4 text-center rounded-tl-xl">🟨/🟥</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100 font-bold text-[11px] text-blue-950">
+                          {stats.matchHistory.map((m, i) => (
+                             <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-4 font-black">{m.opponent} <span className="text-[9px] text-slate-500 block font-medium">{m.date}</span></td>
+                                <td className="p-4 text-center tabular-nums">{m.score}</td>
+                                <td className="p-4 text-center tabular-nums text-slate-600">{m.mins} د</td>
+                                <td className="p-4 text-center tabular-nums text-emerald-600">{m.goals || '-'}</td>
+                                <td className="p-4 text-center tabular-nums text-blue-600">{m.assists || '-'}</td>
+                                <td className="p-4 text-center tabular-nums">
+                                   <span className="text-amber-500">{m.cards.y}</span>/<span className="text-red-600">{m.cards.r}</span>
+                                </td>
+                             </tr>
+                          ))}
+                          {stats.matchHistory.length === 0 && (
+                             <tr><td colSpan={6} className="p-10 text-center text-slate-500 italic">لا مشاركات مسجلة.</td></tr>
+                          )}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+            )}
 
             {/* التقييم الفني الشهري */}
             <div className="modern-card p-6 md:p-8 border-t-8 border-blue-600 shadow-2xl">

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ClipboardCheck, Save, History, Lock, Clock, Calendar as CalendarIcon, 
   Printer, ChevronRight, FileText, Users, Edit3, Shield as ShieldIcon,
@@ -38,6 +38,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const [isSaving, setIsSaving] = useState(false);
   const [adminEditOverride, setAdminEditOverride] = useState(false);
   const [showEndSessionModal, setShowEndSessionModal] = useState(false);
+  const [countdown, setCountdown] = useState<string | null>(null);
   
   const currentUser = state.currentUser!;
   const globalFilter = state.globalCategoryFilter;
@@ -61,6 +62,35 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   
   const isLocked = activeSession?.isCompleted;
   const canEditNow = isViewer ? false : (isManager ? (adminEditOverride || !isLocked) : !isLocked);
+
+  useEffect(() => {
+    if (!activeSession || isManager || !activeSession.time || isViewer) {
+      setCountdown(null);
+      return;
+    }
+
+    const tick = () => {
+      const sessionDate = new Date(`${activeSession.date}T${activeSession.time}`);
+      const timeDiffMs = sessionDate.getTime() - new Date().getTime();
+      
+      if (timeDiffMs > 30 * 60 * 1000) {
+        const totalSeconds = Math.floor(timeDiffMs / 1000);
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = totalSeconds % 60;
+        const formatted = h > 0 ? `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}` : `${m}:${s < 10 ? '0' : ''}${s}`;
+        setCountdown(formatted);
+      } else {
+        setCountdown(null);
+      }
+    };
+
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [activeSession, isManager, isViewer]);
+
+  const canEditNowFinal = canEditNow && !countdown;
 
   const sendIndividualWhatsApp = (p: Person, status: AttendanceStatus, time: string) => {
     if (!activeSession) return;
@@ -160,7 +190,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
           </div>
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto self-end">
             {!isViewer && (
-              <button onClick={saveAttendance} disabled={!selectedSessionId || (isLocked && !canEditNow) || isSaving} className="w-full md:w-auto bg-blue-900 text-white px-8 py-5 rounded-2xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all disabled:opacity-30">
+              <button onClick={saveAttendance} disabled={!selectedSessionId || (isLocked && !canEditNow) || isSaving || !!countdown} className="w-full md:w-auto bg-blue-900 text-white px-8 py-5 rounded-2xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all disabled:opacity-30">
                 {isSaving ? <History className="animate-spin" size={20}/> : <Save size={20} />}
                 اعتماد الرصد النهائي
               </button>
@@ -187,7 +217,17 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
       </div>
 
       {activeSession && (
-        <div className={`modern-card overflow-hidden relative ${isLocked && !canEditNow ? 'opacity-70 grayscale-[0.5]' : ''}`}>
+        <div className={`modern-card overflow-hidden relative ${(isLocked && !canEditNow) || countdown ? 'opacity-70 grayscale-[0.5] pointer-events-none' : ''}`}>
+          {countdown && (
+            <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-auto">
+              <Clock className="text-orange-500 mb-4 animate-pulse" size={48} />
+              <h3 className="text-2xl font-black text-blue-900 mb-2">لا يمكن بدء الرصد الآن</h3>
+              <p className="text-slate-600 font-bold mb-4">يُسمح ببدء الرصد قبل نصف ساعة من موعد التمرين ({activeSession.time})</p>
+              <div className="bg-orange-50 text-orange-600 font-black text-3xl px-8 py-4 rounded-3xl border-2 border-orange-200 tabular-nums shadow-lg text-left" dir="ltr">
+                {countdown}
+              </div>
+            </div>
+          )}
           <div className="p-6 md:p-10 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-6">
              <div className="flex items-center gap-6 w-full md:w-auto">
                <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-900 border-4 border-white rounded-2xl flex items-center justify-center font-black text-2xl md:text-4xl text-white uppercase shadow-lg">
@@ -198,7 +238,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                  <p className="text-[10px] md:text-xs font-black text-orange-600 uppercase tracking-[0.2em] mt-1">{activeSession.category} • {activeSession.date}</p>
                </div>
              </div>
-             <div className="flex flex-wrap gap-3 items-center">
+             <div className="flex flex-wrap gap-3 items-center pointer-events-auto">
                 {isLocked && <span className="bg-red-50 text-red-600 px-6 py-2 rounded-full text-[10px] font-black flex items-center gap-2 uppercase border border-red-100"><Lock size={14}/> سجل مقفل إدارياً</span>}
                 {isManager && selectedSessionId && (
                   <button onClick={() => setAdminEditOverride(!adminEditOverride)} className={`px-6 py-2 rounded-full font-black text-[10px] border transition-all shadow-sm ${adminEditOverride ? 'bg-orange-500 text-white border-orange-400' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50'}`}>
