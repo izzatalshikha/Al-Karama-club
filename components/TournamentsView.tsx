@@ -23,9 +23,11 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
   const [isCreating, setIsCreating] = useState(false);
   const [newTourName, setNewTourName] = useState('');
   const [newTourCategory, setNewTourCategory] = useState('');
+  const [newTourType, setNewTourType] = useState('دوري');
 
   const currentUser = state.currentUser;
-  const safeTournaments = state.tournaments || [];
+  const isViewer = currentUser?.role === 'مشاهد';
+  const safeTournaments = (state.tournaments || []).filter(t => !t.season || t.season === state.activeSeason);
   const filteredTournaments = safeTournaments.filter(t => 
     state.globalCategoryFilter === 'الكل' || t.category === state.globalCategoryFilter
   );
@@ -53,7 +55,9 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
       id: newId,
       name: newTourName,
       category: finalCategory,
-      status: 'نشطة'
+      status: 'نشطة',
+      season: state.activeSeason,
+      type: newTourType as any
     };
 
     const newTeam: TournamentTeam = {
@@ -102,19 +106,29 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
           </h2>
           <p className="text-slate-500 text-sm mt-1">تتبع المنافسات، المجموعات، والنتائج</p>
         </div>
-        <button onClick={() => setIsCreating(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
-          <Plus size={20} /> إضافة بطولة
-        </button>
+        {!isViewer && (
+          <button onClick={() => setIsCreating(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
+            <Plus size={20} /> إضافة بطولة
+          </button>
+        )}
       </div>
 
-      {isCreating && (
+      {!isViewer && isCreating && (
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1 w-full">
             <label className="block text-xs font-bold text-slate-500 mb-2">اسم البطولة الجديدة</label>
             <input type="text" value={newTourName} onChange={e => setNewTourName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500" placeholder="مثال: دوري النخبة لفئة الشباب" />
           </div>
+          <div className="w-full md:w-48">
+            <label className="block text-xs font-bold text-slate-500 mb-2">نوع البطولة</label>
+            <select value={newTourType} onChange={e=>setNewTourType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+              <option value="دوري">دوري</option>
+              <option value="كأس">كأس</option>
+              <option value="بطولة ودية">بطولة ودية</option>
+            </select>
+          </div>
           {(!currentUser?.restrictedCategory || String(currentUser.restrictedCategory).split(',').filter(Boolean).length > 1) && (
-            <div className="w-full md:w-48">
+            <div className="w-full md:w-32">
               <label className="block text-xs font-bold text-slate-500 mb-2">فئة النادي المشاركة</label>
               <select value={newTourCategory || (state.globalCategoryFilter === 'الكل' ? state.categories[0] : state.globalCategoryFilter)} onChange={e => setNewTourCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
                 {(currentUser?.restrictedCategory ? String(currentUser.restrictedCategory).split(',').filter(Boolean) : state.categories).map(c => <option key={c} value={c}>{c}</option>)}
@@ -168,6 +182,7 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
   const teams = (state.tournamentTeams || []).filter(t => t.tournamentId === tour.id);
   const matches = (state.tournamentMatches || []).filter(m => m.tournamentId === tour.id);
 
+  const isViewer = state.currentUser?.role === 'مشاهد';
   const canDelete = state.currentUser?.role === 'مدير' || state.currentUser?.role === 'إداري';
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -256,6 +271,7 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
 
       {activeTab === 'teams' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+           {!isViewer && (
            <div className="md:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-fit space-y-4">
               <h3 className="font-bold text-slate-800">إضافة فريق جديد</h3>
               <input type="text" value={newTeamName} onChange={e=>setNewTeamName(e.target.value)} placeholder="اسم الفريق" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3" />
@@ -265,7 +281,8 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
               </label>
               <button onClick={handleAddTeam} className="w-full bg-blue-900 hover:bg-blue-800 text-white p-3 rounded-xl font-bold">إضافة للفريق</button>
            </div>
-           <div className="md:col-span-2 space-y-4">
+           )}
+           <div className={`${isViewer ? 'md:col-span-3' : 'md:col-span-2'} space-y-4`}>
               {teams.length === 0 ? (
                 <div className="p-10 text-center text-slate-500 bg-slate-50 rounded-3xl border border-slate-100">
                   لا يوجد فرق مضافة. أضف الفرق المشاركة بالبطولة أولاً.
@@ -286,6 +303,7 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
 
       {activeTab === 'stages' && (
         <div className="space-y-8">
+           {!isViewer && (
            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex gap-4 items-end">
               <div className="flex-1">
                  <label className="block text-xs font-bold text-slate-500 mb-2">اسم المرحلة / المجموعة</label>
@@ -300,6 +318,7 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
               </div>
               <button onClick={handleAddStage} className="bg-blue-900 hover:bg-blue-800 text-white px-6 py-3 rounded-xl font-bold">إضافة مرحلة</button>
            </div>
+           )}
 
            {stages.map(stage => (
               <StageView 
@@ -328,6 +347,8 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   const [matchTime, setMatchTime] = useState('16:00');
   const [pitch, setPitch] = useState('');
+
+  const isViewer = state.currentUser?.role === 'مشاهد';
 
   // Calculate Standings if group stage
   const standings = React.useMemo(() => {
@@ -385,7 +406,8 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
        const newOurMatch = {
          id: newOurMatchId,
          category: tour.category,
-         matchType: 'مباراة بطولة',
+         season: tour.season || state.activeSeason,
+         matchType: tour.type || 'بطولة ودية',
          opponent: opponentTeam?.name || '',
          date: matchDate || new Date().toISOString().split('T')[0],
          time: matchTime || '16:00',
@@ -471,10 +493,12 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     <div className="bg-white rounded-3xl p-6 border border-slate-200">
        <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold text-slate-800">{stage.name}</h3>
-          <button onClick={() => setIsAddingMatch(!isAddingMatch)} className="text-blue-600 font-bold text-sm bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100">+ إضافة مباراة</button>
+          {!isViewer && (
+            <button onClick={() => setIsAddingMatch(!isAddingMatch)} className="text-blue-600 font-bold text-sm bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100">+ إضافة مباراة</button>
+          )}
        </div>
 
-       {isAddingMatch && (
+       {!isViewer && isAddingMatch && (
          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 space-y-4">
            <div className="flex flex-col sm:flex-row gap-4 items-end">
              <div className="flex-1 w-full">

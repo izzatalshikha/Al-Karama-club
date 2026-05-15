@@ -135,6 +135,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     const newMatch: Match = {
       id: generateUUID(),
       category: finalCategory,
+      season: state.activeSeason,
       matchType: (formData.matchType as MatchType) || 'دوري',
       opponent: formData.opponent,
       pitch: formData.pitch || 'ملعب الكرامة',
@@ -209,6 +210,21 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     if (!activeMatch) return;
     const newEvent: MatchEvent = { id: generateUUID(), type, player: '', minute: '', note: '' };
     setActiveMatch({ ...activeMatch, events: [...activeMatch.events, newEvent] });
+  };
+
+  const currentMatchCardsWarning = (playerId: string) => {
+    if (!activeMatch) return null;
+    let yellowCount = 0;
+    let redCount = 0;
+    state.matches.filter(m => m.isCompleted && m.matchType === activeMatch.matchType && (!m.season || m.season === state.activeSeason)).forEach(m => {
+       yellowCount += m.events.filter(e => e.type === 'yellow' && (e.player === playerId || e.player === state.people.find(p=>p.id === playerId)?.name)).length;
+       redCount += m.events.filter(e => e.type === 'red' && (e.player === playerId || e.player === state.people.find(p=>p.id === playerId)?.name)).length;
+    });
+
+    if (redCount > 0) return ` (مطرود: ${redCount})`;
+    if (yellowCount >= 3) return ` (موقوف: ${yellowCount} ص)`;
+    if (yellowCount > 0) return ` (${yellowCount} ص)`;
+    return '';
   };
 
   const removeEvent = (id: string) => {
@@ -658,12 +674,27 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                       </div>
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-4">
                                          {currentLineupArray.map((s, i) => (
-                                           <div key={i} className="flex justify-between items-center bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm">
-                                              <div className="flex items-center gap-3">
-                                                 <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-lg md:rounded-xl flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{s.number || i+1}</div>
-                                                 <span className="font-bold text-sm text-slate-800">{s.name}</span>
+                                           <div key={i} className="flex justify-between items-center bg-slate-50 p-2 md:p-3 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm">
+                                              <div className="flex items-center gap-2">
+                                                 <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{s.number || i+1}</div>
+                                                 <span className="font-bold text-[10px] md:text-xs text-slate-800 break-words max-w-[100px]">{s.name}</span>
                                               </div>
-                                              <button onClick={() => updateHalfStarter(halfNum, i, '')} className="text-red-500 bg-red-50 p-2 rounded-lg hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                                              <div className="flex items-center gap-2">
+                                                 <div className="flex items-center gap-1">
+                                                    <label className="text-[10px] font-bold text-slate-500 hidden xl:block">تقييم:</label>
+                                                    <select className="bg-white border border-slate-200 rounded p-1 text-xs" value={s.rating || ''} onChange={e => {
+                                                        const newLineup = { ...activeMatch.lineup };
+                                                        const arr = [...(newLineup[targetArrayName] || [])];
+                                                        arr[i] = { ...arr[i], rating: e.target.value ? Number(e.target.value) : undefined };
+                                                        newLineup[targetArrayName] = arr as any;
+                                                        setActiveMatch({...activeMatch, lineup: newLineup});
+                                                    }}>
+                                                      <option value="">-</option>
+                                                      {[1,2,3,4,5,6,7,8,9,10].map(r => <option key={r} value={r}>{r}</option>)}
+                                                    </select>
+                                                 </div>
+                                                 <button onClick={() => updateHalfStarter(halfNum, i, '')} className="text-red-500 bg-red-50 p-2 rounded-lg hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                                              </div>
                                            </div>
                                          ))}
                                       </div>
@@ -671,7 +702,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                          <select className={inputStyle} value="" onChange={e => addPlayerToHalf(halfNum, e.target.value)}>
                                             <option value="">+ إضافة لاعب إلى تشكيلة {halfLabel}</option>
                                             {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && (!activeMatch.squad?.length || activeMatch.squad.includes(p.id)) && (!currentLineupArray.some(starter => starter.playerId === p.id))).map(p => (
-                                              <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
+                                              <option key={p.id} value={p.id}>{p.name} (#{p.number}){currentMatchCardsWarning(p.id)}</option>
                                             ))}
                                          </select>
                                       </div>
@@ -683,14 +714,27 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                 <h4 className="text-base md:text-lg font-black text-blue-900 mb-6 md:mb-8 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><Users size={20}/> التشكيلة الأساسية (11 لاعب)</h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                                    {activeMatch.lineup.starters.map((s, i) => (
-                                     <div key={i} className="flex gap-2 md:gap-3 bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm">
-                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-lg md:rounded-xl flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{i+1}</div>
-                                        <select className={inputStyle} value={s.playerId} onChange={e => updateStarter(i, e.target.value)}>
+                                     <div key={i} className="flex flex-wrap gap-2 md:gap-3 bg-slate-50 p-2 md:p-3 rounded-xl md:rounded-2xl border border-slate-100 shadow-sm items-center">
+                                        <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center font-black text-blue-900 border border-slate-200 text-sm">{i+1}</div>
+                                        <select className={`${inputStyle} flex-1 min-w-[150px] !py-2`} value={s.playerId} onChange={e => updateStarter(i, e.target.value)}>
                                            <option value="">-- اختر لاعب --</option>
                                            {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && (!activeMatch.squad?.length || activeMatch.squad.includes(p.id)) && (!activeMatch.lineup.starters.some(starter => starter.playerId === p.id && starter.playerId !== s.playerId))).map(p => (
-                                             <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
+                                             <option key={p.id} value={p.id}>{p.name} (#{p.number}){currentMatchCardsWarning(p.id)}</option>
                                            ))}
                                         </select>
+                                        {s.playerId && (
+                                           <div className="flex items-center gap-1">
+                                              <label className="text-[10px] font-bold text-slate-500">تقييم:</label>
+                                              <select className="bg-white border border-slate-200 rounded p-1 text-xs" value={s.rating || ''} onChange={e => {
+                                                  const newStarters = [...activeMatch.lineup.starters];
+                                                  newStarters[i].rating = e.target.value ? Number(e.target.value) : undefined;
+                                                  setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup, starters: newStarters}});
+                                              }}>
+                                                <option value="">-</option>
+                                                {[1,2,3,4,5,6,7,8,9,10].map(r => <option key={r} value={r}>{r}</option>)}
+                                              </select>
+                                           </div>
+                                        )}
                                      </div>
                                    ))}
                                 </div>
@@ -718,7 +762,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                      }}>
                                         <option value="">-- اختر لاعب --</option>
                                         {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && (!activeMatch.squad?.length || activeMatch.squad.includes(p.id)) && !activeMatch.lineup.starters.some(s => s.playerId === p.id)).map(p => (
-                                          <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>
+                                          <option key={p.id} value={p.id}>{p.name} (#{p.number}){currentMatchCardsWarning(p.id)}</option>
                                         ))}
                                      </select>
                                   </div>
@@ -742,6 +786,17 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                        newSubs[idx].substitutionMinute = e.target.value;
                                        setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup, subs: newSubs}});
                                      }} />
+                                  </div>
+                                  <div>
+                                     <label className={labelStyle}>التقييم</label>
+                                     <select className={inputStyle} value={sub.rating || ''} onChange={e => {
+                                       const newSubs = [...activeMatch.lineup.subs];
+                                       newSubs[idx].rating = e.target.value ? Number(e.target.value) : undefined;
+                                       setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup, subs: newSubs}});
+                                     }}>
+                                       <option value="">-</option>
+                                       {[1,2,3,4,5,6,7,8,9,10].map(r => <option key={r} value={r}>{r}</option>)}
+                                     </select>
                                   </div>
                                   <div className="flex flex-col justify-center text-center bg-white rounded-2xl shadow-sm border border-slate-200 p-2">
                                      <p className="text-[8px] font-black text-slate-500 uppercase">دقائق اللعب</p>

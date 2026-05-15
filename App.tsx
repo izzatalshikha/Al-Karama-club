@@ -57,9 +57,33 @@ const App: React.FC = () => {
 
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('eagle_os_v3');
-    if (saved) { try { return JSON.parse(saved); } catch (e) {} }
+    if (saved) { 
+        try { 
+           const parsed = JSON.parse(saved); 
+           parsed.seasons = ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'];
+           if (!parsed.activeSeason || !parsed.seasons.includes(parsed.activeSeason)) parsed.activeSeason = '2025/2026';
+           
+           const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
+           parsed.people = dedupe(parsed.people);
+           parsed.matches = dedupe(parsed.matches);
+           parsed.sessions = dedupe(parsed.sessions);
+           parsed.attendance = dedupe(parsed.attendance);
+           parsed.warehouse = dedupe(parsed.warehouse);
+           parsed.tournaments = dedupe(parsed.tournaments);
+           parsed.tournamentStages = dedupe(parsed.tournamentStages);
+           parsed.tournamentTeams = dedupe(parsed.tournamentTeams);
+           parsed.tournamentStageTeams = dedupe(parsed.tournamentStageTeams);
+           parsed.tournamentMatches = dedupe(parsed.tournamentMatches);
+           parsed.tacticalPlans = dedupe(parsed.tacticalPlans);
+           parsed.injuries = dedupe(parsed.injuries);
+           parsed.users = dedupe(parsed.users);
+
+           return parsed; 
+        } catch (e) {} 
+    }
     return {
       currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
+      activeSeason: '2025/2026', seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
       people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
       attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [],
       globalCategoryFilter: 'الكل'
@@ -189,26 +213,28 @@ const App: React.FC = () => {
       const staffCount = (p.data?.length || 0) - playersCount;
       const fetchedCats = catsReq.data?.map(c => c.name) || [];
 
+      const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
+
       setState(prev => ({
         ...prev,
         currentUser: user,
-        people: p.data || [],
-        matches: m.data || [],
-        sessions: s.data || [],
-        attendance: a.data || [],
-        warehouse: w.data || [],
-        users: u.data || [],
-        injuries: inj.data || [],
-        tacticalPlans: tac.data || [],
+        people: dedupe(p.data),
+        matches: dedupe(m.data),
+        sessions: dedupe(s.data),
+        attendance: dedupe(a.data),
+        warehouse: dedupe(w.data),
+        users: dedupe(u.data),
+        injuries: dedupe(inj.data),
+        tacticalPlans: dedupe(tac.data),
         categories: fetchedCats.length > 0 ? fetchedCats : prev.categories,
         // اختيار أول فئة فقط للفلتر الافتراضي في الواجهة
         globalCategoryFilter: (!isManager && !isWarehouse && cat) ? cat.split(',')[0] : 'الكل',
-        tournaments: toursReq.data || [],
-        tournamentStages: tStagesReq.data || [],
-        tournamentTeams: tTeamsReq.data || [],
-        tournamentStageTeams: tSTeamsReq.data || [],
-        tournamentMatches: tMatchesReq.data || [],
-        servicesDirectory: servicesReq.data || []
+        tournaments: dedupe(toursReq.data),
+        tournamentStages: dedupe(tStagesReq.data),
+        tournamentTeams: dedupe(tTeamsReq.data),
+        tournamentStageTeams: dedupe(tSTeamsReq.data),
+        tournamentMatches: dedupe(tMatchesReq.data),
+        servicesDirectory: dedupe(servicesReq.data)
       }));
       setSyncStatus('synced');
       if (!silent) {
@@ -320,6 +346,13 @@ const App: React.FC = () => {
       supabase.removeChannel(channel);
     };
   }, [state.currentUser, fetchAllData]);
+
+  // إضافة الجلب التلقائي عند بدء التشغيل إذا كان هناك مستخدم مسجل الدخول
+  useEffect(() => {
+    if (state.currentUser) {
+      fetchAllData(state.currentUser, true);
+    }
+  }, [state.currentUser?.id, fetchAllData]);
 
   useEffect(() => {
     if (state.currentUser) {
@@ -465,6 +498,15 @@ const App: React.FC = () => {
              </div>
           </div>
           <div className="flex items-center gap-2">
+             <select
+               className="bg-slate-100 text-blue-900 px-3 py-2.5 rounded-xl font-bold text-xs outline-none border border-slate-200 hidden md:block"
+               value={state.activeSeason || '2025/2026'}
+               onChange={(e) => setState({ ...state, activeSeason: e.target.value })}
+             >
+               {state.seasons?.map(s => (
+                 <option key={s} value={s}>موسم {s}</option>
+               ))}
+             </select>
              <button onClick={() => state.currentUser && fetchAllData(state.currentUser)} className="p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white">
                 <RefreshCw size={20} className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
              </button>

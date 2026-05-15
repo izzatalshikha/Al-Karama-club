@@ -14,6 +14,7 @@ import { AppState, Person, Match } from '../types';
 import { supabase } from '../App';
 import ClubLogo from './ClubLogo';
 import { QRCodeSVG } from 'qrcode.react';
+import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 interface PlayerReportProps {
   state: AppState;
@@ -43,9 +44,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     let reds = 0;
     let appearances = 0;
     const matchHistory: any[] = [];
-    const groupedStats: Record<string, { matches: number; mins: number; goals: number }> = {};
+    const groupedStats: Record<string, { matches: number; mins: number; goals: number; assists: number; yellows: number; reds: number }> = {};
 
-    state.matches.filter(m => m.isCompleted).forEach(m => {
+    state.matches.filter(m => m.isCompleted && (!m.season || m.season === state.activeSeason)).forEach(m => {
       const starter = m.lineup.starters.find(s => s.playerId === player.id);
       const sub = m.lineup.subs.find(s => s.playerId === player.id);
       
@@ -73,11 +74,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         }
         
         if (!groupedStats[typeName]) {
-           groupedStats[typeName] = { matches: 0, mins: 0, goals: 0 };
+           groupedStats[typeName] = { matches: 0, mins: 0, goals: 0, assists: 0, yellows: 0, reds: 0 };
         }
         groupedStats[typeName].matches += 1;
         groupedStats[typeName].mins += mins;
         groupedStats[typeName].goals += playerGoals;
+        groupedStats[typeName].assists += playerAssists;
+        groupedStats[typeName].yellows += playerYellows;
+        groupedStats[typeName].reds += playerReds;
 
         matchHistory.push({
           opponent: m.opponent,
@@ -96,7 +100,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   }, [state.matches, player]);
 
   const attendanceStats = useMemo(() => {
-    const catSessions = state.sessions.filter(s => s.category === player.category && s.isCompleted);
+    const catSessions = state.sessions.filter(s => s.category === player.category && s.isCompleted && (!s.season || s.season === state.activeSeason));
     const records = state.attendance.filter(a => a.personId === player.id);
     
     const present = records.filter(r => r.status === 'حاضر').length;
@@ -110,7 +114,31 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
 
     const commitmentIndex = rate >= 90 ? 'ممتاز' : rate >= 75 ? 'جيد جداً' : rate >= 50 ? 'متوسط' : 'ضعيف';
 
-    return { rate, present, late, absent, excused, total: catSessions.length, commitmentIndex };
+    // Calculate monthly trend
+    const monthlyGroups: Record<string, { total: number, score: number }> = {};
+    catSessions.forEach(session => {
+        const month = session.date.substring(0, 7); // YYYY-MM
+        if (!monthlyGroups[month]) monthlyGroups[month] = { total: 0, score: 0 };
+        
+        const record = records.find(r => r.sessionId === session.id);
+        const st = record?.status;
+        if (st !== 'غياب بعذر') {
+            monthlyGroups[month].total += 1;
+            if (st === 'حاضر') monthlyGroups[month].score += 1;
+            if (st === 'متأخر') monthlyGroups[month].score += 0.5;
+        }
+    });
+
+    const monthlyTrend = Object.keys(monthlyGroups).sort().map(month => {
+        const d = monthlyGroups[month];
+        const mRate = d.total > 0 ? Math.round((d.score / d.total) * 100) : 0;
+        return {
+            name: month,
+            rate: mRate
+        };
+    });
+
+    return { rate, present, late, absent, excused, total: catSessions.length, commitmentIndex, monthlyTrend };
   }, [state.sessions, state.attendance, player]);
 
   const handleSaveMonthlyReport = async () => {
@@ -225,6 +253,21 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                         <p className="text-base md:text-lg font-black text-blue-950">{attendanceStats.late}</p>
                      </div>
                   </div>
+                  {attendanceStats.monthlyTrend.length > 0 && (
+                     <div className="mt-4 pt-4 border-t border-slate-100">
+                        <h4 className="text-[10px] font-black text-slate-500 mb-3 text-center">منحنى الالتزام الشهري</h4>
+                        <div className="h-32 w-full" dir="ltr">
+                           <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={attendanceStats.monthlyTrend}>
+                                 <XAxis dataKey="name" tick={{fontSize: 8}} tickLine={false} axisLine={false} />
+                                 <YAxis hide domain={[0, 100]} />
+                                 <RechartsTooltip contentStyle={{fontSize: '10px', borderRadius: '8px'}} formatter={(value) => [`${value}%`]} labelStyle={{color: '#0f172a'}} />
+                                 <Line type="monotone" dataKey="rate" stroke="#10b981" strokeWidth={3} dot={{r: 3, fill: '#10b981'}} />
+                              </LineChart>
+                           </ResponsiveContainer>
+                        </div>
+                     </div>
+                  )}
                </div>
             </div>
 
@@ -303,6 +346,16 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                            <div className="flex justify-between items-center text-xs font-bold font-mono">
                               <span className="text-slate-500">الأهداف:</span>
                               <span className="text-orange-600">{s.goals}</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold font-mono">
+                              <span className="text-slate-500">الصناعة:</span>
+                              <span className="text-blue-600">{s.assists}</span>
+                           </div>
+                           <div className="flex justify-between items-center text-xs font-bold font-mono">
+                              <span className="text-slate-500 text-[10px]">بطاقات (ص | ح):</span>
+                              <span className="text-slate-700">
+                                <span className="text-yellow-600">{s.yellows}</span> | <span className="text-red-500">{s.reds}</span>
+                              </span>
                            </div>
                         </div>
                      ))}

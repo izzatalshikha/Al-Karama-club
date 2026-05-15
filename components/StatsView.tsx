@@ -22,9 +22,9 @@ const StatsView: React.FC<StatsViewProps> = ({ state, onOpenReport }) => {
     const year = date.getFullYear();
     const month = date.getMonth() + 1; // 1-12
     if (month >= 8) {
-      return `${year}-${year + 1}`;
+      return `${year}/${year + 1}`;
     } else {
-      return `${year - 1}-${year}`;
+      return `${year - 1}/${year}`;
     }
   };
 
@@ -32,8 +32,14 @@ const StatsView: React.FC<StatsViewProps> = ({ state, onOpenReport }) => {
   const availableSeasons = useMemo(() => {
     const seasons = new Set<string>();
     state.matches.forEach(m => {
-      seasons.add(getSeasonFromDate(m.date));
+      const s = getSeasonFromDate(m.date);
+      // تجنب المواسم السابقة ل 2025/2026 كما طلب المستخدم
+      if (s.localeCompare('2025/2026') >= 0) {
+        seasons.add(s);
+      }
     });
+    // إضافة المواسم المستقبلية افتراضياً في حال لم تكن موجودة بعد
+    ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].forEach(s => seasons.add(s));
     return Array.from(seasons).sort((a, b) => b.localeCompare(a));
   }, [state.matches]);
 

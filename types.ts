@@ -10,6 +10,8 @@ export interface Tournament {
   name: string;
   category: Category;
   status: 'نشطة' | 'منتهية';
+  season?: string;
+  type?: 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية';
 }
 
 export interface TournamentStage {
@@ -156,6 +158,7 @@ export interface AttendanceRecord {
 export interface TrainingSession {
   id: string;
   category: Category;
+  season?: string;
   date: string;
   time: string;
   duration?: string;
@@ -176,6 +179,7 @@ export interface MatchEvent {
 export interface Match {
   id: string;
   category: Category;
+  season?: string;
   matchType: MatchType;
   isFinal?: boolean;
   hasExtraTimeAndPenalties?: boolean;
@@ -200,9 +204,9 @@ export interface Match {
   isHome?: boolean;
   events: MatchEvent[];
   lineup: {
-    starters: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
-    half2Starters?: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
-    half3Starters?: { playerId: string; name: string; number: string; minutesPlayed?: string }[];
+    starters: { playerId: string; name: string; number: string; minutesPlayed?: string; rating?: number }[];
+    half2Starters?: { playerId: string; name: string; number: string; minutesPlayed?: string; rating?: number }[];
+    half3Starters?: { playerId: string; name: string; number: string; minutesPlayed?: string; rating?: number }[];
     durationHalf1?: string;
     durationHalf2?: string;
     durationHalf3?: string;
@@ -214,6 +218,7 @@ export interface Match {
       minutesPlayed?: string;
       substitutionMinute?: string;
       replacedPlayerId?: string;
+      rating?: number;
     }[];
     staff: { role: string; name: string }[];
     captain: string;
@@ -255,6 +260,8 @@ export interface DirectoryService {
 
 export interface AppState {
   appMode?: 'club' | 'academy';
+  activeSeason: string;
+  seasons: string[];
   people: Person[];
   attendance: AttendanceRecord[];
   sessions: TrainingSession[];
