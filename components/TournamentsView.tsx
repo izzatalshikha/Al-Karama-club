@@ -26,7 +26,7 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
   const [newTourType, setNewTourType] = useState('دوري');
 
   const currentUser = state.currentUser;
-  const isViewer = currentUser?.role === 'مشاهد';
+  const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
   const safeTournaments = (state.tournaments || []).filter(t => !t.season || t.season === state.activeSeason);
   const filteredTournaments = safeTournaments.filter(t => 
     state.globalCategoryFilter === 'الكل' || t.category === state.globalCategoryFilter
@@ -182,7 +182,7 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
   const teams = (state.tournamentTeams || []).filter(t => t.tournamentId === tour.id);
   const matches = (state.tournamentMatches || []).filter(m => m.tournamentId === tour.id);
 
-  const isViewer = state.currentUser?.role === 'مشاهد';
+  const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
   const canDelete = state.currentUser?.role === 'مدير' || state.currentUser?.role === 'إداري';
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -348,7 +348,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
   const [matchTime, setMatchTime] = useState('16:00');
   const [pitch, setPitch] = useState('');
 
-  const isViewer = state.currentUser?.role === 'مشاهد';
+  const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
 
   // Calculate Standings if group stage
   const standings = React.useMemo(() => {

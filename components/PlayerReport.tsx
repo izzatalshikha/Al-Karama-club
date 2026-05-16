@@ -294,35 +294,33 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
          <div className="lg:col-span-8 space-y-6 md:space-y-8">
             
             {/* مؤشرات الأداء السريعة */}
-            <div className={`grid gap-3 md:gap-4 ${player.role === 'لاعب' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1'}`}>
-               <div className="modern-card p-4 md:p-6 border-t-4 border-emerald-500 text-center group transition-all">
-                  <p className="text-[8px] md:text-[9px] font-black text-slate-500 mb-1 uppercase">الأداء</p>
-                  <p className="text-2xl md:text-4xl font-black text-emerald-500">%{attendanceStats.rate}</p>
-                  <div className="w-full bg-slate-100 h-1 md:h-1.5 rounded-full mt-3 overflow-hidden">
-                     <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${attendanceStats.rate}%` }}></div>
-                  </div>
-               </div>
-               
-               {player.role === 'لاعب' && (
-                 <>
-                   <div className="modern-card p-4 md:p-6 border-t-4 border-orange-500 text-center group transition-all">
-                      <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">أهداف</p>
-                      <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.goals}</p>
-                      <Zap size={14} className="text-orange-600 mx-auto mt-1" />
-                   </div>
-                   <div className="modern-card p-4 md:p-6 border-t-4 border-blue-500 text-center group transition-all">
-                      <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">صناعة</p>
-                      <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.assists}</p>
-                      <TrendingUp size={14} className="text-blue-600 mx-auto mt-1" />
-                   </div>
-                   <div className="modern-card p-4 md:p-6 border-t-4 border-purple-500 text-center group transition-all">
-                      <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">دقائق</p>
-                      <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.totalMins}</p>
-                      <Timer size={14} className="text-purple-600 mx-auto mt-1" />
-                   </div>
-                 </>
-               )}
-            </div>
+            {player.role === 'لاعب' && (
+              <div className={`grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4`}>
+                 <div className="modern-card p-4 md:p-6 border-t-4 border-emerald-500 text-center group transition-all">
+                    <p className="text-[8px] md:text-[9px] font-black text-slate-500 mb-1 uppercase">الأداء</p>
+                    <p className="text-2xl md:text-4xl font-black text-emerald-500">%{attendanceStats.rate}</p>
+                    <div className="w-full bg-slate-100 h-1 md:h-1.5 rounded-full mt-3 overflow-hidden">
+                       <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${attendanceStats.rate}%` }}></div>
+                    </div>
+                 </div>
+                 
+                 <div className="modern-card p-4 md:p-6 border-t-4 border-orange-500 text-center group transition-all">
+                    <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">أهداف</p>
+                    <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.goals}</p>
+                    <Zap size={14} className="text-orange-600 mx-auto mt-1" />
+                 </div>
+                 <div className="modern-card p-4 md:p-6 border-t-4 border-blue-500 text-center group transition-all">
+                    <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">صناعة</p>
+                    <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.assists}</p>
+                    <TrendingUp size={14} className="text-blue-600 mx-auto mt-1" />
+                 </div>
+                 <div className="modern-card p-4 md:p-6 border-t-4 border-purple-500 text-center group transition-all">
+                    <p className="text-[8px] md:text-[9px] font-black text-slate-600 mb-1 uppercase">دقائق</p>
+                    <p className="text-2xl md:text-4xl font-black text-blue-950">{stats.totalMins}</p>
+                    <Timer size={14} className="text-purple-600 mx-auto mt-1" />
+                 </div>
+              </div>
+            )}
 
             {/* إحصائيات المباريات المفصلة حسب البطولة/النوع */}
             {player.role === 'لاعب' && Object.keys(stats.groupedStats).length > 0 && (
@@ -364,21 +362,31 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             )}
 
             {/* المواصفات الفنية والبدنية */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">
-               <SectionTitle icon={Activity} title="التوصيف الوظيفي والبدني" color="text-emerald-500" />
-               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-                  <InfoBlock icon={Target} label="المركز" value={player.position} />
-                  <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
-                  <InfoBlock icon={Ruler} label="الطول" value={player.height} color="text-emerald-700" />
-                  <InfoBlock icon={Weight} label="الوزن" value={player.weight} color="text-emerald-700" />
-                  <InfoBlock icon={GraduationCap} label="الشهادة العلمية" value={player.academicDegree} />
-                  <InfoBlock icon={Medal} label="التحصيل" value={player.coachingCertificate} />
+            {player.role === 'لاعب' ? (
+               <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">
+                  <SectionTitle icon={Activity} title="المواصفات الفنية والبدنية" color="text-emerald-500" />
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                     <InfoBlock icon={Target} label="المركز" value={player.position} />
+                     <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
+                     <InfoBlock icon={Ruler} label="الطول" value={player.height} color="text-emerald-700" />
+                     <InfoBlock icon={Weight} label="الوزن" value={player.weight} color="text-emerald-700" />
+                     <InfoBlock icon={GraduationCap} label="الشهادة العلمية" value={player.academicDegree} />
+                  </div>
                </div>
-            </div>
+            ) : (
+               <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">
+                  <SectionTitle icon={Activity} title="2. التوصيف الوظيفي بالنادي" color="text-emerald-500" />
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                     <InfoBlock icon={Target} label="الدور الوظيفي" value={player.role} />
+                     <InfoBlock icon={CalendarCheck} label="الفئة" value={player.category || 'غير محدد'} />
+                     <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
+                  </div>
+               </div>
+            )}
 
-            {player.role !== 'لاعب' && !!player.certificates?.length && (
+            {player.role !== 'لاعب' && player.certificates && (
               <div className="modern-card p-6 md:p-8 border-r-8 border-orange-500 bg-orange-50">
-                 <SectionTitle icon={Medal} title="الشهادات التدريبية المعتمدة" color="text-orange-500" />
+                 <SectionTitle icon={Medal} title="3. الشهادات التدريبية المعتمدة" color="text-orange-500" />
                  <div className="space-y-3 mt-4">
                     {player.certificates.map(cert => (
                       <div key={cert.id} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -390,29 +398,33 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
               </div>
             )}
 
-            {player.role !== 'لاعب' && !!player.experiences?.length && (
+            {player.role !== 'لاعب' && (
               <div className="modern-card p-6 md:p-8 border-r-8 border-blue-500 bg-blue-50">
-                 <SectionTitle icon={Medal} title="الخبرات السابقة" color="text-blue-500" />
+                 <SectionTitle icon={Medal} title="4. الخبرات السابقة" color="text-blue-500" />
                  <div className="space-y-3 mt-4">
-                    {player.experiences.map(exp => (
+                    {player.experiences && player.experiences.length > 0 ? player.experiences.map(exp => (
                       <div key={exp.id} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                         <span className="font-bold text-slate-900">{exp.employer}</span>
                         <span className="text-sm text-blue-900 font-bold px-3 py-1 bg-blue-100 rounded-lg">{exp.position}</span>
                       </div>
-                    ))}
+                    )) : (
+                      <p className="text-sm text-slate-500 italic p-4 bg-white rounded-xl border border-slate-200">لا يوجد خبرات سابقة مضافة</p>
+                    )}
                  </div>
               </div>
             )}
 
-            {/* السجل المالي والتعاقدي */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-yellow-600 bg-yellow-600/5">
-               <SectionTitle icon={Wallet} title="السجل التعاقدي" color="text-yellow-500" />
-               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-                  <InfoBlock icon={Calendar} label="بداية العقد" value={player.contractStart} />
-                  <InfoBlock icon={Calendar} label="نهاية العقد" value={player.contractEnd} />
-                  <InfoBlock icon={DollarSign} label="قيمة العقد" value={player.contractValue} color="text-yellow-700" />
-               </div>
-            </div>
+            {/* السجل المالي والتعاقدي (مخفي حالياً بناء على طلب المستخدم) */}
+            {false && (
+              <div className="modern-card p-6 md:p-8 border-r-8 border-yellow-600 bg-yellow-600/5">
+                 <SectionTitle icon={Wallet} title="السجل التعاقدي" color="text-yellow-500" />
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                    <InfoBlock icon={Calendar} label="بداية العقد" value={player.contractStart} />
+                    <InfoBlock icon={Calendar} label="نهاية العقد" value={player.contractEnd} />
+                    <InfoBlock icon={DollarSign} label="قيمة العقد" value={player.contractValue} color="text-yellow-700" />
+                 </div>
+              </div>
+            )}
 
             {/* الحالة الطبية */}
             {player.role === 'لاعب' && (

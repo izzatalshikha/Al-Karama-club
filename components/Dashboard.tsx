@@ -58,7 +58,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const [searchTerm, setSearchTerm] = useState('');
   const globalFilter = state.globalCategoryFilter;
   const isManager = state.currentUser?.role === 'مدير';
-  const isViewer = state.currentUser?.role === 'مشاهد';
+  const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
   const restrictedCat = state.currentUser?.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : [];
   

@@ -43,7 +43,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const currentUser = state.currentUser!;
   const globalFilter = state.globalCategoryFilter;
   const restrictedCat = currentUser.restrictedCategory;
-  const isViewer = currentUser.role === 'مشاهد';
+  const isViewer = currentUser.role === 'مشاهد' || currentUser?.role === 'معالج';
   const isManager = currentUser.role === 'مدير';
 
   const sessions = state.sessions

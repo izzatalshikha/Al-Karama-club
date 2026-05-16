@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { 
   UserPlus, Trash2, Search, Edit2, ChevronRight, 
-  X, Save, Fingerprint, Activity, GraduationCap, Award, Loader2, Filter, Briefcase, Plus, Calendar
+  X, Save, Fingerprint, Activity, GraduationCap, Award, Loader2, Filter, Briefcase, Plus, Calendar,
+  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal
 } from 'lucide-react';
 import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { generateUUID, supabase } from '../App';
@@ -22,7 +23,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
 
   const currentUser = state.currentUser!;
   const isManager = currentUser.role === 'مدير';
-  const isViewer = currentUser.role === 'مشاهد';
+  const isViewer = currentUser.role === 'مشاهد' || currentUser?.role === 'معالج';
   const restrictedCat = currentUser.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
@@ -157,15 +158,34 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
 
       {/* قائمة البطاقات */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
-        {filteredMembers.map(person => (
+        {filteredMembers.map(person => {
+          const getRoleIcon = (role: string) => {
+            switch(role) {
+              case 'مدرب': return <UserCog size={16} className="text-orange-600" />;
+              case 'مساعد مدرب': return <Users size={16} className="text-orange-500" />;
+              case 'مدرب حراس': return <Shield size={16} className="text-blue-600" />;
+              case 'مدرب لياقة': return <Dumbbell size={16} className="text-emerald-600" />;
+              case 'إداري': return <Briefcase size={16} className="text-purple-600" />;
+              case 'طبيب': return <Stethoscope size={16} className="text-red-500" />;
+              case 'معالج': return <HeartPulse size={16} className="text-rose-400" />;
+              case 'منسق إعلامي': return <Camera size={16} className="text-indigo-500" />;
+              case 'مرافق': return <User size={16} className="text-slate-500" />;
+              default: return <User size={16} className="text-slate-500" />;
+            }
+          };
+
+          return (
           <div key={person.id} className="modern-card p-6 md:p-8 group hover:border-orange-500 transition-all flex flex-col border-b-4 border-b-orange-500/20">
              <div className="flex justify-between items-start mb-4 md:mb-6">
                 <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-2xl md:text-3xl text-blue-900 border-2 border-blue-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400 transition-all duration-300">
                    {person.name.charAt(0)}
                 </div>
-                <div className="flex flex-col items-end">
+                <div className="flex flex-col items-end gap-1">
                    <span className="text-[9px] md:text-[10px] font-black text-orange-700 uppercase tracking-widest">{person.category}</span>
-                   <span className="text-xs text-slate-600 font-bold">{person.role}</span>
+                   <span className="text-xs text-slate-600 font-bold flex items-center gap-1">
+                      {person.role}
+                      {getRoleIcon(person.role || '')}
+                   </span>
                 </div>
              </div>
              <h3 className="text-lg md:text-xl font-black text-blue-950 mb-2 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
@@ -186,7 +206,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                 </div>
              </div>
           </div>
-        ))}
+        );
+      })}
         {filteredMembers.length === 0 && (
           <div className="col-span-full py-16 md:py-20 text-center border-4 border-dashed border-slate-200 rounded-[2rem] md:rounded-[3rem]">
             <Search size={48} className="mx-auto mb-4 text-slate-200 md:w-16 md:h-16" />
@@ -228,7 +249,6 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                 <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="مدرب">مدرب</option><option value="مساعد مدرب">مساعد مدرب</option><option value="مدرب حراس">مدرب حراس</option><option value="مدرب لياقة">مدرب لياقة</option><option value="إداري">إداري</option><option value="طبيب">طبيب</option><option value="معالج">معالج</option><option value="منسق إعلامي">منسق إعلامي</option><option value="مرافق">مرافق</option></select></div>
                 <div className="space-y-1"><label className={labelClass}>الفئة</label><select className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
-                <div className="sm:col-span-3 space-y-1"><label className={labelClass}>الشهادة العلمية</label><input className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
               </div>
 
               {/* الشهادات التدريبية */}

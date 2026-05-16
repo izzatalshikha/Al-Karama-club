@@ -38,6 +38,7 @@ export const supabase = createClient(
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [previousTab, setPreviousTab] = useState('squad');
   const [appMode, setAppMode] = useState<'club'|'academy'>(() => (localStorage.getItem('eagle_os_v3_mode') as 'club'|'academy') || 'club');
   
   const mainRef = React.useRef<HTMLElement>(null);
@@ -431,7 +432,6 @@ const App: React.FC = () => {
     const role = state.currentUser?.role;
     if (role === 'مدير') return true;
     if (role === 'مسؤول تجهيزات') return ['warehouse', 'dashboard'].includes(item.id);
-    if (role === 'معالج') return ['squad', 'medical', 'dashboard'].includes(item.id);
     return item.id !== 'settings';
   });
 
@@ -518,19 +518,19 @@ const App: React.FC = () => {
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar print:p-0">
           <div className="max-w-6xl mx-auto space-y-8">
-            {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
-            {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
-            {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setActiveTab('report'); }} addLog={addNotify} />}
+            {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
+            {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
+            {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
             {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
-            {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setActiveTab('matches'); }} />}
+            {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} />}
             {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
             {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
             {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab('squad')} addLog={addNotify} />}
+            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />}
           </div>
         </main>
 

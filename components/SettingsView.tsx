@@ -27,7 +27,8 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
     restrictedCategory: ''
   });
 
-  const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع', 'مسؤول تجهيزات', 'معالج'];
+  const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع', 'مسؤول تجهيزات', 'معالج', 'مدرب', 'مساعد مدرب', 'مدرب حراس'];
+  const rolesWithCategory: string[] = ['إداري فئة', 'مشاهد', 'معالج', 'مدرب', 'مساعد مدرب', 'مدرب حراس'];
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +50,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
         username: userFormData.username!.trim(),
         role: userFormData.role as UserRole,
         password: userFormData.password!,
-        restrictedCategory: (userFormData.role === 'إداري فئة' || userFormData.role === 'مشاهد') ? userFormData.restrictedCategory : undefined
+        restrictedCategory: rolesWithCategory.includes(userFormData.role || '') ? userFormData.restrictedCategory : undefined
       };
       const success = await syncToCloud?.('app_users', newUser);
       if (success) {
@@ -228,7 +229,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                       {roles.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                  </div>
-                 {(userFormData.role === 'إداري فئة' || userFormData.role === 'مشاهد') && (
+                 {rolesWithCategory.includes(userFormData.role || '') && (
                     <div className="space-y-4 col-span-2">
                       <label className={labelClass}>الفئات المسموحة (اتركه فارغاً لتمكين الوصول الشامل)</label>
                       <div className="flex flex-wrap gap-4 custom-scrollbar max-h-40 overflow-y-auto w-full">
@@ -259,9 +260,14 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                  </p>
               </div>
 
-              <button type="submit" className="w-full bg-[#001F3F] text-white font-black py-6 rounded-[2.5rem] shadow-2xl text-2xl hover:bg-black transition-all border-b-8 border-black">
-                {editingUserId ? 'تثبيت التحديثات' : 'تفعيل الحساب الجديد'}
-              </button>
+              <div className="flex gap-4 w-full">
+                 <button type="submit" className="flex-1 bg-[#001F3F] text-white font-black py-4 md:py-6 rounded-[2.5rem] shadow-2xl text-xl md:text-2xl hover:bg-black transition-all border-b-8 border-black">
+                   {editingUserId ? 'تثبيت التحديثات' : 'تفعيل الحساب الجديد'}
+                 </button>
+                 <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 bg-slate-200 text-slate-800 font-black py-4 md:py-6 rounded-[2.5rem] shadow-2xl text-xl md:text-2xl hover:bg-slate-300 transition-all border-b-8 border-slate-300">
+                   رجوع
+                 </button>
+              </div>
             </form>
           </div>
         </div>

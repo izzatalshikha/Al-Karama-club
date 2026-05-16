@@ -21,7 +21,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
   const restrictedCat = currentUser.restrictedCategory;
   const isManager = currentUser.role === 'مدير';
   const isWarehouseKeeper = currentUser.role === 'أمين مستودع';
-  const isViewer = currentUser.role === 'مشاهد';
+  const isViewer = currentUser.role === 'مشاهد' || currentUser?.role === 'معالج';
 
   const [formData, setFormData] = useState<Partial<WarehouseItem>>({
     category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'المخزن العام',

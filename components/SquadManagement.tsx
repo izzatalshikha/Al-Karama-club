@@ -226,40 +226,44 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
               {/* القسم 1: الهوية */}
               <h4 className={sectionHeader}><Fingerprint size={16}/> 1. معلومات الهوية</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الاسم الثلاثي</label><input required className={inputClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>اسم الأب</label><input className={inputClass} value={formData.fatherName || ''} onChange={e => setFormData({...formData, fatherName: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>اسم الأم</label><input className={inputClass} value={formData.motherName || ''} onChange={e => setFormData({...formData, motherName: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>تاريخ الميلاد</label><input type="date" className={inputClass} value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>مكان الولادة</label><input className={inputClass} value={formData.birthPlace || ''} onChange={e => setFormData({...formData, birthPlace: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الخانة</label><input className={inputClass} value={formData.khana || ''} onChange={e => setFormData({...formData, khana: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الرقم الوطني</label><input className={inputClass} value={formData.nationalId || ''} onChange={e => setFormData({...formData, nationalId: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الرقم الاتحادي</label><input className={inputClass} value={formData.federalNumber || ''} onChange={e => setFormData({...formData, federalNumber: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الرقم الدولي</label><input className={inputClass} value={formData.internationalId || ''} onChange={e => setFormData({...formData, internationalId: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الاسم الثلاثي</label><input required disabled={isMedic} className={inputClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>اسم الأب</label><input disabled={isMedic} className={inputClass} value={formData.fatherName || ''} onChange={e => setFormData({...formData, fatherName: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>اسم الأم</label><input disabled={isMedic} className={inputClass} value={formData.motherName || ''} onChange={e => setFormData({...formData, motherName: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>تاريخ الميلاد</label><input type="date" disabled={isMedic} className={inputClass} value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>مكان الولادة</label><input disabled={isMedic} className={inputClass} value={formData.birthPlace || ''} onChange={e => setFormData({...formData, birthPlace: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الخانة</label><input disabled={isMedic} className={inputClass} value={formData.khana || ''} onChange={e => setFormData({...formData, khana: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الرقم الوطني</label><input disabled={isMedic} className={inputClass} value={formData.nationalId || ''} onChange={e => setFormData({...formData, nationalId: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الرقم الاتحادي</label><input disabled={isMedic} className={inputClass} value={formData.federalNumber || ''} onChange={e => setFormData({...formData, federalNumber: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الرقم الدولي</label><input disabled={isMedic} className={inputClass} value={formData.internationalId || ''} onChange={e => setFormData({...formData, internationalId: e.target.value})} /></div>
               </div>
 
               {/* القسم 2: الرياضة */}
               <h4 className={sectionHeader}><Activity size={16}/> 2. البيانات الرياضية</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option></select></div>
-                <div className="space-y-1"><label className={labelClass}>الفئة</label><select className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
-                <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الوزن (كغ)</label><input className={inputClass} value={formData.weight || ''} onChange={e => setFormData({...formData, weight: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الشهادة التدريبية</label><input className={inputClass} value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
-                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>التحصيل العلمي</label><input className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
-                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>رقم الهاتف</label><input className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-                <div className="sm:col-span-full space-y-1"><label className={labelClass}>عنوان السكن التفصيلي</label><input className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select disabled={isMedic} className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option></select></div>
+                <div className="space-y-1"><label className={labelClass}>الفئة</label><select disabled={isMedic} className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input disabled={isMedic} type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
+                <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input disabled={isMedic} className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input disabled={isMedic} type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input disabled={isMedic} className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الوزن (كغ)</label><input disabled={isMedic} className={inputClass} value={formData.weight || ''} onChange={e => setFormData({...formData, weight: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الشهادة التدريبية</label><input disabled={isMedic} className={inputClass} value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
+                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>التحصيل العلمي</label><input disabled={isMedic} className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
+                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>رقم الهاتف</label><input disabled={isMedic} className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                <div className="sm:col-span-full space-y-1"><label className={labelClass}>عنوان السكن التفصيلي</label><input disabled={isMedic} className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
               </div>
 
-              {/* القسم 3: العقود */}
-              <h4 className={sectionHeader}><Wallet size={16}/> 3. السجل المالي</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>بداية العقد</label><input type="date" className={inputClass} value={formData.contractStart || ''} onChange={e => setFormData({...formData, contractStart: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>نهاية العقد</label><input type="date" className={inputClass} value={formData.contractEnd || ''} onChange={e => setFormData({...formData, contractEnd: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>القيمة / الراتب</label><input className={inputClass} value={formData.contractValue || ''} onChange={e => setFormData({...formData, contractValue: e.target.value})} /></div>
-              </div>
+              {/* القسم 3: العقود (مخفي حاليا) */}
+              {false && (
+                <>
+                  <h4 className={sectionHeader}><Wallet size={16}/> 3. السجل المالي</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                    <div className="space-y-1"><label className={labelClass}>بداية العقد</label><input type="date" className={inputClass} value={formData.contractStart || ''} onChange={e => setFormData({...formData, contractStart: e.target.value})} /></div>
+                    <div className="space-y-1"><label className={labelClass}>نهاية العقد</label><input type="date" className={inputClass} value={formData.contractEnd || ''} onChange={e => setFormData({...formData, contractEnd: e.target.value})} /></div>
+                    <div className="space-y-1"><label className={labelClass}>القيمة / الراتب</label><input className={inputClass} value={formData.contractValue || ''} onChange={e => setFormData({...formData, contractValue: e.target.value})} /></div>
+                  </div>
+                </>
+              )}
 
               {/* القسم 4: الطبي والانضباط */}
               <h4 className={sectionHeader}><ShieldAlert size={16}/> 4. الحالة الطبية والسلوك</h4>

@@ -18,7 +18,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   
   const isManager = currentUser?.role === 'مدير';
   const isCatAdmin = currentUser?.role === 'إداري فئة';
-  const isViewer = currentUser?.role === 'مشاهد';
+  const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
   
   const canModifyConfig = (isManager || isCatAdmin) && !isViewer; 
 

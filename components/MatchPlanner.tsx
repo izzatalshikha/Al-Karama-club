@@ -34,7 +34,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   
   const currentUser = state.currentUser;
   const isManager = currentUser?.role === 'مدير';
-  const isViewer = currentUser?.role === 'مشاهد';
+  const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
   const restrictedCat = currentUser?.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
@@ -623,9 +623,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                           <div className="flex justify-between items-center mb-6 md:mb-8">
                              <h4 className="text-base md:text-lg font-black text-blue-900 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><ClipboardList size={20}/> قائمة المباراة (المستدعيين)</h4>
                              {(activeMatch.lineup?.halvesCount === '3') ? (
-                                <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">العدد: {activeMatch.squad?.length || 0}</span>
+                                <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">العدد: {state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && activeMatch.squad?.includes(p.id)).length || 0}</span>
                              ) : (
-                                <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">{activeMatch.squad?.length || 0} / {activeMatch.squadSize || 18}</span>
+                                <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">{state.people.filter(p => p.role === 'لاعب' && p.category === activeMatch.category && activeMatch.squad?.includes(p.id)).length || 0} / {activeMatch.squadSize || 18}</span>
                              )}
                           </div>
                           
@@ -680,6 +680,51 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                           </div>
                           {(!activeMatch.squad || activeMatch.squad.length === 0) && (
                             <p className="text-xs text-slate-500 text-center py-4 italic">يرجى تحديد اللاعبين المستدعين للمباراة</p>
+                          )}
+                       </div>
+
+                       {/* Match Staff Squad (Staff) */}
+                       <div className="modern-card p-6 md:p-8 border-slate-200 mt-6">
+                          <div className="flex justify-between items-center mb-6 md:mb-8">
+                             <h4 className="text-base md:text-lg font-black text-blue-900 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><Briefcase size={20}/> قائمة الكادر (المستدعيين)</h4>
+                             <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">العدد: {state.people.filter(p => p.role !== 'لاعب' && p.category === activeMatch.category && activeMatch.squad?.includes(p.id)).length || 0}</span>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                             {state.people.filter(p => p.role !== 'لاعب' && p.category === activeMatch.category).map(staff => {
+                                const isSelected = activeMatch.squad?.includes(staff.id) || false;
+                                
+                                return (
+                                  <div 
+                                    key={staff.id}
+                                    onClick={() => {
+                                      const currentSquad = activeMatch.squad || [];
+                                      if (isSelected) {
+                                        setActiveMatch({...activeMatch, squad: currentSquad.filter(id => id !== staff.id)});
+                                      } else {
+                                        setActiveMatch({...activeMatch, squad: [...currentSquad, staff.id]});
+                                      }
+                                    }}
+                                    className={`relative p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-3 ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-slate-100 bg-white hover:border-slate-300'}`}
+                                  >
+                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${isSelected ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                        {staff.name.charAt(0)}
+                                     </div>
+                                     <div className="flex-1 min-w-0">
+                                        <p className="font-black text-sm text-blue-900 truncate flex items-center gap-1.5">
+                                           {staff.name}
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 font-bold">{staff.role}</p>
+                                     </div>
+                                     <div className="shrink-0 text-slate-300">
+                                        <CheckCircle size={20} className={isSelected ? "text-orange-500" : ""} />
+                                     </div>
+                                  </div>
+                                )
+                             })}
+                          </div>
+                          {(!activeMatch.squad || state.people.filter(p => p.role !== 'لاعب' && activeMatch.squad!.includes(p.id)).length === 0) && (
+                            <p className="text-xs text-slate-500 text-center py-4 italic">يرجى تحديد الكوادر المستدعين للمباراة</p>
                           )}
                        </div>
 

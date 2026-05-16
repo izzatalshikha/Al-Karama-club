@@ -12,6 +12,12 @@ interface MedicalCenterProps {
 
 const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCloud }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const allowedCategories = state.currentUser?.restrictedCategory 
+    ? String(state.currentUser.restrictedCategory).split(',').map(s => s.trim())
+    : state.categories;
+
+  const [modalCategoryFilter, setModalCategoryFilter] = useState<string>('الكل');
+
   const [formData, setFormData] = useState<Partial<InjuryRecord>>({
     status: 'علاج مكثف',
     severity: 'خفيفة',
@@ -43,10 +49,42 @@ const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCl
     setIsModalOpen(false);
   };
 
-  const getActiveInjuries = () => state.injuries.filter(i => i.status !== 'تعافى');
+  const [localCategoryFilter, setLocalCategoryFilter] = useState<string>('الكل');
+
+  const filteredInjuries = state.injuries.filter(injury => {
+    const player = state.people.find(p => p.id === injury.personId);
+    if (!player) return false;
+    if (state.currentUser?.restrictedCategory && player.category !== state.currentUser.restrictedCategory) return false;
+    if (state.globalCategoryFilter !== 'الكل' && player.category !== state.globalCategoryFilter) return false;
+    if (localCategoryFilter !== 'الكل' && player.category !== localCategoryFilter) return false;
+    return true;
+  });
+
+  const getActiveInjuries = () => filteredInjuries.filter(i => i.status !== 'تعافى');
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20" dir="rtl">
+      {/* فلتر الفئات محلي */}
+      <div className="flex p-1 bg-slate-100 border border-slate-200 rounded-xl w-full sm:w-fit shadow-inner">
+         <div className="flex gap-1 overflow-x-auto custom-scrollbar">
+            <button 
+              onClick={() => setLocalCategoryFilter('الكل')}
+              className={`px-4 md:px-10 py-2.5 rounded-lg font-black text-[10px] md:text-xs transition-all whitespace-nowrap ${localCategoryFilter === 'الكل' ? 'bg-white text-blue-950 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+            >
+              جميع الفئات
+            </button>
+            {allowedCategories.map(cat => (
+              <button 
+                key={cat}
+                onClick={() => setLocalCategoryFilter(cat)}
+                className={`px-4 md:px-10 py-2.5 rounded-lg font-black text-[10px] md:text-xs transition-all whitespace-nowrap ${localCategoryFilter === cat ? 'bg-white text-blue-950 shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}
+              >
+                {cat}
+              </button>
+            ))}
+         </div>
+      </div>
+
       {/* Medical Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="bg-red-50 p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-red-100 flex items-center justify-between shadow-sm">
@@ -60,7 +98,7 @@ const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCl
            <div>
               <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">تحت التأهيل</p>
               <h2 className="text-4xl md:text-5xl font-black text-orange-700">
-                 {state.injuries.filter(i => i.status === 'تأهيل').length}
+                 {filteredInjuries.filter(i => i.status === 'تأهيل').length}
               </h2>
            </div>
            <Activity size={48} md:size={60} className="text-orange-300" />
@@ -82,7 +120,7 @@ const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCl
          
          {/* Mobile Cards */}
          <div className="block md:hidden divide-y divide-slate-100">
-            {state.injuries.map(injury => {
+            {filteredInjuries.map(injury => {
               const player = state.people.find(p => p.id === injury.personId);
               return (
                 <div key={injury.id} className="p-4 space-y-4">
@@ -149,7 +187,7 @@ const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCl
                   </tr>
                </thead>
                <tbody className="divide-y divide-slate-100 font-bold text-sm text-blue-900">
-                  {state.injuries.map(injury => {
+                  {filteredInjuries.map(injury => {
                     const player = state.people.find(p => p.id === injury.personId);
                     return (
                       <tr key={injury.id} className="hover:bg-slate-50 transition-all group">
@@ -199,7 +237,7 @@ const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCl
                </tbody>
             </table>
          </div>
-         {state.injuries.length === 0 && (
+         {filteredInjuries.length === 0 && (
             <div className="py-20 text-center bg-slate-50 border-t border-slate-100">
                <HeartPulse size={64} className="mx-auto text-slate-200 mb-4" />
                <p className="text-slate-400 font-black text-lg italic italic">لا يوجد سجلات طبية مسجلة</p>
@@ -216,12 +254,21 @@ const MedicalCenter: React.FC<MedicalCenterProps> = ({ state, setState, syncToCl
                  <button onClick={() => setIsModalOpen(false)} className="bg-slate-100 p-2 md:p-3 rounded-xl text-slate-500 hover:text-red-500 transition-all"><X size={24}/></button>
               </div>
               <form onSubmit={handleSaveInjury} className="flex-1 p-6 md:p-10 space-y-6 overflow-y-auto pb-32">
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mr-2">اللاعب المصاب</label>
-                    <select required className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 font-black text-blue-900 outline-none focus:border-orange-500 transition-all shadow-sm" value={formData.personId} onChange={e => setFormData({...formData, personId: e.target.value})}>
-                       <option value="">-- اختر اللاعب --</option>
-                       {players.map(p => <option key={p.id} value={p.id}>{p.name} (#{p.number})</option>)}
-                    </select>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mr-2">فئة اللاعب (لتسهيل البحث)</label>
+                       <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 font-black text-blue-900 outline-none focus:border-orange-500 transition-all shadow-sm" value={modalCategoryFilter} onChange={e => {setModalCategoryFilter(e.target.value); setFormData({...formData, personId: ''});}}>
+                          <option value="الكل">جميع الفئات</option>
+                          {allowedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                       </select>
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mr-2">اللاعب المصاب</label>
+                       <select required className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 font-black text-blue-900 outline-none focus:border-orange-500 transition-all shadow-sm" value={formData.personId} onChange={e => setFormData({...formData, personId: e.target.value})}>
+                          <option value="">-- اختر اللاعب --</option>
+                          {state.people.filter(p => p.role === 'لاعب' && (modalCategoryFilter === 'الكل' || p.category === modalCategoryFilter)).map(p => <option key={p.id} value={p.id}>{p.name} {p.number ? `(#${p.number})` : ''}</option>)}
+                       </select>
+                    </div>
                  </div>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="space-y-2">
