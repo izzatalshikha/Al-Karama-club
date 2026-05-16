@@ -214,16 +214,51 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
   const currentMatchCardsWarning = (playerId: string) => {
     if (!activeMatch) return null;
-    let yellowCount = 0;
-    let redCount = 0;
-    state.matches.filter(m => m.isCompleted && m.matchType === activeMatch.matchType && (!m.season || m.season === state.activeSeason)).forEach(m => {
-       yellowCount += m.events.filter(e => e.type === 'yellow' && (e.player === playerId || e.player === state.people.find(p=>p.id === playerId)?.name)).length;
-       redCount += m.events.filter(e => e.type === 'red' && (e.player === playerId || e.player === state.people.find(p=>p.id === playerId)?.name)).length;
+    
+    // الحصول على تاريخ المباراة الحالية لفلترة المباريات السابقة فقط
+    const matchDate = activeMatch.date || new Date().toISOString().split('T')[0];
+    
+    // جلب جميع مباريات الفريق المكتملة في نفس البطولة والموسم، السابقة زمنياً لهذه المباراة
+    const previousMatches = state.matches
+      .filter(m => m.isCompleted && 
+                   m.matchType === activeMatch.matchType && 
+                   m.category === activeMatch.category && 
+                   m.season === state.activeSeason && 
+                   ((m.date < matchDate) || (m.date === matchDate && m.id !== activeMatch.id)))
+      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let activeYellows = 0;
+    let suspensionRemaining = 0;
+
+    previousMatches.forEach(m => {
+       // بمجرد أن يلعب الفريق مباراة، يتم استنفاد عقوبة الإيقاف لمباراة واحدة (لأن اللاعب جالس خارجاً)
+       if (suspensionRemaining > 0) {
+          suspensionRemaining -= 1;
+       }
+
+       // جلب أحداث اللاعب في تلك المباراة
+       const playerEvents = m.events.filter(e => e.player === playerId || e.player === state.people.find(p=>p.id === playerId)?.name);
+       const yellowsInMatch = playerEvents.filter(e => e.type === 'yellow').length;
+       const redInMatch = playerEvents.filter(e => e.type === 'red').length;
+
+       if (redInMatch > 0) {
+          suspensionRemaining += 1; // البطاقة الحمراء = إيقاف مباراة تالية
+       } else if (yellowsInMatch >= 2) {
+          suspensionRemaining += 1; // بطاقتان صفراوان في نفس المباراة = طرد = إيقاف مباراة تالية
+       } else {
+          activeYellows += yellowsInMatch;
+          // إذا تراكمت 3 بطاقات صفراء في مباريات متفرقة = إيقاف مباراة تالية
+          if (activeYellows >= 3) {
+             suspensionRemaining += 1;
+             activeYellows -= 3; // تصفير العداد بعد عقوبة الإيقاف
+          }
+       }
     });
 
-    if (redCount > 0) return ` (مطرود: ${redCount})`;
-    if (yellowCount >= 3) return ` (موقوف: ${yellowCount} ص)`;
-    if (yellowCount > 0) return ` (${yellowCount} ص)`;
+    if (suspensionRemaining > 0) return ` (موقوف 🔴)`;
+    if (activeYellows === 1) return ` (إنذار 🟨)`;
+    if (activeYellows === 2) return ` (إنذارين 🟨🟨)`;
+    if (activeYellows > 2) return ` (${activeYellows} إنذارات 🟨)`;
     return '';
   };
 

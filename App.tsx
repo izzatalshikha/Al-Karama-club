@@ -499,7 +499,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
              <select
-               className="bg-slate-100 text-blue-900 px-3 py-2.5 rounded-xl font-bold text-xs outline-none border border-slate-200 hidden md:block"
+               className="bg-slate-100 text-blue-900 px-2 md:px-3 py-2 md:py-2.5 rounded-xl font-bold text-[10px] md:text-xs outline-none border border-slate-200"
                value={state.activeSeason || '2025/2026'}
                onChange={(e) => setState({ ...state, activeSeason: e.target.value })}
              >
