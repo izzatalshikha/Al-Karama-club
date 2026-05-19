@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, Calendar, Trophy, Clock, MapPin, Zap, 
-  Activity, Search, Package, WalletCards
+  Activity, Search, Package, WalletCards, Bot, Loader2
 } from 'lucide-react';
 import { AppState, Person, Match, TrainingSession } from '../types';
 
@@ -56,6 +56,9 @@ const ActivityCountdown: React.FC<{ date: string; time: string }> = ({ date, tim
 
 const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, onSessionClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [aiResponse, setAiResponse] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+
   const globalFilter = state.globalCategoryFilter;
   const isManager = state.currentUser?.role === 'مدير';
   const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
@@ -63,6 +66,51 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : [];
   
   const canSwitchCategory = isManager || !restrictedCat || allowedCategories.length > 1;
+
+  const searchResults = useMemo(() => {
+     if (!searchTerm.trim()) return { people: [], matches: [] };
+     const term = searchTerm.toLowerCase().trim();
+     return {
+        people: state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (p.name.includes(term) || (p.role && p.role.includes(term)) || (p.number && p.number.toString() === term))),
+        matches: state.matches.filter(m => (!restrictedCat || allowedCategories.includes(m.category)) && (m.opponent.includes(term) || m.matchType.includes(term))),
+     };
+  }, [searchTerm, state.people, state.matches, restrictedCat, allowedCategories]);
+
+  const handleAskAI = async () => {
+      if (!searchTerm.trim()) return;
+      setAiLoading(true);
+      setAiResponse('');
+      try {
+          const filteredPeople = state.people.filter(p => !restrictedCat || allowedCategories.includes(p.category));
+          const filteredPeopleIds = new Set(filteredPeople.map(p => p.id));
+          
+          const exportedData = {
+              people: filteredPeople,
+              matches: state.matches.filter(m => !restrictedCat || allowedCategories.includes(m.category)),
+              sessions: state.sessions.filter(s => !restrictedCat || allowedCategories.includes(s.category)),
+              attendance: state.attendance.filter(a => filteredPeopleIds.has(a.personId)),
+              injuries: state.injuries.filter(i => filteredPeopleIds.has(i.personId)),
+              warehouse: state.warehouse.filter(w => !restrictedCat || w.category === 'المخزن العام' || allowedCategories.includes(w.category)),
+              tournaments: state.tournaments.filter(t => !restrictedCat || allowedCategories.includes(t.category))
+          };
+          
+          // Use JSON for accurate querying of all relationships
+          const summary = JSON.stringify(exportedData);
+          
+          const res = await fetch('/api/omnisearch', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ query: searchTerm, summary })
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          setAiResponse(data.text);
+      } catch(e: any) {
+          setAiResponse('عذراً، حدث خطأ أثناء الاتصال بمُحلل النظام (تأكد من إعداد GEMINI_API_KEY): ' + e.message);
+      } finally {
+          setAiLoading(false);
+      }
+  };
 
   const threshold = new Date(new Date().getTime() - 60 * 60 * 1000); // 1 hour ago
   
@@ -96,7 +144,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
       <div className="flex flex-col lg:flex-row gap-4 items-center">
          <div className="flex-1 w-full relative group">
             <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-orange-500 transition-colors" size={20} />
-            <input type="text" placeholder="البحث في EAGLE OS..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            <input type="text" placeholder="البحث في EAGLE OS (Omni-Search)..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); if(!e.target.value) setAiResponse(''); }} onKeyDown={e => e.key === 'Enter' && handleAskAI()}
               className="w-full bg-white border border-slate-200 rounded-2xl py-4 pr-14 pl-6 text-slate-900 placeholder:text-slate-500 focus:ring-2 focus:ring-orange-500/10 transition-all shadow-sm text-sm" />
          </div>
          {canSwitchCategory && (
@@ -108,6 +156,82 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
          )}
       </div>
 
+      {searchTerm.trim() ? (
+        <div className="bg-white rounded-[2rem] border-2 border-slate-900 shadow-sm p-6 md:p-8 space-y-8 min-h-[400px]">
+           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b-2 border-slate-100 pb-6">
+              <div>
+                 <h2 className="text-xl font-black text-slate-900 flex items-center gap-2"><Search size={20} className="text-orange-600"/> نتائج Omni-Search "{searchTerm}"</h2>
+                 <p className="text-xs font-bold text-slate-500 mt-1">يتم البحث في جميع السجلات وقواعد البيانات السحابية...</p>
+              </div>
+              <button onClick={handleAskAI} disabled={aiLoading} className="bg-[#001F3F] text-white px-5 py-3 rounded-xl text-sm font-black hover:bg-black transition-all flex items-center justify-center gap-2 w-full md:w-auto shadow-md hover:shadow-lg disabled:opacity-50">
+                 {aiLoading ? <Loader2 size={18} className="animate-spin text-orange-400"/> : <Bot size={18} className="text-orange-400"/>}
+                 سؤال محلل Eagle OS الذكي
+              </button>
+           </div>
+
+           {(aiResponse || aiLoading) && (
+              <div className="bg-slate-50 border-2 border-[#001F3F] rounded-2xl p-6 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 w-2 h-full bg-orange-500"></div>
+                 <div className="flex items-center gap-3 mb-4">
+                    <div className="bg-[#001F3F] p-2 rounded-lg"><Bot size={20} className="text-orange-400"/></div>
+                    <span className="font-black text-[#001F3F] tracking-tight text-lg">Eagle OS AI Analysis</span>
+                 </div>
+                 {aiLoading ? (
+                    <div className="flex items-center gap-3 text-slate-500 font-bold text-sm animate-pulse">
+                       <Loader2 size={16} className="animate-spin"/> جاري تمرير الاستعلام ومعالجة قواعد البيانات...
+                    </div>
+                 ) : (
+                    <div className="text-slate-800 text-sm leading-relaxed font-medium whitespace-pre-wrap">
+                       {aiResponse}
+                    </div>
+                 )}
+              </div>
+           )}
+
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                 <h3 className="font-black text-slate-700 text-sm flex items-center gap-2 border-b border-slate-100 pb-2"><Users size={16}/> الكوادر واللاعبين المطابقين ({searchResults.people.length})</h3>
+                 {searchResults.people.length === 0 ? <p className="text-xs text-slate-400 italic">لا توجد سجلات مطابقة</p> : (
+                    <div className="space-y-2">
+                       {searchResults.people.slice(0, 10).map(p => (
+                          <div key={p.id} className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center hover:border-orange-300 transition-colors cursor-pointer group" onClick={() => {} /* Ideally open profile */}>
+                             <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xs">{p.name.charAt(0)}</div>
+                                <div>
+                                   <p className="font-bold text-slate-900 text-sm group-hover:text-orange-600 transition-colors">{p.name} {p.number && <span className="text-orange-500 text-xs">#{p.number}</span>}</p>
+                                   <p className="text-[10px] text-slate-500 font-bold">{p.category} • {p.role}</p>
+                                </div>
+                             </div>
+                          </div>
+                       ))}
+                       {searchResults.people.length > 10 && <p className="text-xs text-blue-600 font-bold text-center mt-2">.. والمزيد من النتائج</p>}
+                    </div>
+                 )}
+              </div>
+
+              <div className="space-y-4">
+                 <h3 className="font-black text-slate-700 text-sm flex items-center gap-2 border-b border-slate-100 pb-2"><Trophy size={16}/> المباريات المطابقة ({searchResults.matches.length})</h3>
+                 {searchResults.matches.length === 0 ? <p className="text-xs text-slate-400 italic">لا توجد سجلات مطابقة</p> : (
+                    <div className="space-y-2">
+                       {searchResults.matches.slice(0, 10).map(m => (
+                          <div key={m.id} className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center hover:border-orange-300 transition-colors cursor-pointer group" onClick={() => onMatchClick(m.id)}>
+                             <div>
+                                <p className="font-bold text-slate-900 text-sm group-hover:text-orange-600 transition-colors">ضد {m.opponent}</p>
+                                <p className="text-[10px] text-slate-500 font-bold">{m.category} • {m.date} • {m.matchType}</p>
+                             </div>
+                             <span className={`px-2 py-1 rounded text-[10px] font-black ${m.isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                                {m.isCompleted ? 'ملعوبة' : 'قادمة'}
+                             </span>
+                          </div>
+                       ))}
+                       {searchResults.matches.length > 10 && <p className="text-xs text-blue-600 font-bold text-center mt-2">.. والمزيد من النتائج</p>}
+                    </div>
+                 )}
+              </div>
+           </div>
+        </div>
+      ) : (
+      <>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
         {stats.map((s, i) => (
           <div key={i} className="modern-card p-6 md:p-8 group hover:scale-[1.02] transition-all duration-300">
@@ -185,6 +309,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
              </div>
           </div>
        </div>
+       </>
+       )}
     </div>
   );
 };

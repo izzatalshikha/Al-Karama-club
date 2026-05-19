@@ -447,7 +447,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
       matchTime,
       pitch,
       status: 'قادمة',
-      linkedMatchId: linkedMatchId || undefined
+      linkedMatchId: linkedMatchId || null
     };
 
     const success = await syncToCloud('tournament_matches', nm);
@@ -542,45 +542,67 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
             <h4 className="font-bold text-slate-500 mb-4 text-sm">المباريات</h4>
             {matches.length === 0 ? <p className="text-xs text-slate-400">لا يوجد مباريات مضافة بعد</p> : (
               <div className="space-y-3">
-                 {matches.map((m:any) => {
-                    const team1 = teams.find((x:any)=>x.id===m.team1Id);
-                    const team2 = teams.find((x:any)=>x.id===m.team2Id);
-                    return (
-                      <div key={m.id} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                         <div className="flex items-center justify-between text-sm font-bold">
-                            <span className={`flex-1 text-left ${team1?.isOurTeam ? 'text-orange-600' : 'text-slate-800'}`}>{team1?.name}</span>
-                            
-                            <div className="flex-1 px-4 flex justify-center">
-                              {m.status === 'ملعوبة' ? (
-                                 <div className="bg-blue-900 text-white px-4 py-1 rounded-full text-base font-black tracking-widest">{m.team1Score} - {m.team2Score}</div>
-                              ) : (
-                                 <div className="flex gap-2">
-                                    <input type="number" id={`s1-${m.id}`} className="w-10 text-center border rounded font-bold p-1" defaultValue={0} />
-                                    <span>-</span>
-                                    <input type="number" id={`s2-${m.id}`} className="w-10 text-center border rounded font-bold p-1" defaultValue={0} />
-                                    <button onClick={() => {
-                                       const v1 = parseInt((document.getElementById(`s1-${m.id}`) as HTMLInputElement).value) || 0;
-                                       const v2 = parseInt((document.getElementById(`s2-${m.id}`) as HTMLInputElement).value) || 0;
-                                       setScore(m.id, v1, v2);
-                                    }} className="bg-emerald-500 text-white rounded p-1"><Check size={14}/></button>
-                                 </div>
-                              )}
-                            </div>
-                            
-                            <span className={`flex-1 text-right ${team2?.isOurTeam ? 'text-orange-600' : 'text-slate-800'}`}>{team2?.name}</span>
-                         </div>
-                         <div className="flex justify-between items-center mt-3 text-[10px] text-slate-500 font-bold bg-white p-2 rounded-lg border border-slate-100">
-                            <span>{m.matchDate || 'تاريخ غير محدد'} • {m.matchTime || 'وقت غير محدد'}</span>
-                            <span>{m.pitch || 'ملعب غير محدد'}</span>
-                         </div>
-                         {m.linkedMatchId && (
-                            <button onClick={() => onMatchClick && onMatchClick(m.linkedMatchId)} className="w-full text-[10px] text-blue-500 hover:text-orange-600 hover:bg-slate-100 p-1 rounded transition-colors mt-2 text-center flex justify-center items-center gap-1 cursor-pointer">
-                               <MapPin size={10} /> الانتقال إلى تفاصيل السجل الرياضي (مباراة رقم {m.linkedMatchId.slice(0,4)})
-                            </button>
-                         )}
-                      </div>
-                    )
-                 })}
+                  {matches.map((m:any) => {
+                     const team1 = teams.find((x:any)=>x.id===m.team1Id);
+                     const team2 = teams.find((x:any)=>x.id===m.team2Id);
+                     
+                     let isPlayed = m.status === 'ملعوبة';
+                     let t1Score = m.team1Score;
+                     let t2Score = m.team2Score;
+                     
+                     if (m.linkedMatchId) {
+                        const lMatch = state.matches.find((x:any) => x.id === m.linkedMatchId);
+                        if (lMatch && lMatch.isCompleted) {
+                           isPlayed = true;
+                           t1Score = team1?.isOurTeam ? lMatch.ourScore : lMatch.opponentScore;
+                           t2Score = team2?.isOurTeam ? lMatch.ourScore : lMatch.opponentScore;
+                        } else {
+                           isPlayed = false;
+                        }
+                     }
+
+                     return (
+                       <div key={m.id} className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex flex-col gap-3 group">
+                          <div className="flex items-center justify-between text-sm font-bold">
+                             <span className={`flex-1 text-right ${team1?.isOurTeam ? 'text-orange-600' : 'text-slate-800'}`}>{team1?.name}</span>
+                             
+                             <div className="flex-1 px-4 flex justify-center items-center">
+                               {isPlayed ? (
+                                  <div className="bg-blue-900 text-white px-4 py-1 rounded-full text-base font-black tracking-widest">{t1Score} - {t2Score}</div>
+                               ) : m.linkedMatchId ? (
+                                  <button onClick={() => onMatchClick && onMatchClick(m.linkedMatchId)} className="bg-orange-100 hover:bg-orange-500 hover:text-white text-orange-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-sm">
+                                     تعيين التشكيلة والنتيجة
+                                  </button>
+                               ) : (
+                                  <div className="flex gap-2">
+                                     <input type="number" id={`s1-${m.id}`} className="w-10 text-center border rounded font-bold p-1 bg-white" defaultValue={0} />
+                                     <span className="text-slate-400 font-bold">-</span>
+                                     <input type="number" id={`s2-${m.id}`} className="w-10 text-center border rounded font-bold p-1 bg-white" defaultValue={0} />
+                                     <button onClick={() => {
+                                        const v1 = parseInt((document.getElementById(`s1-${m.id}`) as HTMLInputElement).value) || 0;
+                                        const v2 = parseInt((document.getElementById(`s2-${m.id}`) as HTMLInputElement).value) || 0;
+                                        setScore(m.id, v1, v2);
+                                     }} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded p-1.5 transition-all"><Check size={14}/></button>
+                                  </div>
+                               )}
+                             </div>
+                             
+                             <span className={`flex-1 text-left ${team2?.isOurTeam ? 'text-orange-600' : 'text-slate-800'}`}>{team2?.name}</span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold bg-white p-2 rounded-lg border border-slate-100">
+                             <span className="flex items-center gap-1.5"><Calendar size={12}/> {m.matchDate || 'تاريخ غير محدد'} • {m.matchTime || 'وقت غير محدد'}</span>
+                             <span className="flex items-center gap-1.5"><MapPin size={12}/> {m.pitch || 'ملعب غير محدد'}</span>
+                          </div>
+                          
+                          {m.linkedMatchId && isPlayed && (
+                             <button onClick={() => onMatchClick && onMatchClick(m.linkedMatchId)} className="w-full text-[10px] text-blue-500 hover:text-orange-600 hover:bg-slate-100 p-1.5 rounded-lg transition-colors text-center flex justify-center items-center gap-1.5 cursor-pointer border border-transparent hover:border-slate-200">
+                                <Trophy size={10} /> فتح سجل المباراة الكامل لمعاينة التقرير والتشكيلة
+                             </button>
+                          )}
+                       </div>
+                     )
+                  })}
               </div>
             )}
           </div>

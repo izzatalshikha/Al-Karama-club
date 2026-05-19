@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   UserPlus, Trash2, Search, Edit2, ChevronRight, 
   X, Save, Fingerprint, Activity, GraduationCap, Award, Loader2, Filter, Briefcase, Plus, Calendar,
-  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal
+  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal, Key
 } from 'lucide-react';
 import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { generateUUID, supabase } from '../App';
@@ -38,11 +38,13 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
   };
 
   const [formData, setFormData] = useState<Partial<Person>>(initialFormState);
+  const [autoCreateAccount, setAutoCreateAccount] = useState(false);
 
   const filteredMembers = useMemo(() => {
     return state.people.filter(p => {
-      if (hasRestriction && !allowedCategories.includes(p.category)) return false;
-      const matchCat = localCategoryFilter === 'الكل' || p.category === localCategoryFilter;
+      const personCategories = p.category ? p.category.split(',') : [];
+      if (hasRestriction && !personCategories.some(c => allowedCategories.includes(c))) return false;
+      const matchCat = localCategoryFilter === 'الكل' || personCategories.includes(localCategoryFilter);
       const matchSearch = p.name.includes(searchTerm) || (p.phone?.includes(searchTerm));
       const matchRole = p.role !== 'لاعب';
       return matchCat && matchSearch && matchRole;
@@ -62,19 +64,43 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     } as any;
 
     try {
+      let updatedUserObj = null;
+      let newAccountStr = '';
+      if (!editingId && autoCreateAccount) {
+         const pass = Math.random().toString(36).slice(-6);
+         const uRole = updatedPerson.role === 'طبيب' || updatedPerson.role === 'معالج' ? 'طبيب' : 'إداري فئات';
+         const newAcc = {
+           id: generateUUID(),
+           username: updatedPerson.name,
+           password: pass,
+           role: uRole,
+           restrictedCategory: (updatedPerson.category || '').split(',')[0] || ''
+         };
+         const { error: userErr } = await supabase.from('app_users').insert(newAcc);
+         if (userErr) throw userErr;
+         updatedUserObj = newAcc;
+         newAccountStr = `\nتنبيه: تم إنشاء حساب بصلاحية (${uRole}) للمستخدم الجديد: اسم الحساب: ${updatedPerson.name} | كلمة المرور: ${pass}`;
+      }
+
       const { error } = await supabase.from('people').upsert(updatedPerson);
       if (error) throw error;
 
       setState(prev => ({
         ...prev,
+        users: updatedUserObj ? [...prev.users, updatedUserObj] as any : prev.users,
         people: editingId 
           ? prev.people.map(p => p.id === editingId ? updatedPerson : p)
           : [updatedPerson, ...prev.people]
       }));
 
       addLog?.(editingId ? 'تم تحديث البيانات بنجاح' : 'تمت الإضافة بنجاح', 'success');
+      if (newAccountStr) {
+         alert(newAccountStr);
+         addLog?.("تم إنشاء حساب", newAccountStr, "info");
+      }
       setIsModalOpen(false);
       setEditingId(null);
+      setAutoCreateAccount(false);
       setFormData(initialFormState);
     } catch (err: any) {
       alert("خطأ في السحابة: " + err.message);
@@ -92,6 +118,42 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
       addLog?.('تم حذف السجل', 'error');
     } catch (err: any) {
       alert('خطأ في الحذف: ' + err.message);
+    }
+  };
+
+  const handleCreateAccount = async (person: Person) => {
+    const existing = state.users.find(u => u.username === person.name);
+    if (existing) {
+       alert(`يوجد حساب مسبقاً بهذا الاسم: ${existing.username}`);
+       return;
+    }
+    
+    if (!confirm(`هل تريد توليد حساب تلقائي للموظف ${person.name}؟`)) return;
+
+    try {
+      const pass = Math.random().toString(36).slice(-6);
+      const uRole = person.role === 'طبيب' || person.role === 'معالج' ? 'طبيب' : 'إداري فئات';
+      const newAcc = {
+        id: generateUUID(),
+        username: person.name,
+        password: pass,
+        role: uRole,
+        restrictedCategory: (person.category || '').split(',')[0] || ''
+      };
+
+      const { error } = await supabase.from('app_users').insert(newAcc);
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        users: [...prev.users, newAcc] as any
+      }));
+      
+      const msg = `تم إنشاء الحساب بنجاح!\nاسم الحساب: ${person.name}\nكلمة المرور: ${pass}`;
+      alert(msg);
+      addLog?.('تم إنشاء حساب بنجاح', 'success');
+    } catch(e: any) {
+      alert("خطأ في إنشاء الحساب: " + e.message);
     }
   };
 
@@ -157,50 +219,54 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
       </div>
 
       {/* قائمة البطاقات */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-4">
         {filteredMembers.map(person => {
+          const hasAccount = state.users.some(u => u.username === person.name);
           const getRoleIcon = (role: string) => {
             switch(role) {
-              case 'مدرب': return <UserCog size={16} className="text-orange-600" />;
-              case 'مساعد مدرب': return <Users size={16} className="text-orange-500" />;
-              case 'مدرب حراس': return <Shield size={16} className="text-blue-600" />;
-              case 'مدرب لياقة': return <Dumbbell size={16} className="text-emerald-600" />;
-              case 'إداري': return <Briefcase size={16} className="text-purple-600" />;
-              case 'طبيب': return <Stethoscope size={16} className="text-red-500" />;
-              case 'معالج': return <HeartPulse size={16} className="text-rose-400" />;
-              case 'منسق إعلامي': return <Camera size={16} className="text-indigo-500" />;
-              case 'مرافق': return <User size={16} className="text-slate-500" />;
-              default: return <User size={16} className="text-slate-500" />;
+              case 'مدرب': return <UserCog size={12} className="text-orange-600" />;
+              case 'مساعد مدرب': return <Users size={12} className="text-orange-500" />;
+              case 'مدرب حراس': return <Shield size={12} className="text-blue-600" />;
+              case 'مدرب لياقة': return <Dumbbell size={12} className="text-emerald-600" />;
+              case 'إداري': return <Briefcase size={12} className="text-purple-600" />;
+              case 'طبيب': return <Stethoscope size={12} className="text-red-500" />;
+              case 'معالج': return <HeartPulse size={12} className="text-rose-400" />;
+              case 'منسق إعلامي': return <Camera size={12} className="text-indigo-500" />;
+              case 'مرافق': return <User size={12} className="text-slate-500" />;
+              default: return <User size={12} className="text-slate-500" />;
             }
           };
 
           return (
-          <div key={person.id} className="modern-card p-6 md:p-8 group hover:border-orange-500 transition-all flex flex-col border-b-4 border-b-orange-500/20">
-             <div className="flex justify-between items-start mb-4 md:mb-6">
-                <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-2xl md:text-3xl text-blue-900 border-2 border-blue-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400 transition-all duration-300">
+          <div key={person.id} className="modern-card p-4 md:p-5 group hover:border-orange-500 transition-all flex flex-col border-b-4 border-b-orange-500/20">
+             <div className="flex justify-between items-start mb-3">
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-50 rounded-xl flex items-center justify-center font-black text-xl text-blue-900 border border-blue-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400 transition-all">
                    {person.name.charAt(0)}
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                   <span className="text-[9px] md:text-[10px] font-black text-orange-700 uppercase tracking-widest">{person.category}</span>
-                   <span className="text-xs text-slate-600 font-bold flex items-center gap-1">
+                   <span className="text-[8px] md:text-[9px] font-black text-orange-700 uppercase tracking-widest leading-tight text-right w-full sm:max-w-24 break-words truncate" title={person.category}>{person.category.split(',').join(' • ')}</span>
+                   <span className="text-[10px] text-slate-600 font-bold flex items-center gap-1">
                       {person.role}
                       {getRoleIcon(person.role || '')}
                    </span>
                 </div>
              </div>
-             <h3 className="text-lg md:text-xl font-black text-blue-950 mb-2 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
-             <p className="text-[9px] md:text-[10px] text-slate-600 font-bold mb-2 italic">{person.academicDegree || 'بدون تحصيل'}</p>
-             <div className="flex flex-wrap gap-1.5 md:gap-2 mb-4 md:mb-6">
-                {person.certificates && person.certificates.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">{person.certificates.length} شهادات تدريبية</span>}
-                {person.experiences && person.experiences.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">{person.experiences.length} خبرات سابقة</span>}
+             <h3 className="text-sm md:text-base font-black text-blue-950 mb-1 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
+             <p className="text-[8px] md:text-[9px] text-slate-600 font-bold mb-2 italic truncate">{person.academicDegree || 'بدون تحصيل'}</p>
+             <div className="flex flex-wrap gap-1 mb-3">
+                {person.certificates && person.certificates.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.certificates.length} شهادات</span>}
+                {person.experiences && person.experiences.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.experiences.length} خبرات</span>}
              </div>
-             <div className="mt-auto pt-4 md:pt-6 border-t border-slate-100 flex justify-between items-center gap-2">
-                <button onClick={() => onOpenReport?.(person)} className="text-[10px] md:text-xs font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={14}/></button>
-                <div className="flex gap-1 md:gap-2">
+             <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center gap-2">
+                <button onClick={() => onOpenReport?.(person)} className="text-[10px] font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={12}/></button>
+                <div className="flex gap-1.5">
                    {!isViewer && (
                      <>
-                       <button onClick={() => openEdit(person)} className="p-2 md:p-2.5 bg-blue-50 text-blue-600 rounded-lg md:rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={14} className="md:w-4 md:h-4"/></button>
-                       <button onClick={() => handleDelete(person.id, person.name)} className="p-2 md:p-2.5 bg-red-50 text-red-600 rounded-lg md:rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={14} className="md:w-4 md:h-4"/></button>
+                       {!hasAccount && (
+                         <button onClick={() => handleCreateAccount(person)} title="إنشاء حساب للنظام" className="p-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all shadow-sm"><Key size={12} /></button>
+                       )}
+                       <button onClick={() => openEdit(person)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={12} /></button>
+                       <button onClick={() => handleDelete(person.id, person.name)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={12} /></button>
                      </>
                    )}
                 </div>
@@ -247,7 +313,25 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
               <h4 className={sectionHeader}><Activity size={16}/> 2. التوصيف الوظيفي بالنادي</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                 <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="مدرب">مدرب</option><option value="مساعد مدرب">مساعد مدرب</option><option value="مدرب حراس">مدرب حراس</option><option value="مدرب لياقة">مدرب لياقة</option><option value="إداري">إداري</option><option value="طبيب">طبيب</option><option value="معالج">معالج</option><option value="منسق إعلامي">منسق إعلامي</option><option value="مرافق">مرافق</option></select></div>
-                <div className="space-y-1"><label className={labelClass}>الفئة</label><select className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div className="space-y-1 col-span-1 sm:col-span-2 md:col-span-1">
+                   <label className={labelClass}>الفئات المسندة</label>
+                   <div className="flex flex-wrap gap-2 relative z-10 py-1">
+                     {(hasRestriction ? allowedCategories : state.categories).map(c => {
+                       const selected = (formData.category || '').split(',').includes(c);
+                       return (
+                         <label key={c} className={`px-2 md:px-3 py-1.5 rounded-lg border-2 text-[10px] md:text-11px font-bold cursor-pointer transition-colors ${selected ? 'bg-orange-100 border-orange-500 text-orange-800' : 'bg-white border-slate-200 text-slate-600 hover:border-orange-300'}`}>
+                           <input type="checkbox" className="hidden" checked={selected} onChange={(e) => {
+                             let cats = (formData.category || '').split(',').filter(Boolean);
+                             if (e.target.checked) cats.push(c);
+                             else cats = cats.filter(x => x !== c);
+                             setFormData({...formData, category: cats.join(',')});
+                           }} />
+                           {c}
+                         </label>
+                       )
+                     })}
+                   </div>
+                </div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
               </div>
 
@@ -321,7 +405,19 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                 ))}
               </div>
 
-              <div className="pt-8 md:pt-10">
+              <div className="pt-6 md:pt-8 w-full border-t border-slate-100 flex flex-col gap-4">
+                {!editingId && (
+                  <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border-dashed border-2 border-slate-200">
+                     <div>
+                        <p className="text-[12px] md:text-sm font-black text-slate-800 flex items-center gap-2"><Key size={16} className="text-orange-600"/> إنشاء حساب للتطبيق تلقائياً</p>
+                        <p className="text-[9px] md:text-[10px] text-slate-500 font-bold mt-1 max-w-[200px] sm:max-w-xs">إنشاء حساب لدخول النظام بناءً على دوره الوظيفي مع توليد كلمة مرور.</p>
+                     </div>
+                     <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" checked={autoCreateAccount} onChange={(e) => setAutoCreateAccount(e.target.checked)} />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                     </label>
+                  </div>
+                )}
                 <button type="submit" disabled={isSaving} className="w-full bg-blue-900 text-white py-5 md:py-6 rounded-xl md:rounded-2xl font-black text-lg md:text-xl shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all flex items-center justify-center gap-3 active:scale-[0.98]">
                   {isSaving ? <Loader2 size={24} className="animate-spin" /> : <Save size={24}/>} 
                   تثبيت سجل الكادر المركزي

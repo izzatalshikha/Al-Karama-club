@@ -127,38 +127,37 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
               </button>
            </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+           <div className="bg-slate-50 border-[4px] border-slate-900 rounded-[2rem] overflow-hidden">
               {state.users.map(user => (
-                <div key={user.id} className="bg-slate-100 p-8 rounded-[3rem] border-4 border-slate-900 relative overflow-hidden group shadow-md hover:border-orange-600 transition-all">
-                   <div className="flex justify-between items-start mb-6">
-                      <div className="w-14 h-14 bg-white border-4 border-slate-900 rounded-2xl flex items-center justify-center shadow-lg">
-                         <Key size={28} className="text-orange-600"/>
+                <div key={user.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 md:p-6 border-b-2 border-slate-200 last:border-0 hover:bg-slate-100 transition-colors gap-4">
+                   <div className="flex items-center gap-4 w-full sm:w-auto">
+                      <div className="w-12 h-12 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+                         <Key size={20} className="text-orange-600"/>
                       </div>
-                      <span className={`text-[10px] font-black px-4 py-2 rounded-xl uppercase border-2 shadow-sm ${user.role === 'مدير' ? 'bg-orange-600 text-white border-orange-900' : 'bg-[#001F3F] text-white border-black'}`}>
+                      <div>
+                        <h4 className="font-black text-lg text-slate-900">{user.username}</h4>
+                        <p className="text-[11px] font-black text-slate-500 uppercase mt-0.5">
+                           {user.restrictedCategory ? `فئة: ${user.restrictedCategory}` : 'صلاحيات وصول شاملة'}
+                        </p>
+                      </div>
+                   </div>
+                   
+                   <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t-2 border-slate-200 sm:border-0 pt-4 sm:pt-0">
+                      <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg border-2 shadow-sm shrink-0 ${user.role === 'مدير' ? 'bg-orange-600 text-white border-orange-900' : 'bg-[#001F3F] text-white border-black'}`}>
                         {user.role}
                       </span>
-                   </div>
-                   <h4 className="font-black text-2xl text-slate-900 drop-shadow-sm">{user.username}</h4>
-                   <p className="text-[11px] font-black text-slate-500 mt-2 uppercase tracking-tighter">
-                      {user.restrictedCategory ? `الوصول محصور بـ: ${user.restrictedCategory}` : 'صلاحيات وصول شاملة للنظام'}
-                   </p>
-                   <div className="mt-8 pt-6 border-t-2 border-slate-200 flex justify-between items-center">
-                      <div className="flex flex-col">
-                         <p className="text-[9px] font-black text-slate-400 uppercase">كلمة السر</p>
-                         <p className="text-xs font-black text-slate-900 tracking-widest">••••••••</p>
-                      </div>
-                      <div className="flex gap-2">
-                         <button onClick={() => { setEditingUserId(user.id); setUserFormData(user); setIsUserModalOpen(true); }} className="p-3 bg-white border-2 border-slate-900 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={20}/></button>
+                      <div className="flex gap-2 shrink-0">
+                         <button onClick={() => { setEditingUserId(user.id); setUserFormData(user); setIsUserModalOpen(true); }} className="p-2 bg-white border-2 border-slate-900 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={16}/></button>
                          {(user.username.toUpperCase() !== 'IZZAT' && user.username !== 'عزت عامر الشيخة') && (
-                           <button onClick={() => deleteUser(user.id, user.username)} className="p-3 bg-white border-2 border-slate-900 text-red-600 hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={20}/></button>
+                           <button onClick={() => deleteUser(user.id, user.username)} className="p-2 bg-white border-2 border-slate-900 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
                          )}
                       </div>
                    </div>
                 </div>
               ))}
               {state.users.length === 0 && (
-                <div className="col-span-full py-20 text-center border-4 border-dashed border-slate-300 rounded-[3rem]">
-                   <p className="text-xl font-black text-slate-400 italic">لا توجد حسابات فرعية منشأة حالياً.</p>
+                <div className="py-16 text-center">
+                   <p className="text-lg font-black text-slate-400 italic">لا توجد حسابات فرعية منشأة حالياً.</p>
                 </div>
               )}
            </div>

@@ -355,35 +355,38 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 no-print">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 no-print">
             {filteredSessions.map(session => {
               const isComp = session.isCompleted;
               const canEditThis = isManager || (!isComp && isCatAdmin && restrictedCat && String(restrictedCat).split(',').includes(session.category));
               const canDeleteThis = isManager;
 
               return (
-                <div key={session.id} className={`bg-white p-5 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-slate-200 relative group overflow-hidden border-b-8 transition-all no-print ${isComp ? 'border-emerald-600' : 'hover:border-blue-900 border-b-slate-100'}`}>
-                  <div className="flex justify-between items-center mb-4">
-                     <span className="bg-blue-900 text-white text-[9px] font-black px-3 py-1 rounded-lg uppercase">{session.category}</span>
-                     <div className="flex gap-1.5">
+                <div key={session.id} className={`bg-white p-3 md:p-4 rounded-2xl md:rounded-2xl shadow-sm border border-slate-200 relative group overflow-hidden border-r-4 transition-all no-print ${isComp ? 'border-r-emerald-500' : 'hover:border-r-blue-900 border-r-slate-100'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                     <div className="flex flex-col gap-1.5">
+                       <span className="bg-blue-900 text-white text-[8px] font-black px-2 py-0.5 rounded uppercase w-fit">{session.category}</span>
+                       <h4 className="text-sm md:text-sm font-black text-blue-950 line-clamp-1" title={session.objective}>{session.objective}</h4>
+                     </div>
+                     <div className="flex gap-1 shrink-0">
                         {canEditThis && (
-                          <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-blue-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all shadow-sm border border-slate-200"><Edit size={14}/></button>
+                          <button onClick={() => { setEditingSessionId(session.id); setFormData(session); setIsModalOpen(true); }} className="p-1.5 bg-slate-100 text-blue-900 rounded-lg hover:bg-blue-900 hover:text-white transition-all shadow-sm border border-slate-200"><Edit size={12}/></button>
                         )}
                         {canDeleteThis && (
-                          <button onClick={() => deleteSession(session.id, session.objective)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-200"><Trash2 size={14}/></button>
+                          <button onClick={() => deleteSession(session.id, session.objective)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-200"><Trash2 size={12}/></button>
                         )}
                      </div>
                   </div>
-                  <h4 className="text-base md:text-lg font-black text-blue-950 mb-4 line-clamp-2">{session.objective}</h4>
-                  <div className="space-y-2 text-[10px] md:text-[11px] font-black text-slate-700 uppercase tracking-tighter">
-                     <p className="flex items-center gap-2"><CalendarIcon size={14} className="text-orange-600"/> {session.date}</p>
-                     <p className="flex items-center gap-2"><Clock size={14} className="text-blue-900"/> {session.time}</p>
-                     {session.duration && <p className="flex items-center gap-2"><Clock size={14} className="text-slate-500"/> المدة: {session.duration} دقيقة</p>}
-                     <p className="flex items-center gap-2"><MapPin size={14} className="text-emerald-800"/> {session.pitch || 'ملعب الكرامة'}</p>
+                  
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px] md:text-[10px] font-bold text-slate-600 mt-3">
+                     <span className="flex items-center gap-1"><CalendarIcon size={12} className="text-orange-600"/> {session.date}</span>
+                     <span className="flex items-center gap-1"><Clock size={12} className="text-blue-900"/> {session.time} {session.duration && `(${session.duration}د)`}</span>
+                     <span className="flex items-center gap-1"><MapPin size={12} className="text-emerald-800"/> {session.pitch || 'ملعب الكرامة'}</span>
                   </div>
+
                   {!isViewer && (
-                    <button disabled={!canEditThis} onClick={() => toggleSessionComplete(session.id, !!isComp)} className={`mt-6 w-full py-3 md:py-3.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 border transition-all ${!canEditThis ? 'opacity-30 cursor-not-allowed' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700 hover:bg-white' : 'bg-white border-blue-900 text-blue-900 hover:bg-blue-50 focus:scale-95'}`}>
-                       <CheckCircle size={14}/> {isComp ? (isManager ? 'إعادة فتح الجلسة' : 'جلسة معتمدة') : 'تأشير كتم الإنجاز'}
+                    <button disabled={!canEditThis} onClick={() => toggleSessionComplete(session.id, !!isComp)} className={`mt-3 w-full py-2 rounded-lg font-black text-[9px] flex items-center justify-center gap-1.5 border transition-all ${!canEditThis ? 'opacity-30 cursor-not-allowed' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700 hover:bg-white' : 'bg-white border-blue-900 text-blue-900 hover:bg-blue-50 focus:scale-95'}`}>
+                       <CheckCircle size={12}/> {isComp ? (isManager ? 'مكتمل (اضغط للإلغاء)' : 'مكتمل') : 'تأشير כمنجز'}
                     </button>
                   )}
                 </div>

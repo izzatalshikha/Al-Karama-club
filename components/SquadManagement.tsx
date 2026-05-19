@@ -47,8 +47,9 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
   const filteredMembers = useMemo(() => {
     return state.people.filter(p => {
-      if (hasRestriction && !allowedCategories.includes(p.category)) return false;
-      const matchCat = localCategoryFilter === 'الكل' || p.category === localCategoryFilter;
+      const personCategories = p.category ? p.category.split(',') : [];
+      if (hasRestriction && !personCategories.some(c => allowedCategories.includes(c))) return false;
+      const matchCat = localCategoryFilter === 'الكل' || personCategories.includes(localCategoryFilter);
       const matchSearch = p.name.includes(searchTerm) || (p.number?.toString() === searchTerm);
       const matchSubTab = p.role === 'لاعب'; // Only show players
       return matchCat && matchSearch && matchSubTab;
@@ -169,33 +170,33 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
       </div>
 
       {/* قائمة البطاقات */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-4">
         {filteredMembers.map(person => (
-          <div key={person.id} className="modern-card p-6 md:p-8 group hover:border-orange-500 transition-all flex flex-col border-b-4 border-b-orange-500/20">
-             <div className="flex justify-between items-start mb-4 md:mb-6">
-                <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-2xl md:text-3xl text-blue-900 border-2 border-blue-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400 transition-all duration-300">
+          <div key={person.id} className="modern-card p-4 md:p-5 group hover:border-orange-500 transition-all flex flex-col border-b-4 border-b-orange-500/20">
+             <div className="flex justify-between items-start mb-3">
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-50 rounded-xl flex items-center justify-center font-black text-xl text-blue-900 border border-blue-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400 transition-all">
                    {person.name.charAt(0)}
                 </div>
                 <div className="flex flex-col items-end">
-                   <span className="text-[9px] md:text-[10px] font-black text-orange-700 uppercase tracking-widest">{person.category}</span>
-                   <span className="text-xs text-slate-600 font-bold">{person.role}</span>
+                   <span className="text-[8px] md:text-[9px] font-black text-orange-700 uppercase tracking-widest">{person.category}</span>
+                   <span className="text-[10px] text-slate-600 font-bold">{person.role}</span>
                 </div>
              </div>
-             <h3 className="text-lg md:text-xl font-black text-blue-950 mb-2 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name} {person.number && <span className="text-orange-600 text-sm">#{person.number}</span>}</h3>
-             <p className="text-[9px] md:text-[10px] text-slate-600 font-bold mb-2 italic">{person.position || 'بدون مركز محدد'}</p>
-             <div className="flex flex-wrap gap-1.5 md:gap-2 mb-4 md:mb-6">
-                {(person.nationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">وطني: {person.nationalId}</span>}
-                {(person.federalNumber || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">اتحادي: {person.federalNumber}</span>}
-                {(person.internationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[8px] md:text-[9px] font-bold shadow-sm whitespace-nowrap">دولي: {person.internationalId}</span>}
+             <h3 className="text-sm md:text-base font-black text-blue-950 mb-1 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name} {person.number && <span className="text-orange-600 text-xs">#{person.number}</span>}</h3>
+             <p className="text-[8px] md:text-[9px] text-slate-600 font-bold mb-2 italic">{person.position || 'بدون مركز محدد'}</p>
+             <div className="flex flex-wrap gap-1 mb-3">
+                {(person.nationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">وطني: {person.nationalId}</span>}
+                {(person.federalNumber || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">اتحادي: {person.federalNumber}</span>}
+                {(person.internationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">دولي: {person.internationalId}</span>}
              </div>
-             <div className="mt-auto pt-4 md:pt-6 border-t border-slate-100 flex justify-between items-center gap-2">
-                <button onClick={() => onOpenReport?.(person)} className="text-[10px] md:text-xs font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={14}/></button>
-                <div className="flex gap-1 md:gap-2">
+             <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center gap-2">
+                <button onClick={() => onOpenReport?.(person)} className="text-[10px] font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={12}/></button>
+                <div className="flex gap-1.5">
                    {canEdit && (
                      <>
-                       <button onClick={() => openEdit(person)} className="p-2 md:p-2.5 bg-blue-50 text-blue-600 rounded-lg md:rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={14} className="md:w-4 md:h-4"/></button>
+                       <button onClick={() => openEdit(person)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={12}/></button>
                        {canAddOrDelete && (
-                         <button onClick={() => handleDelete(person.id, person.name)} className="p-2 md:p-2.5 bg-red-50 text-red-600 rounded-lg md:rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={14} className="md:w-4 md:h-4"/></button>
+                         <button onClick={() => handleDelete(person.id, person.name)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={12}/></button>
                        )}
                      </>
                    )}
