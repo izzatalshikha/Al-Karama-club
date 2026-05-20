@@ -18,21 +18,21 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ state, onMatchClick, onSessio
 
   const completedMatches = useMemo(() => {
     return state.matches
-      .filter(m => m.isCompleted && 
+      .filter(m => m.isCompleted && (!m.season || m.season === state.activeSeason) && 
         (restrictedCat ? String(restrictedCat).split(',').includes(m.category) : (globalFilter === 'الكل' || m.category === globalFilter)) &&
         (m.opponent.includes(searchTerm) || m.matchType.includes(searchTerm))
       )
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [state.matches, globalFilter, restrictedCat, searchTerm]);
+  }, [state.matches, globalFilter, restrictedCat, searchTerm, state.activeSeason]);
 
   const completedSessions = useMemo(() => {
     return state.sessions
-      .filter(s => s.isCompleted && 
+      .filter(s => s.isCompleted && (!s.season || s.season === state.activeSeason) && 
         (restrictedCat ? String(restrictedCat).split(',').includes(s.category) : (globalFilter === 'الكل' || s.category === globalFilter)) &&
         (s.objective.includes(searchTerm))
       )
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [state.sessions, globalFilter, restrictedCat, searchTerm]);
+  }, [state.sessions, globalFilter, restrictedCat, searchTerm, state.activeSeason]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">

@@ -356,7 +356,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     
     // Get all teams involved in this stage's matches
     const stageTeamIds = new Set<string>();
-    matches.forEach((m:any) => { stageTeamIds.add(m.team1Id); stageTeamIds.add(m.team2Id); });
+    teams.forEach((t:any) => stageTeamIds.add(t.id));
     
     const table: any = {};
     stageTeamIds.forEach(id => {
@@ -365,18 +365,33 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     });
 
     matches.forEach((m:any) => {
-      if(m.status === 'ملعوبة' && m.team1Score != null && m.team2Score != null) {
+      let isPlayed = m.status === 'ملعوبة';
+      let s1 = m.team1Score;
+      let s2 = m.team2Score;
+      
+      if (m.linkedMatchId) {
+         const lMatch = state.matches.find((x:any) => x.id === m.linkedMatchId);
+         if (lMatch && lMatch.isCompleted) {
+            isPlayed = true;
+            const t1Obj = teams.find((tz:any) => tz.id === m.team1Id);
+            const t2Obj = teams.find((tz:any) => tz.id === m.team2Id);
+            s1 = t1Obj?.isOurTeam ? parseInt(lMatch.ourScore) : parseInt(lMatch.opponentScore);
+            s2 = t2Obj?.isOurTeam ? parseInt(lMatch.ourScore) : parseInt(lMatch.opponentScore);
+         }
+      }
+
+      if(isPlayed && s1 != null && s2 != null && !isNaN(s1) && !isNaN(s2)) {
         const row1 = table[m.team1Id];
         const row2 = table[m.team2Id];
         if(!row1 || !row2) return;
 
         row1.pld++; row2.pld++;
-        row1.gf += m.team1Score; row1.ga += m.team2Score;
-        row2.gf += m.team2Score; row2.ga += m.team1Score;
+        row1.gf += s1; row1.ga += s2;
+        row2.gf += s2; row2.ga += s1;
         
-        if (m.team1Score > m.team2Score) {
+        if (s1 > s2) {
            row1.w++; row2.l++; row1.pts += 3;
-        } else if (m.team1Score < m.team2Score) {
+        } else if (s1 < s2) {
            row2.w++; row1.l++; row2.pts += 3;
         } else {
            row1.d++; row2.d++; row1.pts += 1; row2.pts += 1;
@@ -450,7 +465,11 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
       linkedMatchId: linkedMatchId || null
     };
 
-    const success = await syncToCloud('tournament_matches', nm);
+    // Remove pitch from payload as it might not be in the Supabase schema for this table
+    const payload = { ...nm };
+    delete payload.pitch;
+
+    const success = await syncToCloud('tournament_matches', payload);
     if(success) {
       setState((prev:any) => ({ ...prev, tournamentMatches: [...prev.tournamentMatches, nm] }));
       setIsAddingMatch(false);
@@ -470,7 +489,10 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     if(!mm) return;
     
     const updatedM = { ...mm, status: 'ملعوبة', team1Score: s1, team2Score: s2 };
-    await syncToCloud('tournament_matches', updatedM);
+    const payload = { ...updatedM };
+    delete payload.pitch;
+
+    await syncToCloud('tournament_matches', payload);
     setState((prev:any) => ({
        ...prev,
        tournamentMatches: prev.tournamentMatches.map((mx:any) => mx.id === matchId ? updatedM : mx)

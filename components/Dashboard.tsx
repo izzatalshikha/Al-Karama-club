@@ -14,32 +14,49 @@ interface DashboardProps {
   onPlayerClick?: (player: Person) => void;
 }
 
-const ActivityCountdown: React.FC<{ date: string; time: string }> = ({ date, time }) => {
+const ActivityCountdown: React.FC<{ date: string; time: string; durationMins?: number }> = ({ date, time, durationMins = 90 }) => {
+  const [status, setStatus] = useState<'upcoming' | 'active' | 'ended'>('upcoming');
   const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
 
   useEffect(() => {
     const calculateTime = () => {
-      const target = new Date(`${date}T${time}`);
+      const start = new Date(`${date}T${time || '00:00'}`);
+      const end = new Date(start.getTime() + durationMins * 60000);
       const now = new Date();
-      const diff = target.getTime() - now.getTime();
-      if (diff <= 0) { setTimeLeft(null); return; }
-      setTimeLeft({
-        d: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        h: Math.floor((diff / (1000 * 60 * 60)) % 24),
-        m: Math.floor((diff / (1000 * 60)) % 60),
-        s: Math.floor((diff / 1000) % 60)
-      });
+      
+      const diffStart = start.getTime() - now.getTime();
+      const diffEnd = end.getTime() - now.getTime();
+
+      if (diffStart > 0) {
+        setStatus('upcoming');
+        setTimeLeft({
+          d: Math.floor(diffStart / (1000 * 60 * 60 * 24)),
+          h: Math.floor((diffStart / (1000 * 60 * 60)) % 24),
+          m: Math.floor((diffStart / (1000 * 60)) % 60),
+          s: Math.floor((diffStart / 1000) % 60)
+        });
+      } else if (diffEnd >= 0) {
+        setStatus('active');
+        setTimeLeft(null);
+      } else {
+        setStatus('ended');
+        setTimeLeft(null);
+      }
     };
     calculateTime();
     const timer = setInterval(calculateTime, 1000);
     return () => clearInterval(timer);
-  }, [date, time]);
+  }, [date, time, durationMins]);
 
-  if (!timeLeft) return (
+  if (status === 'ended') return null;
+
+  if (status === 'active') return (
     <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20">
-      <Zap size={12} /> النشاط جارٍ
+      <Zap size={12} className="animate-pulse" /> النشاط جارٍ
     </div>
   );
+
+  if (!timeLeft) return null;
 
   return (
     <div className="flex gap-2 items-center text-slate-600 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
@@ -91,7 +108,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
               attendance: state.attendance.filter(a => filteredPeopleIds.has(a.personId)),
               injuries: state.injuries.filter(i => filteredPeopleIds.has(i.personId)),
               warehouse: state.warehouse.filter(w => !restrictedCat || w.category === 'المخزن العام' || allowedCategories.includes(w.category)),
-              tournaments: state.tournaments.filter(t => !restrictedCat || allowedCategories.includes(t.category))
+              tournaments: state.tournaments.filter(t => !restrictedCat || allowedCategories.includes(t.category)),
+              tournamentTeams: state.tournamentTeams,
+              tournamentStages: state.tournamentStages,
+              tournamentMatches: state.tournamentMatches
           };
           
           // Use JSON for accurate querying of all relationships
@@ -124,14 +144,24 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   };
 
   const upcomingMatches = useMemo(() => {
-    return state.matches.filter(m => (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && (m.date >= todayDate || parseDateTime(m.date, m.time) >= threshold))
-      .sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
-  }, [state.matches, globalFilter, restrictedCat, allowedCategories]);
+    const now = new Date();
+    return state.matches.filter(m => {
+      const matchStart = parseDateTime(m.date, m.time);
+      const matchDurationMins = parseInt(m.matchDuration || '90') + parseInt(m.stoppageTime1 || '0') + parseInt(m.stoppageTime2 || '0') + 15; // ~15m half time break
+      const matchEnd = new Date(matchStart.getTime() + matchDurationMins * 60000);
+      return (!m.season || m.season === state.activeSeason) && (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && matchEnd >= now;
+    }).sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
+  }, [state.matches, globalFilter, restrictedCat, allowedCategories, state.activeSeason]);
 
   const upcomingSessions = useMemo(() => {
-    return state.sessions.filter(s => (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && (s.date >= todayDate || parseDateTime(s.date, s.time) >= threshold))
-      .sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
-  }, [state.sessions, globalFilter, restrictedCat, allowedCategories]);
+    const now = new Date();
+    return state.sessions.filter(s => {
+      const sessionStart = parseDateTime(s.date, s.time);
+      const sessionDurationMins = parseInt((s as any).duration || '90');
+      const sessionEnd = new Date(sessionStart.getTime() + sessionDurationMins * 60000);
+      return (!s.season || s.season === state.activeSeason) && (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && sessionEnd >= now;
+    }).sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
+  }, [state.sessions, globalFilter, restrictedCat, allowedCategories, state.activeSeason]);
 
   const stats = [
     { label: 'الكوادر واللاعبين', value: state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter)).length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -263,7 +293,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                           <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">{m.category}</span>
                           <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-3 py-1 rounded-full border border-blue-100">{m.isHome ? 'أرضنا' : 'خارج أرضنا'}</span>
                        </div>
-                       <ActivityCountdown date={m.date} time={m.time} />
+                       <ActivityCountdown date={m.date} time={m.time} durationMins={parseInt(m.matchDuration || '90') + parseInt(m.stoppageTime1 || '0') + parseInt(m.stoppageTime2 || '0') + 15} />
                     </div>
                     <div className="flex items-center gap-6">
                        <div className="flex-1 space-y-2">
@@ -292,7 +322,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                  <div key={s.id} className="modern-card p-6 hover:border-blue-500 transition-all cursor-pointer group" onClick={() => onSessionClick(s.id)}>
                     <div className="flex justify-between items-center mb-6">
                        <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-3 py-1 rounded-full border border-blue-100">{s.category}</span>
-                       <ActivityCountdown date={s.date} time={s.time} />
+                       <ActivityCountdown date={s.date} time={s.time} durationMins={parseInt((s as any).duration || '90')} />
                     </div>
                     <h3 className="text-lg font-bold text-blue-900 group-hover:text-blue-600 transition-colors mb-2">{s.objective}</h3>
                     <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold text-slate-500 uppercase">

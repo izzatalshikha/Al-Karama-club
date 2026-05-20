@@ -220,7 +220,7 @@ export interface Match {
       replacedPlayerId?: string;
       rating?: number;
     }[];
-    staff: { role: string; name: string }[];
+    staff: { id?: string; role: string; name: string }[];
     captain: string;
   };
   notes?: string;

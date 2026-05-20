@@ -44,9 +44,11 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
     pitch: ''
   });
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.date || !formData.time || isViewer) return;
+    if (!formData.date || !formData.time || isViewer || isSaving) return;
 
     const finalCategory = formData.category || (restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'الرجال');
     const sessionData = {
@@ -56,35 +58,58 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
       pitch: formData.pitch || 'ملعب الكرامة'
     };
 
-    if (editingSessionId) {
-      const { error } = await supabase.from('sessions').upsert({ ...sessionData, id: editingSessionId });
-      if (error) { alert('خطأ في التحديث: ' + error.message); return; }
-      
-      setState(prev => ({
-        ...prev,
-        sessions: prev.sessions.map(s => s.id === editingSessionId ? { ...s, ...sessionData } as TrainingSession : s)
-      }));
-      addLog?.('تعديل موعد تمرين', `تم تحديث بيانات تمرين فئة ${finalCategory}`, 'info');
-    } else {
-      const newSession: TrainingSession = {
-        id: generateUUID(),
-        category: finalCategory as Category,
-        date: formData.date || '',
-        time: formData.time || '16:00',
-        pitch: formData.pitch || 'ملعب الكرامة',
-        objective: formData.objective || 'تمرين عام',
-        isCompleted: false,
-        isLocked: false
-      };
-      
-      const { error } = await supabase.from('sessions').upsert(newSession);
-      if (error) { alert('خطأ في الحفظ: ' + error.message); return; }
-
-      setState(prev => ({ ...prev, sessions: [newSession, ...prev.sessions] }));
-      addLog?.('إضافة موعد تمرين', `تمت جدولة تمرين جديد لفئة ${newSession.category}`, 'info');
+    if (!editingSessionId) {
+      const isDuplicate = state.sessions.some(s => 
+        s.date === sessionData.date && 
+        s.category === sessionData.category && 
+        s.time === sessionData.time && 
+        s.objective === sessionData.objective &&
+        (!s.season || s.season === state.activeSeason)
+      );
+      if (isDuplicate) {
+        alert('يوجد تمرين مجدول مسبقاً في نفس الوقت والتاريخ والموضوع!');
+        return;
+      }
     }
-    setIsModalOpen(false);
-    setEditingSessionId(null);
+
+    setIsSaving(true);
+    try {
+      if (editingSessionId) {
+        const { error } = await supabase.from('sessions').upsert({ ...sessionData, id: editingSessionId });
+        if (error) { alert('خطأ في التحديث: ' + error.message); setIsSaving(false); return; }
+        
+        setState(prev => ({
+          ...prev,
+          sessions: prev.sessions.map(s => s.id === editingSessionId ? { ...s, ...sessionData } as TrainingSession : s)
+        }));
+        addLog?.('تعديل موعد تمرين', `تم تحديث بيانات تمرين فئة ${finalCategory}`, 'info');
+      } else {
+        const newSession: TrainingSession = {
+          id: generateUUID(),
+...sessionData,
+          category: finalCategory as Category,
+          season: state.activeSeason,
+          date: formData.date || '',
+          time: formData.time || '16:00',
+          pitch: formData.pitch || 'ملعب الكرامة',
+          objective: formData.objective || 'تمرين عام',
+          isCompleted: false,
+          isLocked: false
+        };
+        
+        const { error } = await supabase.from('sessions').upsert(newSession);
+        if (error) { alert('خطأ في الحفظ: ' + error.message); setIsSaving(false); return; }
+
+        setState(prev => ({ ...prev, sessions: [newSession, ...prev.sessions] }));
+        addLog?.('إضافة موعد تمرين', `تمت جدولة تمرين جديد لفئة ${newSession.category}`, 'info');
+      }
+      setIsModalOpen(false);
+      setEditingSessionId(null);
+    } catch (err: any) {
+      alert('حدث خطأ: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const deleteSession = async (id: string, obj: string) => {
@@ -116,10 +141,10 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
 
   const filteredSessions = useMemo(() => {
     return (restrictedCat 
-      ? state.sessions.filter(s => String(restrictedCat).split(',').includes(s.category))
-      : state.sessions.filter(s => (state.globalCategoryFilter === 'الكل' || s.category === state.globalCategoryFilter)))
+      ? state.sessions.filter(s => String(restrictedCat).split(',').includes(s.category) && (!s.season || s.season === state.activeSeason))
+      : state.sessions.filter(s => (state.globalCategoryFilter === 'الكل' || s.category === state.globalCategoryFilter) && (!s.season || s.season === state.activeSeason)))
       .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [state.sessions, restrictedCat, state.globalCategoryFilter]);
+  }, [state.sessions, restrictedCat, state.globalCategoryFilter, state.activeSeason]);
 
   const generateReport = () => {
     const start = new Date(startDate).getTime();
@@ -449,7 +474,9 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                        <input type="number" min="0" className={fieldClass} value={formData.duration || ''} onChange={e => setFormData({...formData, duration: e.target.value})} placeholder="90" />
                     </div>
                  </div>
-                 <button type="submit" className="w-full bg-blue-900 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all mt-4 uppercase active:scale-[0.98]">حفظ الحصة المركزية</button>
+                 <button type="submit" disabled={isSaving} className="w-full bg-blue-900 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all mt-4 uppercase active:scale-[0.98] disabled:opacity-50">
+                    {isSaving ? 'جاري الحفظ...' : 'حفظ الحصة المركزية'}
+                 </button>
               </form>
            </div>
         </div>

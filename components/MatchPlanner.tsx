@@ -22,15 +22,17 @@ interface MatchPlannerProps {
 const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSelectedId, addLog, getSuspension, viewMode = 'regular' }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeMatch, setActiveMatch] = useState<Match | null>(null);
+  const [loadedDefaultMatchId, setLoadedDefaultMatchId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (defaultSelectedId) {
+    if (defaultSelectedId && defaultSelectedId !== loadedDefaultMatchId) {
       const targetMatch = state.matches.find(m => m.id === defaultSelectedId);
       if (targetMatch) {
          handleOpenMatch(targetMatch);
+         setLoadedDefaultMatchId(defaultSelectedId);
       }
     }
-  }, [defaultSelectedId, state.matches]);
+  }, [defaultSelectedId, state.matches, loadedDefaultMatchId]);
   
   const currentUser = state.currentUser;
   const isManager = currentUser?.role === 'مدير';
@@ -52,6 +54,8 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     homeCoach: '',
     awayCoach: ''
   });
+
+  const [isSaving, setIsSaving] = useState(false);
 
   const recalculateAllMinutes = (currentMatch: Match) => {
     if (currentMatch.lineup?.halvesCount === '3' || currentMatch.category === 'البراعم') {
@@ -102,6 +106,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
   const filteredMatches = useMemo(() => {
     return state.matches.filter(m => {
+      if (m.season && m.season !== state.activeSeason) return false;
       const isBaraaemMatch = m.lineup?.halvesCount === '3' || m.category === 'البراعم';
       
       // If we are in baraaem mode, only show baraaem matches
@@ -114,11 +119,11 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       if (restrictedCat) return String(restrictedCat).split(',').includes(m.category);
       return (state.globalCategoryFilter === 'الكل' || m.category === state.globalCategoryFilter);
     }).sort((a,b) => b.date.localeCompare(a.date));
-  }, [state.matches, state.globalCategoryFilter, restrictedCat, viewMode]);
+  }, [state.matches, state.globalCategoryFilter, restrictedCat, viewMode, state.activeSeason]);
 
   const handleCreateMatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isViewer) return;
+    if (isViewer || isSaving) return;
     if (!formData.opponent) {
       alert('يرجى إدخال اسم الفريق الخصم');
       return;
@@ -131,51 +136,70 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     // Always use Baraaem formatting if we are inside the Baraaem view, or if the selected category is Baraaem.
     const isBaraaemFormat = viewMode === 'baraaem' || formData.category === 'البراعم';
     const finalCategory = formData.category || defaultCategory;
-    
-    const newMatch: Match = {
-      id: generateUUID(),
-      category: finalCategory,
-      season: state.activeSeason,
-      matchType: (formData.matchType as MatchType) || 'دوري',
-      opponent: formData.opponent,
-      pitch: formData.pitch || 'ملعب الكرامة',
-      date: formData.date,
-      time: formData.time || '16:00',
-      advancePayment: formData.advancePayment || '0',
-      referee: formData.referee || '',
-      homeCoach: formData.homeCoach || '',
-      awayCoach: formData.awayCoach || '',
-      isCompleted: false,
-      ourScore: '0',
-      opponentScore: '0',
-      stoppageTime1: '0',
-      stoppageTime2: '0',
-      squadSize: formData.squadSize || (isBaraaemFormat ? undefined : '18'),
-      matchDuration: formData.matchDuration || (isBaraaemFormat ? '60' : '90'),
-      isFinal: formData.isFinal || false,
-      events: [],
-      lineup: {
-        starters: isBaraaemFormat ? [] : Array(11).fill(null).map(() => ({ playerId: '', name: '', number: '', minutesPlayed: '90' })),
-        half2Starters: isBaraaemFormat ? [] : undefined,
-        half3Starters: isBaraaemFormat ? [] : undefined,
-        halvesCount: isBaraaemFormat ? '3' : formData.lineup?.halvesCount,
-        durationHalf1: isBaraaemFormat ? '20' : undefined,
-        durationHalf2: isBaraaemFormat ? '20' : undefined,
-        durationHalf3: isBaraaemFormat ? '20' : undefined,
-        subs: [],
-        staff: [],
-        captain: ''
-      },
-      notes: ''
-    };
-    
-    const { error } = await supabase.from('matches').upsert(newMatch);
-    if (error) { alert('خطأ في المزامنة: ' + error.message); return; }
 
-    setState(prev => ({ ...prev, matches: [newMatch, ...prev.matches] }));
-    addLog?.('جدولة مباراة', `تمت جدولة مواجهة ضد ${newMatch.opponent}`, 'success');
-    setIsAddOpen(false);
-    setActiveMatch(newMatch);
+    const isDuplicate = state.matches.some(m => 
+        m.date === formData.date && 
+        m.opponent === formData.opponent && 
+        m.category === finalCategory &&
+        (!m.season || m.season === state.activeSeason)
+    );
+    
+    if (isDuplicate) {
+        alert('تم بالفعل إضافة مباراة بنفس البيانات والتاريخ والخصم!');
+        return;
+    }
+    
+    setIsSaving(true);
+    try {
+      const newMatch: Match = {
+        id: generateUUID(),
+        category: finalCategory,
+        season: state.activeSeason,
+        matchType: (formData.matchType as MatchType) || 'دوري',
+        opponent: formData.opponent,
+        pitch: formData.pitch || 'ملعب الكرامة',
+        date: formData.date,
+        time: formData.time || '16:00',
+        advancePayment: formData.advancePayment || '0',
+        referee: formData.referee || '',
+        homeCoach: formData.homeCoach || '',
+        awayCoach: formData.awayCoach || '',
+        isCompleted: false,
+        ourScore: '0',
+        opponentScore: '0',
+        stoppageTime1: '0',
+        stoppageTime2: '0',
+        squadSize: formData.squadSize || (isBaraaemFormat ? undefined : '18'),
+        matchDuration: formData.matchDuration || (isBaraaemFormat ? '60' : '90'),
+        isFinal: formData.isFinal || false,
+        events: [],
+        lineup: {
+          starters: isBaraaemFormat ? [] : Array(11).fill(null).map(() => ({ playerId: '', name: '', number: '', minutesPlayed: '90' })),
+          half2Starters: isBaraaemFormat ? [] : undefined,
+          half3Starters: isBaraaemFormat ? [] : undefined,
+          halvesCount: isBaraaemFormat ? '3' : formData.lineup?.halvesCount,
+          durationHalf1: isBaraaemFormat ? '20' : undefined,
+          durationHalf2: isBaraaemFormat ? '20' : undefined,
+          durationHalf3: isBaraaemFormat ? '20' : undefined,
+          subs: [],
+          staff: [],
+          captain: ''
+        },
+        notes: ''
+      };
+      
+      const { error } = await supabase.from('matches').upsert(newMatch);
+      if (error) { alert('خطأ في المزامنة: ' + error.message); setIsSaving(false); return; }
+
+      setState(prev => ({ ...prev, matches: [newMatch, ...prev.matches] }));
+      addLog?.('جدولة مباراة', `تمت جدولة مواجهة ضد ${newMatch.opponent}`, 'success');
+      setIsAddOpen(false);
+      setActiveMatch(newMatch);
+    } catch (err: any) {
+      alert('حدث خطأ: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const deleteMatch = async (id: string) => {
@@ -491,7 +515,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     <span className="text-sm font-black text-blue-900">مباراة نهائية (تتضمن أشواط إضافية وركلات ترجيح)</span>
                  </label>
 
-                 <button type="submit" className="w-full bg-blue-900 text-white py-4 md:py-5 rounded-xl md:rounded-2xl font-black text-base md:text-lg shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all">تثبيت المباراة سحابياً</button>
+                 <button type="submit" disabled={isSaving} className="w-full bg-blue-900 text-white py-4 md:py-5 rounded-xl md:rounded-2xl font-black text-base md:text-lg shadow-xl shadow-blue-900/10 hover:bg-blue-800 transition-all disabled:opacity-50">
+                    {isSaving ? 'جاري الحفظ...' : 'تثبيت المباراة سحابياً'}
+                 </button>
               </form>
            </div>
         </div>
@@ -687,22 +713,22 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                        <div className="modern-card p-6 md:p-8 border-slate-200 mt-6">
                           <div className="flex justify-between items-center mb-6 md:mb-8">
                              <h4 className="text-base md:text-lg font-black text-blue-900 border-r-4 border-blue-900 pr-4 flex items-center gap-3 uppercase"><Briefcase size={20}/> قائمة الكادر (المستدعيين)</h4>
-                             <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">العدد: {state.people.filter(p => p.role !== 'لاعب' && p.category === activeMatch.category && activeMatch.squad?.includes(p.id)).length || 0}</span>
+                             <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-xl text-xs font-black">العدد: {activeMatch.lineup?.staff?.length || 0}</span>
                           </div>
                           
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                              {state.people.filter(p => p.role !== 'لاعب' && p.category === activeMatch.category).map(staff => {
-                                const isSelected = activeMatch.squad?.includes(staff.id) || false;
+                                const isSelected = activeMatch.lineup?.staff?.some((s:any) => s.id === staff.id) || false;
                                 
                                 return (
                                   <div 
                                     key={staff.id}
                                     onClick={() => {
-                                      const currentSquad = activeMatch.squad || [];
+                                      const currentStaff = activeMatch.lineup?.staff || [];
                                       if (isSelected) {
-                                        setActiveMatch({...activeMatch, squad: currentSquad.filter(id => id !== staff.id)});
+                                        setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup!, staff: currentStaff.filter((s:any) => s.id !== staff.id)}});
                                       } else {
-                                        setActiveMatch({...activeMatch, squad: [...currentSquad, staff.id]});
+                                        setActiveMatch({...activeMatch, lineup: {...activeMatch.lineup!, staff: [...currentStaff, { id: staff.id, role: staff.role, name: staff.name }]}});
                                       }
                                     }}
                                     className={`relative p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-3 ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-slate-100 bg-white hover:border-slate-300'}`}
@@ -723,7 +749,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                                 )
                              })}
                           </div>
-                          {(!activeMatch.squad || state.people.filter(p => p.role !== 'لاعب' && activeMatch.squad!.includes(p.id)).length === 0) && (
+                          {(!activeMatch.lineup?.staff || activeMatch.lineup.staff.length === 0) && (
                             <p className="text-xs text-slate-500 text-center py-4 italic">يرجى تحديد الكوادر المستدعين للمباراة</p>
                           )}
                        </div>

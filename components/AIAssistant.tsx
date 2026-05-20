@@ -40,11 +40,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
     );
     
     const categoryMatches = state.matches.filter(m => 
-      m.isCompleted && (selectedCategory === 'الكل' ? true : m.category === selectedCategory)
+      m.isCompleted && (!m.season || m.season === state.activeSeason) && (selectedCategory === 'الكل' ? true : m.category === selectedCategory)
     );
 
     const categorySessions = state.sessions.filter(s => 
-      (selectedCategory === 'الكل' ? true : s.category === selectedCategory)
+      (!s.season || s.season === state.activeSeason) && (selectedCategory === 'الكل' ? true : s.category === selectedCategory)
     );
 
     const medicalHistory = categoryPlayers
@@ -109,11 +109,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
       `;
 
       const response = await ai.models.generateContent({
-        model: aiMode === 'deep' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview',
+        model: aiMode === 'deep' ? 'gemini-3.1-pro-preview' : 'gemini-2.5-flash',
         contents: userQuery,
         config: { 
-          systemInstruction,
-          thinkingConfig: aiMode === 'deep' ? { thinkingBudget: 16000 } : undefined 
+          systemInstruction
         }
       });
 

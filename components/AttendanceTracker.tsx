@@ -48,6 +48,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
 
   const sessions = state.sessions
     .filter(s => {
+      if (s.season && s.season !== state.activeSeason) return false;
       if (restrictedCat) return String(restrictedCat).split(',').includes(s.category);
       return (globalFilter === 'الكل' || s.category === globalFilter);
     })
