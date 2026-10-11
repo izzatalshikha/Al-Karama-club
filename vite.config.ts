@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
+          workbox: { maximumFileSizeToCacheInBytes: 5000000 },
           manifest: {
             name: 'Eagle OS - نظام النسر الرياضي',
             short_name: 'Eagle OS',

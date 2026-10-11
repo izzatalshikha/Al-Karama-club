@@ -1,0 +1,141 @@
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.fatherName || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">اسم الأب</td>
+                        <td className="p-3 font-semibold">{player2.fatherName || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.motherName || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">اسم الأم</td>
+                        <td className="p-3 font-semibold">{player2.motherName || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.birthDate || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">تاريخ الميلاد</td>
+                        <td className="p-3 font-semibold">{player2.birthDate || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.birthPlace || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">مكان الولادة</td>
+                        <td className="p-3 font-semibold">{player2.birthPlace || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.khana || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الخانة</td>
+                        <td className="p-3 font-semibold">{player2.khana || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.nationalId || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الرقم الوطني</td>
+                        <td className="p-3 font-semibold">{player2.nationalId || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.federalNumber || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الرقم الاتحادي</td>
+                        <td className="p-3 font-semibold">{player2.federalNumber || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.internationalId || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الرقم الدولي</td>
+                        <td className="p-3 font-semibold">{player2.internationalId || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.address || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">عنوان السكن</td>
+                        <td className="p-3 font-semibold">{player2.address || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.role || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الدور الوظيفي</td>
+                        <td className="p-3 font-semibold">{player2.role || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.number || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">رقم القميص</td>
+                        <td className="p-3 font-semibold">{player2.number || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.phone || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">رقم الهاتف</td>
+                        <td className="p-3 font-semibold">{player2.phone || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.joinDate || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">تاريخ الانضمام</td>
+                        <td className="p-3 font-semibold">{player2.joinDate || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.contractStart || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">بداية العقد</td>
+                        <td className="p-3 font-semibold">{player2.contractStart || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.contractEnd || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">نهاية العقد</td>
+                        <td className="p-3 font-semibold">{player2.contractEnd || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.contractValue || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">قيمة العقد</td>
+                        <td className="p-3 font-semibold">{player2.contractValue || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.subscriptionAmount || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">مبلغ الاشتراك</td>
+                        <td className="p-3 font-semibold">{player2.subscriptionAmount || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.subscriptionMonth || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">شهر الاشتراك</td>
+                        <td className="p-3 font-semibold">{player2.subscriptionMonth || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.registrationDate || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">تاريخ التسجيل</td>
+                        <td className="p-3 font-semibold">{player2.registrationDate || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.receivedKit ? 'نعم' : 'لا'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">استلم لباس</td>
+                        <td className="p-3 font-semibold">{player2.receivedKit ? 'نعم' : 'لا'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.kitAmount || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">مبلغ اللباس</td>
+                        <td className="p-3 font-semibold">{player2.kitAmount || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.isAcademyPlayer ? 'لاعب أكاديمية' : 'لاعب نادي'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">تصنيف اللاعب</td>
+                        <td className="p-3 font-semibold">{player2.isAcademyPlayer ? 'لاعب أكاديمية' : 'لاعب نادي'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.medicalHistory || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">السجل الطبي</td>
+                        <td className="p-3 font-semibold">{player2.medicalHistory || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.injuries || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الإصابات السابقة</td>
+                        <td className="p-3 font-semibold">{player2.injuries || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.penalties || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">العقوبات</td>
+                        <td className="p-3 font-semibold">{player2.penalties || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.notes || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">ملاحظات</td>
+                        <td className="p-3 font-semibold">{player2.notes || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.coachingCertificate || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الشهادة التدريبية</td>
+                        <td className="p-3 font-semibold">{player2.coachingCertificate || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.academicDegree || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">التحصيل العلمي</td>
+                        <td className="p-3 font-semibold">{player2.academicDegree || '-'}</td>
+                      </tr>
+

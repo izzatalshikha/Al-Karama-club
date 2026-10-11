@@ -175,6 +175,28 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
     }
   };
 
+  const exportToCSV = () => {
+    if (!activeSession) return;
+    const headers = ['الاسم', 'الدور', 'الحالة', 'السبب', 'وقت الرصد'];
+    const rows = categoryMembers.map(p => {
+      const rec = savedRecords.find(r => r.personId === p.id);
+      const local = localRecords[p.id];
+      const status = local?.status ?? rec?.status ?? 'لم يرصد';
+      const excuse = local?.excuse ?? rec?.excuse ?? '';
+      const time = local?.time ?? rec?.time ?? '';
+      return [p.name, p.role, status, excuse, time];
+    });
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `attendance_${activeSession.date}_${activeSession.category}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-4 md:space-y-8 animate-in fade-in duration-500 px-2 md:px-0 pb-20">
       <div className="modern-card p-6 md:p-10 flex flex-col gap-6 no-print">
@@ -190,6 +212,12 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
             </select>
           </div>
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto self-end">
+            {activeSession && (
+              <button onClick={exportToCSV} className="w-full md:w-auto bg-slate-100 text-slate-700 px-8 py-5 rounded-2xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-sm hover:bg-slate-200 transition-all">
+                <FileText size={20} />
+                تصدير CSV
+              </button>
+            )}
             {!isViewer && (
               <button onClick={saveAttendance} disabled={!selectedSessionId || (isLocked && !canEditNow) || isSaving || !!countdown} className="w-full md:w-auto bg-blue-900 text-white px-8 py-5 rounded-2xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all disabled:opacity-30">
                 {isSaving ? <History className="animate-spin" size={20}/> : <Save size={20} />}

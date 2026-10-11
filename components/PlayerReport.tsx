@@ -8,13 +8,17 @@ import {
   Phone, Fingerprint, Ruler, Weight, BadgeCheck, MapPin, 
   Globe, BarChart, Users, Star, AlertCircle, FileText,
   Loader2, GraduationCap, Award, Home, Info, Zap, Medal,
-  Save, History, BookOpen, Briefcase, DollarSign, CalendarCheck, UserX, Clock, Map
+  Save, History, BookOpen, Briefcase, DollarSign, CalendarCheck, UserX, Clock, Map,
+  CreditCard, Eye, X, Download, FileCheck, Edit2, Plus, Trash2, Upload, UserCheck, ShieldCheck
 } from 'lucide-react';
-import { AppState, Person, Match } from '../types';
-import { supabase } from '../App';
+import { AppState, Person, Match, CoachingCertificate, PreviousExperience } from '../types';
+import { supabase, generateUUID } from '../App';
 import ClubLogo from './ClubLogo';
 import { QRCodeSVG } from 'qrcode.react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import DocumentUploadCard from './DocumentUploadCard';
+import { compressDocumentImage } from '../utils/imageCompressor';
+import EditPersonModal from './EditPersonModal';
 
 interface PlayerReportProps {
   state: AppState;
@@ -27,14 +31,68 @@ interface PlayerReportProps {
 const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, onBack, addLog }) => {
   const [isSavingReport, setIsSavingReport] = useState(false);
   const [monthlyNotes, setMonthlyNotes] = useState<{ [key: string]: string }>(player?.monthlyReports || {});
+  const [previewDoc, setPreviewDoc] = useState<{ title: string; src: string } | null>(null);
   
+  // Edit Person Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<Person>>(player ? { ...player } : {});
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   const months = ["كانون الثاني", "شباط", "آذار", "نيسان", "أيار", "حزيران", "تموز", "آب", "أيلول", "تشرين الأول", "تشرين الثاني", "كانون الأول"];
   const currentMonthIndex = new Date().getMonth();
   const [selectedMonth, setSelectedMonth] = useState(months[currentMonthIndex]);
+  const [selectedSeason, setSelectedSeason] = useState<string>(state.activeSeason || '2026/2027');
 
   if (!player || !state.currentUser) return null;
 
-  const isViewer = state.currentUser.role === 'مشاهد';
+  const playerSeasons = Array.isArray(player.seasons) && player.seasons.length > 0
+    ? player.seasons
+    : (player.season ? [player.season] : ['2025/2026']);
+
+  const isSelf = Boolean(
+    (state.currentUser?.relatedPersonId && state.currentUser.relatedPersonId === player.id) ||
+    (state.currentUser?.username && (state.currentUser.username === player.name || player.name.includes(state.currentUser.username))) ||
+    (state.currentUser?.id === player.id)
+  );
+  const isManager = state.currentUser.role === 'مدير';
+  const isCoach = state.currentUser.role === 'مدرب' || state.currentUser.role === 'مساعد مدرب' || state.currentUser.role === 'إداري فئة';
+  const canEditPerson = isManager || isSelf || (isCoach && (!state.currentUser?.restrictedCategory || String(state.currentUser.restrictedCategory).includes(player.category)));
+
+  const handleSavePersonEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEditPerson) return;
+    setIsSavingEdit(true);
+    try {
+      const cleanData: any = { ...editFormData };
+      ['birthDate', 'passportIssueDate', 'passportExpiryDate'].forEach(k => {
+        if (cleanData[k] === '') cleanData[k] = null;
+      });
+
+      const { error } = await supabase
+        .from('people')
+        .update(cleanData)
+        .eq('id', player.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        people: prev.people.map(p => p.id === player.id ? { ...p, ...cleanData } : p)
+      }));
+
+      Object.assign(player, cleanData);
+
+      addLog?.('تم حفظ وتحديث البيانات بنجاح', 'success');
+      alert('تم حفظ وتحديث بيانات ' + (player.role === 'لاعب' ? 'اللاعب' : 'الكادر') + ' بنجاح في النظام!');
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      alert('خطأ أثناء الحفظ: ' + err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const isViewer = state.currentUser.role === 'مشاهد' || state.currentUser.role === 'لاعب';
 
   const stats = useMemo(() => {
     let totalMins = 0;
@@ -46,7 +104,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     const matchHistory: any[] = [];
     const groupedStats: Record<string, { matches: number; mins: number; goals: number; assists: number; yellows: number; reds: number }> = {};
 
-    state.matches.filter(m => m.isCompleted && (!m.season || m.season === state.activeSeason)).forEach(m => {
+    const targetSeason = selectedSeason;
+    const matchSeasonFilter = (m: Match) => {
+      if (targetSeason === 'all') return true;
+      const mSeason = m.season || '2025/2026';
+      return mSeason === targetSeason;
+    };
+
+    state.matches.filter(m => m.isCompleted && matchSeasonFilter(m)).forEach(m => {
       const starter = m.lineup.starters.find(s => s.playerId === player.id);
       const sub = m.lineup.subs.find(s => s.playerId === player.id);
       
@@ -91,16 +156,23 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
           goals: playerGoals,
           assists: playerAssists,
           cards: { y: playerYellows, r: playerReds },
-          score: `${m.ourScore}-${m.opponentScore}`
+          score: `${m.ourScore}-${m.opponentScore}`,
+          season: m.season || '2025/2026'
         });
       }
     });
 
     return { totalMins, goals, assists, yellows, reds, appearances, matchHistory, groupedStats };
-  }, [state.matches, player]);
+  }, [state.matches, player, selectedSeason]);
 
   const attendanceStats = useMemo(() => {
-    const catSessions = state.sessions.filter(s => s.category === player.category && s.isCompleted && (!s.season || s.season === state.activeSeason));
+    const targetSeason = selectedSeason;
+    const catSessions = state.sessions.filter(s => {
+      if (s.category !== player.category || !s.isCompleted) return false;
+      if (targetSeason === 'all') return true;
+      const sSeason = s.season || '2025/2026';
+      return sSeason === targetSeason;
+    });
     const records = state.attendance.filter(a => a.personId === player.id);
     
     const present = records.filter(r => r.status === 'حاضر').length;
@@ -201,9 +273,23 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
               <p className="text-[8px] md:text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">EAGLE OS PERFORMANCE PASSPORT</p>
            </div>
         </div>
-        <button onClick={() => window.print()} className="w-full md:w-auto bg-white text-slate-950 px-6 py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl hover:bg-orange-600 hover:text-white transition-all">
-          <Printer size={16} /> طباعة السجل
-        </button>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          {canEditPerson && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditFormData({ ...player });
+                setIsEditModalOpen(true);
+              }}
+              className="flex-1 md:flex-none bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 whitespace-nowrap"
+            >
+              <Edit2 size={16} /> تعديل البيانات
+            </button>
+          )}
+          <button onClick={() => window.print()} className="flex-1 md:flex-none bg-white text-slate-950 px-6 py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl hover:bg-orange-600 hover:text-white transition-all whitespace-nowrap">
+            <Printer size={16} /> طباعة السجل
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
@@ -288,11 +374,180 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                   <InfoBlock icon={Map} label="عنوان السكن" value={player.address} />
                </div>
             </div>
+
+            {/* بطاقة جواز السفر والوثائق الثبوتية */}
+            <div className="modern-card p-5 md:p-6 space-y-4">
+               <SectionTitle icon={CreditCard} title="جواز السفر والوثائق الرسمية" color="text-blue-600" />
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2 md:gap-3">
+                  <InfoBlock icon={CreditCard} label="رقم جواز السفر" value={player.passportNumber} color="text-blue-700" />
+                  <InfoBlock icon={Calendar} label="تاريخ إصدار الجواز" value={player.passportIssueDate} />
+                  <InfoBlock icon={Calendar} label="تاريخ انتهاء الجواز" value={player.passportExpiryDate} />
+               </div>
+
+               {/* حالة الجواز */}
+               {player.passportExpiryDate && (
+                 <div className="pt-2">
+                   {(() => {
+                     const expiry = new Date(player.passportExpiryDate);
+                     const now = new Date();
+                     const diffMonths = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30);
+                     if (expiry < now) {
+                       return (
+                         <div className="bg-red-50 text-red-700 border border-red-200 p-2.5 rounded-xl text-center text-xs font-black">
+                           ⚠️ جواز السفر منتهي الصلاحية
+                         </div>
+                       );
+                     }
+                     if (diffMonths <= 6) {
+                       return (
+                         <div className="bg-amber-50 text-amber-700 border border-amber-200 p-2.5 rounded-xl text-center text-xs font-black">
+                           ⏳ الجواز ينتهي خلال أقل من 6 أشهر
+                         </div>
+                       );
+                     }
+                     return (
+                       <div className="bg-emerald-50 text-emerald-700 border border-emerald-200 p-2.5 rounded-xl text-center text-xs font-black">
+                         ✓ جواز السفر ساري المفعول
+                       </div>
+                     );
+                   })()}
+                 </div>
+               )}
+
+               {/* معاينة صور الوثائق */}
+               <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">المستندات الثبوتية المرفوعة</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2">
+                     {player.idCardImage ? (
+                       <button
+                         type="button"
+                         onClick={() => setPreviewDoc({ title: 'صورة الهوية (الوجه الأول)', src: player.idCardImage! })}
+                         className="group p-2 rounded-xl bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 transition-all text-center flex flex-col items-center"
+                       >
+                         <div className="w-full h-20 bg-slate-200 rounded-lg overflow-hidden mb-1.5 flex items-center justify-center">
+                            <img src={player.idCardImage} alt="الهوية (الوجه 1)" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                         </div>
+                         <span className="text-[10px] font-black text-slate-800 group-hover:text-orange-600 flex items-center gap-1">
+                           <Eye size={12} /> الهوية (وجه 1)
+                         </span>
+                       </button>
+                     ) : (
+                       <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-[10px] font-bold text-slate-400 flex flex-col items-center justify-center h-28">
+                         لا توجد صورة وجه 1
+                       </div>
+                     )}
+
+                     {player.idCardBackImage ? (
+                       <button
+                         type="button"
+                         onClick={() => setPreviewDoc({ title: 'صورة الهوية (الوجه الثاني)', src: player.idCardBackImage! })}
+                         className="group p-2 rounded-xl bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 transition-all text-center flex flex-col items-center"
+                       >
+                         <div className="w-full h-20 bg-slate-200 rounded-lg overflow-hidden mb-1.5 flex items-center justify-center">
+                            <img src={player.idCardBackImage} alt="الهوية (الوجه 2)" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                         </div>
+                         <span className="text-[10px] font-black text-slate-800 group-hover:text-orange-600 flex items-center gap-1">
+                           <Eye size={12} /> الهوية (وجه 2)
+                         </span>
+                       </button>
+                     ) : (
+                       <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-[10px] font-bold text-slate-400 flex flex-col items-center justify-center h-28">
+                         لا توجد صورة وجه 2
+                       </div>
+                     )}
+
+                     {player.passportImage ? (
+                       <button
+                         type="button"
+                         onClick={() => setPreviewDoc({ title: 'صورة جواز السفر', src: player.passportImage! })}
+                         className="group p-2 rounded-xl bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 transition-all text-center flex flex-col items-center col-span-2 sm:col-span-1 lg:col-span-2"
+                       >
+                         <div className="w-full h-20 bg-slate-200 rounded-lg overflow-hidden mb-1.5 flex items-center justify-center">
+                            <img src={player.passportImage} alt="جواز السفر" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                         </div>
+                         <span className="text-[10px] font-black text-slate-800 group-hover:text-orange-600 flex items-center gap-1">
+                           <Eye size={12} /> صورة الجواز
+                         </span>
+                       </button>
+                     ) : (
+                       <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-[10px] font-bold text-slate-400 flex flex-col items-center justify-center h-28 col-span-2 sm:col-span-1 lg:col-span-2">
+                         لا توجد صورة جواز
+                       </div>
+                     )}
+                  </div>
+               </div>
+            </div>
          </div>
 
          {/* العمود الأيسر: الإحصائيات الفنية */}
          <div className="lg:col-span-8 space-y-6 md:space-y-8">
             
+            {/* شريط المواسم الرياضية في النادي وسجل المواسم */}
+            <div className="modern-card p-5 md:p-6 border-r-8 border-orange-500 bg-gradient-to-l from-orange-50/50 via-white to-white shadow-sm space-y-4">
+               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="flex items-center gap-2.5">
+                     <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                        <Calendar size={20} />
+                     </div>
+                     <div>
+                        <h3 className="text-sm md:text-base font-black text-blue-950">
+                           المواسم الرياضية في النادي ({playerSeasons.length} مواسم مسجلة)
+                        </h3>
+                        <p className="text-[10px] text-slate-500 font-bold">
+                           استعرض إحصائيات وأداء {player.role === 'لاعب' ? 'اللاعب' : 'الكادر'} حسب كل موسم
+                        </p>
+                     </div>
+                  </div>
+
+                  {/* محدد الموسم للإحصائيات */}
+                  <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+                     <span className="text-[10px] font-black text-slate-500 px-2 whitespace-nowrap">عرض إحصائيات:</span>
+                     <select
+                       value={selectedSeason}
+                       onChange={(e) => setSelectedSeason(e.target.value)}
+                       className="bg-white text-blue-950 font-black text-xs px-3 py-1.5 rounded-lg border border-slate-200 outline-none cursor-pointer shadow-sm flex-1 sm:flex-none"
+                     >
+                        <option value="all">جميع المواسم مجتمعة</option>
+                        {playerSeasons.map(s => (
+                          <option key={s} value={s}>موسم {s}</option>
+                        ))}
+                     </select>
+                  </div>
+               </div>
+
+               {/* بطاقات المواسم المسجلة في سجل اللاعب */}
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100">
+                  {playerSeasons.map(s => {
+                    const isCurrentSelected = selectedSeason === s;
+                    const isSystemActive = state.activeSeason === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setSelectedSeason(s)}
+                        className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between gap-1.5 relative overflow-hidden ${
+                          isCurrentSelected 
+                            ? 'bg-orange-500 text-white border-orange-600 shadow-md shadow-orange-500/20' 
+                            : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
+                        }`}
+                      >
+                        {isSystemActive && (
+                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full self-start ${isCurrentSelected ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-700'}`}>
+                            الموسم الحالي
+                          </span>
+                        )}
+                        <div>
+                           <span className="text-xs font-black block">موسم {s}</span>
+                           <span className={`text-[9px] font-bold ${isCurrentSelected ? 'text-orange-100' : 'text-slate-500'}`}>
+                             مقيد في الفريق ✓
+                           </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+               </div>
+            </div>
+
             {/* مؤشرات الأداء السريعة */}
             {player.role === 'لاعب' && (
               <div className={`grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4`}>
@@ -386,12 +641,38 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
 
             {player.role !== 'لاعب' && player.certificates && (
               <div className="modern-card p-6 md:p-8 border-r-8 border-orange-500 bg-orange-50">
-                 <SectionTitle icon={Medal} title="3. الشهادات التدريبية المعتمدة" color="text-orange-500" />
+                 <div className="flex justify-between items-center mb-4">
+                   <SectionTitle icon={Medal} title="3. الشهادات التدريبية المعتمدة" color="text-orange-500" />
+                   <span className="text-xs font-black bg-orange-100 text-orange-800 px-3 py-1 rounded-full border border-orange-200">
+                     {player.certificates.length} شهادات
+                   </span>
+                 </div>
                  <div className="space-y-3 mt-4">
                     {player.certificates.map(cert => (
-                      <div key={cert.id} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <span className="font-bold text-slate-900">{cert.name}</span>
-                        <span className="text-sm text-slate-500">{cert.date}</span>
+                      <div key={cert.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                            <Medal size={20} />
+                          </div>
+                          <div>
+                            <span className="font-bold text-slate-900 block text-sm">{cert.name}</span>
+                            <span className="text-xs text-slate-500 font-semibold">{cert.date || 'تاريخ غير محدد'}</span>
+                          </div>
+                        </div>
+
+                        {cert.image && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewDoc({ title: `وثيقة شهادة: ${cert.name}`, src: cert.image! })}
+                            className="flex items-center gap-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 self-start sm:self-auto"
+                          >
+                            <div className="w-6 h-6 rounded bg-slate-200 overflow-hidden flex items-center justify-center">
+                              <img src={cert.image} alt={cert.name} className="w-full h-full object-cover" />
+                            </div>
+                            <Eye size={14} />
+                            <span>عرض وثيقة الشهادة</span>
+                          </button>
+                        )}
                       </div>
                     ))}
                  </div>
@@ -572,6 +853,64 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             </div>
          </div>
       </div>
+       {previewDoc && (
+         <div
+           className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 print:hidden"
+           onClick={() => setPreviewDoc(null)}
+         >
+           <div
+             className="relative max-w-4xl max-h-[90vh] bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+             onClick={(e) => e.stopPropagation()}
+             dir="rtl"
+           >
+             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+               <div className="flex items-center gap-2">
+                 <FileCheck className="text-orange-500" size={20} />
+                 <h4 className="text-sm font-black text-slate-900">{previewDoc.title} - {player.name}</h4>
+               </div>
+               <div className="flex items-center gap-2">
+                 <a
+                   href={previewDoc.src}
+                   download={`${player.name}_${previewDoc.title}.jpg`}
+                   className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold"
+                 >
+                   <Download size={16} /> تحميل
+                 </a>
+                 <button
+                   type="button"
+                   onClick={() => setPreviewDoc(null)}
+                   className="p-2 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-xl transition-all"
+                 >
+                   <X size={20} />
+                 </button>
+               </div>
+             </div>
+             <div className="p-4 overflow-auto flex items-center justify-center max-h-[80vh] bg-slate-100">
+               <img
+                 src={previewDoc.src}
+                 alt={previewDoc.title}
+                 className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-lg border border-slate-200"
+               />
+             </div>
+           </div>
+         </div>
+       )}
+        {isEditModalOpen && (
+          <EditPersonModal
+            person={player}
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            onSaved={(updated) => {
+              setState(prev => ({
+                ...prev,
+                people: prev.people.map(p => p.id === updated.id ? updated : p)
+              }));
+              Object.assign(player, updated);
+              addLog?.('تم تحديث البيانات بنجاح', 'success');
+            }}
+            isSelf={isSelf}
+          />
+        )}
     </div>
   );
 };

@@ -2,9 +2,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, Calendar, Trophy, Clock, MapPin, Zap, 
-  Activity, Search, Package, WalletCards, Bot, Loader2
+  Activity, Search, Package, WalletCards, Bot, Loader2, BarChart2, MessageCircle
 } from 'lucide-react';
 import { AppState, Person, Match, TrainingSession } from '../types';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { SeasonCalendar } from './SeasonCalendar';
 
 interface DashboardProps {
   state: AppState;
@@ -71,10 +73,12 @@ const ActivityCountdown: React.FC<{ date: string; time: string; durationMins?: n
   );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, onSessionClick }) => {
+const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, onSessionClick, onPlayerClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [finYear, setFinYear] = useState(new Date().getFullYear().toString());
+  const [finMonth, setFinMonth] = useState('الكل');
 
   const globalFilter = state.globalCategoryFilter;
   const isManager = state.currentUser?.role === 'مدير';
@@ -163,10 +167,191 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
     }).sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
   }, [state.sessions, globalFilter, restrictedCat, allowedCategories, state.activeSeason]);
 
+  const expiringContracts = useMemo(() => {
+    const now = new Date();
+    const threeMonthsFromNow = new Date();
+    threeMonthsFromNow.setMonth(now.getMonth() + 3);
+
+    return state.people.filter(p => {
+      if (!p.contractEnd) return false;
+      const end = new Date(p.contractEnd);
+      return (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter) && end > now && end <= threeMonthsFromNow;
+    }).sort((a, b) => new Date(a.contractEnd!).getTime() - new Date(b.contractEnd!).getTime());
+  }, [state.people, globalFilter, restrictedCat, allowedCategories]);
+
+  const subscriptionAlerts = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getFullYear() * 12 + now.getMonth();
+    const currentDay = now.getDate();
+
+    return state.people.filter(p => {
+      if (p.role !== 'لاعب' || !p.isAcademyPlayer || !p.subscriptionMonth) return false;
+      const [year, month] = p.subscriptionMonth.split('-').map(Number);
+      const subMonth = year * 12 + (month - 1);
+      
+      const isExpired = subMonth < currentMonth;
+      const isExpiringSoon = subMonth === currentMonth && currentDay >= 22;
+
+      return (!restrictedCat || allowedCategories.includes(p.category)) && 
+             (globalFilter === 'الكل' || p.category === globalFilter) && 
+             (isExpired || isExpiringSoon);
+    }).map(p => {
+      const [year, month] = p.subscriptionMonth!.split('-').map(Number);
+      const subMonth = year * 12 + (month - 1);
+      return {
+        ...p,
+        isExpired: subMonth < currentMonth
+      };
+    });
+  }, [state.people, globalFilter, restrictedCat, allowedCategories]);
+
+  const financialStats = useMemo(() => {
+    const players = state.people.filter(p => p.role === 'لاعب' && p.isAcademyPlayer && (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter));
+    let totalSubs = 0;
+    let totalKits = 0;
+    let kitsCount = 0;
+
+    players.forEach(p => {
+      if (p.subscriptionAmount) totalSubs += parseFloat(p.subscriptionAmount) || 0;
+      if (p.receivedKit) {
+        kitsCount++;
+        if (p.kitAmount) totalKits += parseFloat(p.kitAmount) || 0;
+      }
+    });
+
+    return { totalPlayers: players.length, totalSubs, totalKits, kitsCount };
+  }, [state.people, restrictedCat, allowedCategories, globalFilter]);
+
+  const monthlyFinancialData = useMemo(() => {
+    const players = state.people.filter(p => p.role === 'لاعب' && p.isAcademyPlayer && (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter));
+    
+    const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    
+    return months.map((m, index) => {
+      const monthStr = `${finYear}-${m}`;
+      let subs = 0;
+      let kits = 0;
+      
+      players.forEach(p => {
+        if (p.subscriptionMonth === monthStr) {
+          if (p.subscriptionAmount) subs += parseFloat(p.subscriptionAmount) || 0;
+        }
+        if (p.receivedKit && p.registrationDate && p.registrationDate.startsWith(monthStr)) {
+          if (p.kitAmount) kits += parseFloat(p.kitAmount) || 0;
+        }
+      });
+      
+      return {
+        name: monthNames[index],
+        monthValue: m,
+        'الاشتراكات': subs,
+        'اللباس': kits,
+      };
+    }).filter(d => finMonth === 'الكل' || d.monthValue === finMonth);
+  }, [state.people, restrictedCat, allowedCategories, globalFilter, finYear, finMonth]);
+
+  const seasonalPerformance = useMemo(() => {
+    const catsToEvaluate = state.categories.filter(c => 
+      (!restrictedCat || allowedCategories.includes(c)) && 
+      (globalFilter === 'الكل' || c === globalFilter)
+    );
+
+    const now = new Date();
+    
+    return catsToEvaluate.map(cat => {
+      const players = state.people.filter(p => p.category === cat && p.role === 'لاعب');
+      let avgAge = 0;
+      if (players.length > 0) {
+        let totalAge = 0;
+        let validPlayers = 0;
+        players.forEach(p => {
+          if (p.birthDate) {
+            const bYear = parseInt(p.birthDate.split('-')[0]);
+            if (!isNaN(bYear)) {
+               totalAge += (now.getFullYear() - bYear);
+               validPlayers++;
+            }
+          }
+        });
+        if (validPlayers > 0) avgAge = totalAge / validPlayers;
+      }
+
+      const categoryMatches = state.matches.filter(m => m.category === cat && m.isCompleted && (!m.season || m.season === state.activeSeason));
+      const playedMatches = categoryMatches.length;
+      let wins = 0;
+      categoryMatches.forEach(m => {
+        const ourScore = parseInt(m.ourScore || '0');
+        const opponentScore = parseInt(m.opponentScore || '0');
+        if (!isNaN(ourScore) && !isNaN(opponentScore) && ourScore > opponentScore) wins++;
+      });
+      const winRate = playedMatches > 0 ? (wins / playedMatches) * 100 : 0;
+
+      return {
+        category: cat,
+        'متوسط العمر (سنة)': parseFloat(avgAge.toFixed(1)),
+        'مباريات ملعوبة': playedMatches,
+        'نسبة الفوز (%)': parseFloat(winRate.toFixed(1))
+      };
+    });
+  }, [state.categories, state.people, state.matches, restrictedCat, allowedCategories, globalFilter, state.activeSeason]);
+
+  const attendanceStats = useMemo(() => {
+    const catsToEvaluate = state.categories.filter(c => 
+      (!restrictedCat || allowedCategories.includes(c)) && 
+      (globalFilter === 'الكل' || c === globalFilter)
+    );
+
+    return catsToEvaluate.map(cat => {
+      const sessions = state.sessions.filter(s => s.category === cat && (!s.season || s.season === state.activeSeason));
+      const sessionIds = sessions.map(s => s.id);
+      
+      const records = state.attendance.filter(a => sessionIds.includes(a.sessionId));
+      
+      const total = records.length;
+      const present = records.filter(r => r.status === 'حاضر').length;
+      const late = records.filter(r => r.status === 'متأخر').length;
+      const absent = records.filter(r => r.status === 'غائب').length;
+      const excused = records.filter(r => r.status === 'غياب بعذر').length;
+
+      const attendanceRate = total > 0 ? ((present + late) / total) * 100 : 0;
+
+      return {
+        category: cat,
+        'نسبة الحضور (%)': parseFloat(attendanceRate.toFixed(1)),
+        'حاضر': present,
+        'متأخر': late,
+        'غائب': absent,
+        'غياب بعذر': excused
+      };
+    }).filter(s => s['حاضر'] > 0 || s['غائب'] > 0 || s['متأخر'] > 0 || s['غياب بعذر'] > 0);
+  }, [state.categories, state.sessions, state.attendance, restrictedCat, allowedCategories, globalFilter, state.activeSeason]);
+
+  const playerRoleStats = useMemo(() => {
+    const people = state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter));
+    const roles = ['لاعب', 'مدرب', 'إداري', 'معالج', 'مسؤول تجهيزات', 'مشاهد'];
+    const data = roles.map(role => ({
+      name: role,
+      value: people.filter(p => p.role === role).length
+    })).filter(r => r.value > 0);
+    return data;
+  }, [state.people, restrictedCat, allowedCategories, globalFilter]);
+
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#64748B'];
+
+  const isAcademyMode = state.appMode === 'academy';
+
   const stats = [
     { label: 'الكوادر واللاعبين', value: state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter)).length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { label: 'الأنشطة المجدولة', value: upcomingMatches.length + upcomingSessions.length, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-    { label: 'أصناف المستودع', value: state.warehouse.filter(w => (!restrictedCat || allowedCategories.includes(w.category)) && (globalFilter === 'الكل' || w.category === globalFilter)).length, icon: Package, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+    ...(isAcademyMode ? [
+      { label: 'طلاب الأكاديمية (اللاعبين)', value: financialStats.totalPlayers, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+      { label: 'إجمالي الاشتراكات', value: financialStats.totalSubs.toLocaleString() + ' $', icon: WalletCards, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+      { label: 'إجمالي مبلغ اللباس', value: financialStats.totalKits.toLocaleString() + ' $', icon: Package, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+      { label: 'اللاعبين المستلمين لباس', value: financialStats.kitsCount, icon: Package, color: 'text-rose-500', bg: 'bg-rose-500/10' }
+    ] : [
+      { label: 'الأنشطة المجدولة', value: upcomingMatches.length + upcomingSessions.length, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+      { label: 'أصناف المستودع', value: state.warehouse.filter(w => (!restrictedCat || allowedCategories.includes(w.category)) && (globalFilter === 'الكل' || w.category === globalFilter)).length, icon: Package, color: 'text-purple-500', bg: 'bg-purple-500/10' }
+    ])
   ];
 
   return (
@@ -262,23 +447,52 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         </div>
       ) : (
       <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-        {stats.map((s, i) => (
-          <div key={i} className="modern-card p-6 md:p-8 group hover:scale-[1.02] transition-all duration-300">
-             <div className="flex items-center gap-4 md:gap-6">
-                <div className={`p-4 rounded-2xl ${s.bg} ${s.color.replace('500', '600')} transition-colors group-hover:bg-blue-900 group-hover:text-white`}>
-                   <s.icon size={28} className="md:w-8 md:h-8" />
-                </div>
-                <div>
-                   <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-widest">{s.label}</p>
-                   <p className="text-2xl md:text-4xl font-bold text-blue-950 tabular-nums mt-1">{s.value}</p>
-                </div>
-             </div>
+      {expiringContracts.length > 0 && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg mb-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-red-700 font-bold">تنبيه انتهاء عقود لاعبين:</span>
           </div>
-        ))}
-      </div>
+          <ul className="list-disc list-inside space-y-1">
+            {expiringContracts.map(p => (
+              <li key={p.id} className="text-sm text-red-800 font-semibold cursor-pointer hover:underline" onClick={() => onPlayerClick?.(p)}>
+                اللاعب {p.name} سينتهي عقده بتاريخ {p.contractEnd}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {isAcademyMode && subscriptionAlerts.length > 0 && (
+        <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-lg mb-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-orange-700 font-bold">تنبيه اشتراكات اللاعبين:</span>
+          </div>
+          <ul className="space-y-2">
+            {subscriptionAlerts.map(p => {
+              const statusText = p.isExpired ? "انتهى اشتراكه عن شهر" : "اقترب موعد تجديد اشتراكه لشهر";
+              const waText = p.isExpired
+                ? `نذكركم بانتهاء اشتراك اللاعب ${p.name} للأكاديمية، يرجى تجديد الاشتراك وشكراً.`
+                : `نذكركم باقتراب موعد تجديد اشتراك اللاعب ${p.name} للأكاديمية، يرجى تجديد الاشتراك وشكراً.`;
+              const waLink = p.phone ? `https://wa.me/${p.phone}?text=${encodeURIComponent(waText)}` : null;
+              
+              return (
+                <li key={p.id} className="text-sm text-orange-800 font-semibold flex flex-col sm:flex-row sm:items-center justify-between bg-orange-100/50 p-3 rounded-lg gap-3">
+                  <span className="cursor-pointer hover:underline" onClick={() => onPlayerClick?.(p as any)}>
+                    اللاعب {p.name} ({statusText} {p.subscriptionMonth})
+                  </span>
+                  {waLink && (
+                    <a href={waLink} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 bg-emerald-500 text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-emerald-600 transition-colors shrink-0">
+                      <MessageCircle size={14} /> مراسلة الأهل عبر واتساب
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
          <div className="space-y-6">
             <div className="flex items-center gap-3 border-r-4 border-orange-500 pr-4">
                <h2 className="text-xl font-bold text-blue-900 tracking-tight uppercase">مباريات EAGLE OS المرتقبة</h2>
@@ -339,7 +553,121 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
              </div>
           </div>
        </div>
-       </>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+        {stats.map((s, i) => (
+          <div key={i} className="modern-card p-6 md:p-8 group hover:scale-[1.02] transition-all duration-300">
+             <div className="flex items-center gap-4 md:gap-6">
+                <div className={`p-4 rounded-2xl ${s.bg} ${s.color.replace('500', '600')} transition-colors group-hover:bg-blue-900 group-hover:text-white`}>
+                   <s.icon size={28} className="md:w-8 md:h-8" />
+                </div>
+                <div>
+                   <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-widest">{s.label}</p>
+                   <p className="text-2xl md:text-4xl font-bold text-blue-950 tabular-nums mt-1">{s.value}</p>
+                </div>
+             </div>
+          </div>
+        ))}
+      </div>
+
+      {isAcademyMode && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mt-8 mb-10">
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+             <h3 className="text-lg font-black text-blue-900 flex items-center gap-2">
+                <WalletCards className="text-emerald-500" size={20} />
+                الدخل الشهري والمصاريف
+             </h3>
+             <div className="flex items-center gap-2">
+               <select 
+                 className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                 value={finYear}
+                 onChange={(e) => setFinYear(e.target.value)}
+               >
+                 {[0, 1, 2, 3].map(offset => {
+                   const y = new Date().getFullYear() - offset;
+                   return <option key={y} value={y.toString()}>{y}</option>;
+                 })}
+               </select>
+               <select 
+                 className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                 value={finMonth}
+                 onChange={(e) => setFinMonth(e.target.value)}
+               >
+                 <option value="الكل">كل الأشهر</option>
+                 {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m, i) => (
+                   <option key={m} value={m}>{['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'][i]}</option>
+                 ))}
+               </select>
+             </div>
+           </div>
+           <div className="h-80 w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                 <BarChart data={monthlyFinancialData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+                    <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                    <Bar dataKey="الاشتراكات" fill="#10B981" radius={[4, 4, 0, 0]} barSize={24} />
+                    <Bar dataKey="اللباس" fill="#F59E0B" radius={[4, 4, 0, 0]} barSize={24} />
+                 </BarChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+      )}
+
+      {!isAcademyMode && seasonalPerformance.length > 0 && (
+         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mt-8 mb-10">
+            <h3 className="text-lg font-black text-blue-900 flex items-center gap-2 mb-6">
+               <BarChart2 className="text-blue-500" size={20} />
+               تحليل الأداء الموسمي
+            </h3>
+            <div className="h-80 w-full" dir="ltr">
+               <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={seasonalPerformance} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                     <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                     <YAxis yAxisId="left" orientation="left" stroke="#3B82F6" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+                     <YAxis yAxisId="right" orientation="right" stroke="#F97316" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+                     <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                     <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                     <Bar yAxisId="left" dataKey="مباريات ملعوبة" fill="#3B82F6" radius={[4, 4, 0, 0]} barSize={24} />
+                     <Bar yAxisId="right" dataKey="نسبة الفوز (%)" fill="#10B981" radius={[4, 4, 0, 0]} barSize={24} />
+                     <Bar yAxisId="left" dataKey="متوسط العمر (سنة)" fill="#F59E0B" radius={[4, 4, 0, 0]} barSize={24} />
+                  </BarChart>
+               </ResponsiveContainer>
+            </div>
+         </div>
+      )}
+
+      {attendanceStats.length > 0 && (
+         <div className="grid grid-cols-1 gap-8 mb-10">
+           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+              <h3 className="text-lg font-black text-blue-900 flex items-center gap-2 mb-6">
+                 <Activity className="text-orange-500" size={20} />
+                 نسب ومعدلات الحضور
+              </h3>
+              <div className="h-80 w-full" dir="ltr">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={attendanceStats} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                       <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} domain={[0, 100]} />
+                       <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                       <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                       <Bar dataKey="نسبة الحضور (%)" fill="#10B981" radius={[4, 4, 0, 0]} barSize={32} />
+                    </BarChart>
+                 </ResponsiveContainer>
+              </div>
+           </div>
+         </div>
+      )}
+      
+      <div className="mb-10">
+        <SeasonCalendar state={state} onMatchClick={onMatchClick} onSessionClick={onSessionClick} />
+      </div>
+      
+      </>
        )}
     </div>
   );

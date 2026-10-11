@@ -77,6 +77,22 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
     setEditingId(null);
   };
 
+  const exportToCSV = () => {
+    const headers = ['المادة', 'القسم/الفئة', 'الكمية', 'الوحدة', 'الحالة', 'ملاحظات', 'آخر تحديث'];
+    const rows = filteredItems.map(item => [
+      item.name, item.category, item.quantity, item.unit, item.condition, item.notes || '', item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : ''
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `warehouse_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const labelClass = "text-[10px] font-black text-slate-900 mr-2 uppercase block mb-1.5";
   const fieldClass = "w-full bg-slate-50 border-2 border-slate-900 rounded-xl py-3 px-4 font-black text-slate-900 outline-none focus:border-orange-600 transition-all text-sm";
 
@@ -117,6 +133,10 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                  {((restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : state.categories)).map(c => <option key={c} value={c}>{c}</option>)}
                </select>
              )}
+
+             <button onClick={exportToCSV} className="flex-1 md:flex-none whitespace-nowrap bg-slate-100 text-slate-700 px-6 py-3 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-slate-200 transition-all active:scale-95">
+                <ClipboardList size={20}/> تصدير CSV
+             </button>
 
              {!isViewer && (
                <button onClick={() => { setEditingId(null); setFormData({ category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'المخزن العام', condition: 'جديد', unit: 'قطعة', quantity: 0 }); setIsModalOpen(true); }} className="flex-1 md:flex-none whitespace-nowrap bg-blue-900 text-white px-6 py-3 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all active:scale-95">

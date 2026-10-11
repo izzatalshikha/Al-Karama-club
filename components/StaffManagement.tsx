@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { 
   UserPlus, Trash2, Search, Edit2, ChevronRight, 
   X, Save, Fingerprint, Activity, GraduationCap, Award, Loader2, Filter, Briefcase, Plus, Calendar,
-  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal, Key
+  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal, Key, FileText, CreditCard, FileCheck
 } from 'lucide-react';
 import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { generateUUID, supabase } from '../App';
+import DocumentUploadCard from './DocumentUploadCard';
 
 interface StaffManagementProps {
   state: AppState;
@@ -34,7 +35,10 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     nationalId: '', federalNumber: '', internationalId: '', address: '',
     category: defaultCategory,
     role: 'مدرب', phone: '', joinDate: new Date().toISOString().split('T')[0],
-    academicDegree: '', certificates: [], experiences: []
+    academicDegree: '', certificates: [], experiences: [],
+    passportNumber: '', passportIssueDate: '', passportExpiryDate: '', idCardImage: '', idCardBackImage: '', passportImage: '',
+    season: state.activeSeason || '2026/2027',
+    seasons: [state.activeSeason || '2026/2027']
   };
 
   const [formData, setFormData] = useState<Partial<Person>>(initialFormState);
@@ -53,7 +57,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name?.trim() || isSaving || isViewer) return;
+    if (!formData.name?.trim() || isSaving) return;
+    const isEditingSelf = editingId === currentUser.relatedPersonId || formData.name === currentUser.username;
+    if (isViewer && !isEditingSelf && !isManager) return;
 
     setIsSaving(true);
     const updatedPerson = {
@@ -62,6 +68,10 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
       id: editingId || generateUUID(),
       name: formData.name!.trim(),
     } as any;
+
+    ['birthDate', 'passportIssueDate', 'passportExpiryDate'].forEach(key => {
+      if (updatedPerson[key] === '') updatedPerson[key] = null;
+    });
 
     try {
       let updatedUserObj = null;
@@ -157,10 +167,35 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     }
   };
 
+  const exportToCSV = () => {
+    const headers = ['الاسم', 'الفئة', 'الدور', 'الهاتف', 'تاريخ الانضمام', 'الشهادة الأكاديمية'];
+    const rows = filteredMembers.map(p => [
+      p.name, p.category || '', p.role, p.phone || '', p.joinDate || '', p.academicDegree || ''
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `staff_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const openEdit = (p: Person) => {
     if (isViewer) return;
+    const pSeasons = Array.isArray(p.seasons) && p.seasons.length > 0
+      ? p.seasons
+      : (p.season ? [p.season] : ['2025/2026']);
     setEditingId(p.id);
-    setFormData({ ...p, certificates: p.certificates || [], experiences: p.experiences || [] });
+    setFormData({ 
+      ...p, 
+      season: p.season || pSeasons[0] || '2025/2026',
+      seasons: pSeasons,
+      certificates: p.certificates || [], 
+      experiences: p.experiences || [] 
+    });
     setIsModalOpen(true);
   };
 
@@ -204,6 +239,10 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
            </div>
          )}
 
+         <button onClick={exportToCSV} className="bg-slate-100 text-slate-700 px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 hover:bg-slate-200 transition-all whitespace-nowrap w-full md:w-auto justify-center">
+           <FileText size={20}/> تصدير CSV
+         </button>
+
          {!isViewer && (
            <button onClick={() => { setEditingId(null); setFormData(initialFormState); setIsModalOpen(true); }}
              className="bg-orange-500 text-white px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-orange-500/10 hover:bg-orange-600 transition-all whitespace-nowrap w-full md:w-auto justify-center">
@@ -222,6 +261,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-4">
         {filteredMembers.map(person => {
           const hasAccount = state.users.some(u => u.username === person.name);
+          const isSelf = person.id === currentUser.relatedPersonId || person.name === currentUser.username;
+          const canEditPerson = !isViewer || isSelf || isManager;
           const getRoleIcon = (role: string) => {
             switch(role) {
               case 'مدرب': return <UserCog size={12} className="text-orange-600" />;
@@ -238,9 +279,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
           };
 
           return (
-          <div key={person.id} className="modern-card p-4 md:p-5 group hover:border-orange-500 transition-all flex flex-col border-b-4 border-b-orange-500/20">
+          <div key={person.id} className={`modern-card p-4 md:p-5 group hover:border-orange-500 transition-all flex flex-col border-b-4 ${isSelf ? 'border-b-orange-500 ring-2 ring-orange-400/30' : 'border-b-orange-500/20'}`}>
              <div className="flex justify-between items-start mb-3">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-50 rounded-xl flex items-center justify-center font-black text-xl text-blue-900 border border-blue-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400 transition-all">
+                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center font-black text-xl transition-all border shadow-sm ${isSelf ? 'bg-orange-500 text-white border-orange-400' : 'bg-blue-50 text-blue-900 border-blue-100 group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400'}`}>
                    {person.name.charAt(0)}
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -251,23 +292,46 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                    </span>
                 </div>
              </div>
-             <h3 className="text-sm md:text-base font-black text-blue-950 mb-1 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
+             <div className="flex items-center justify-between gap-1 mb-1">
+               <h3 className="text-sm md:text-base font-black text-blue-950 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
+               {isSelf && (
+                 <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full shrink-0 shadow-xs">
+                   ملفك الشخصي
+                 </span>
+               )}
+             </div>
              <p className="text-[8px] md:text-[9px] text-slate-600 font-bold mb-2 italic truncate">{person.academicDegree || 'بدون تحصيل'}</p>
              <div className="flex flex-wrap gap-1 mb-3">
                 {person.certificates && person.certificates.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.certificates.length} شهادات</span>}
                 {person.experiences && person.experiences.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.experiences.length} خبرات</span>}
+                {(person.passportNumber || '').trim() !== '' && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">جواز: {person.passportNumber}</span>}
+                {(person.idCardImage || person.passportImage) && (
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-bold flex items-center gap-1">
+                    <FileCheck size={10} /> الوثائق
+                  </span>
+                )}
              </div>
              <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center gap-2">
                 <button onClick={() => onOpenReport?.(person)} className="text-[10px] font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={12}/></button>
-                <div className="flex gap-1.5">
-                   {!isViewer && (
-                     <>
-                       {!hasAccount && (
-                         <button onClick={() => handleCreateAccount(person)} title="إنشاء حساب للنظام" className="p-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all shadow-sm"><Key size={12} /></button>
-                       )}
-                       <button onClick={() => openEdit(person)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={12} /></button>
-                       <button onClick={() => handleDelete(person.id, person.name)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={12} /></button>
-                     </>
+                <div className="flex gap-1.5 items-center">
+                   {!hasAccount && !isViewer && (
+                     <button onClick={() => handleCreateAccount(person)} title="إنشاء حساب للنظام" className="p-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all shadow-sm"><Key size={12} /></button>
+                   )}
+                   {canEditPerson && (
+                     <button 
+                       onClick={() => openEdit(person)} 
+                       title={isSelf ? "تعديل ملفك الشخصي" : "تعديل السجل"} 
+                       className={`p-1.5 rounded-lg transition-all shadow-sm ${
+                         isSelf 
+                           ? "bg-orange-500 text-white hover:bg-orange-600 ring-2 ring-orange-300" 
+                           : "bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white"
+                       }`}
+                     >
+                       <Edit2 size={12} />
+                     </button>
+                   )}
+                   {(!isViewer || isManager) && !isSelf && (
+                     <button onClick={() => handleDelete(person.id, person.name)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={12} /></button>
                    )}
                 </div>
              </div>
@@ -309,8 +373,65 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                 <div className="sm:col-span-2 space-y-1"><label className={labelClass}>العنوان التفصيلي</label><input className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
               </div>
 
-              {/* القسم 2: الرياضة */}
-              <h4 className={sectionHeader}><Activity size={16}/> 2. التوصيف الوظيفي بالنادي</h4>
+              {/* وثائق الهوية وجواز السفر للكادر */}
+              <h4 className={sectionHeader}><CreditCard size={16}/> 2. جواز السفر ووثائق الهوية</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>رقم جواز السفر</label>
+                  <input
+                    className={inputClass}
+                    placeholder="مثال: N01234567"
+                    value={formData.passportNumber || ''}
+                    onChange={e => setFormData({...formData, passportNumber: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>تاريخ إصدار الجواز</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={formData.passportIssueDate || ''}
+                    onChange={e => setFormData({...formData, passportIssueDate: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>تاريخ انتهاء الجواز</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={formData.passportExpiryDate || ''}
+                    onChange={e => setFormData({...formData, passportExpiryDate: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              {/* بطاقات رفع الصور مع الضغط الذكي */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-6">
+                <DocumentUploadCard
+                  title="صورة الهوية (الوجه الأول)"
+                  description="صورة الوجه الأمامي للبطاقة الشخصية أو إخراج القيد الرسمي للكادر (مضغوطة تلقائياً بحجم خفيف)"
+                  value={formData.idCardImage}
+                  onChange={(b64) => setFormData(prev => ({ ...prev, idCardImage: b64 }))}
+                  badgeLabel="الوجه الأمامي"
+                />
+                <DocumentUploadCard
+                  title="صورة الهوية (الوجه الثاني)"
+                  description="صورة الوجه الخلفي للبطاقة الشخصية (اختياري للبطاقات ذات الوجهين)"
+                  value={formData.idCardBackImage}
+                  onChange={(b64) => setFormData(prev => ({ ...prev, idCardBackImage: b64 }))}
+                  badgeLabel="الوجه الخلفي"
+                />
+                <DocumentUploadCard
+                  title="صورة جواز السفر"
+                  description="صورة صفحة المعلومات الرسمية في جواز السفر (حفظ خفيف في قاعدة البيانات بدقة عالية)"
+                  value={formData.passportImage}
+                  onChange={(b64) => setFormData(prev => ({ ...prev, passportImage: b64 }))}
+                  badgeLabel="جواز سفر"
+                />
+              </div>
+
+              {/* القسم 3: التوصيف الوظيفي */}
+              <h4 className={sectionHeader}><Activity size={16}/> 3. التوصيف الوظيفي بالنادي</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                 <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="مدرب">مدرب</option><option value="مساعد مدرب">مساعد مدرب</option><option value="مدرب حراس">مدرب حراس</option><option value="مدرب لياقة">مدرب لياقة</option><option value="إداري">إداري</option><option value="طبيب">طبيب</option><option value="معالج">معالج</option><option value="منسق إعلامي">منسق إعلامي</option><option value="مرافق">مرافق</option></select></div>
                 <div className="space-y-1 col-span-1 sm:col-span-2 md:col-span-1">
@@ -333,39 +454,145 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                    </div>
                 </div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
+
+                {/* مواسم المشاركة في النادي للكادر */}
+                <div className="sm:col-span-3 bg-orange-50/70 border border-orange-200 p-4 rounded-xl space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-black text-blue-900 flex items-center gap-2">
+                      <Calendar size={14} className="text-orange-600" />
+                      مواسم الكادر في النادي (الموسم الافتراضي الحالي: {state.activeSeason || '2026/2027'}):
+                    </label>
+                    {!(formData.seasons || []).includes('2026/2027') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = formData.seasons || [];
+                          const updated = Array.from(new Set([...cur, '2026/2027']));
+                          setFormData({ ...formData, seasons: updated, season: '2026/2027' });
+                        }}
+                        className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg"
+                      >
+                        ✓ ترفيع إلى 2026/2027
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].map(s => {
+                      const cur = formData.seasons || [];
+                      const isChecked = cur.includes(s);
+                      return (
+                        <label key={s} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${isChecked ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200'}`}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              const next = e.target.checked ? [...cur, s] : cur.filter(x => x !== s);
+                              setFormData({
+                                ...formData,
+                                seasons: next,
+                                season: next[next.length - 1] || s
+                              });
+                            }}
+                            className="w-3.5 h-3.5 rounded text-orange-500"
+                          />
+                          <span>موسم {s}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               {/* الشهادات التدريبية */}
               <div className="mt-8 flex justify-between items-center bg-orange-50 px-3 py-2 rounded-l-lg border-r-4 border-orange-500 mb-6 w-full">
-                <h4 className="text-orange-700 font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 m-0"><Award size={16}/> 3. الشهادات التدريبية</h4>
-                <button type="button" onClick={() => setFormData({...formData, certificates: [...(formData.certificates || []), { id: generateUUID(), name: '', date: '' }]})} className="bg-orange-500 text-white p-1 rounded hover:bg-orange-600 transition-all"><Plus size={16}/></button>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-orange-700 font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 m-0"><Award size={16}/> 4. الشهادات التدريبية ووثائقها</h4>
+                  <span className="text-[10px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">
+                    {(formData.certificates || []).length} شهادات
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, certificates: [...(formData.certificates || []), { id: generateUUID(), name: '', date: '', image: '' }]})}
+                  className="bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-all font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <Plus size={16}/>
+                  <span>إضافة شهادة تدريبية</span>
+                </button>
               </div>
               
-              <div className="space-y-3">
-                {(!formData.certificates || formData.certificates.length === 0) && <p className="text-sm text-slate-500 italic p-4 bg-slate-100 rounded-xl border border-slate-200">لا يوجد شهادات تدريبية مضافة</p>}
+              <div className="space-y-4">
+                {(!formData.certificates || formData.certificates.length === 0) && (
+                  <div className="p-6 bg-slate-100/80 rounded-2xl border-2 border-dashed border-slate-200 text-center">
+                    <Award size={32} className="mx-auto text-slate-300 mb-2" />
+                    <p className="text-sm font-bold text-slate-500">لا يوجد شهادات تدريبية مضافة حالياً</p>
+                    <p className="text-xs text-slate-400 mt-1">انقر على علامة (+) في الأعلى لإضافة رخصة أو شهادة مع إمكانية رفع صورتها</p>
+                  </div>
+                )}
                 {(formData.certificates || []).map((cert, index) => (
-                  <div key={cert.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
-                    <div className="flex-1 space-y-1">
-                      <label className={labelClass}>اسم الشهادة التدريبية</label>
-                      <input className={inputClass} placeholder="مثال: رخصة تدريب A من الاتحاد الآسيوي" value={cert.name} onChange={e => {
-                        const newCerts = [...(formData.certificates || [])];
-                        newCerts[index].name = e.target.value;
-                        setFormData({...formData, certificates: newCerts});
-                      }} />
+                  <div key={cert.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm relative space-y-4">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                      <span className="text-xs font-black text-orange-600 flex items-center gap-1.5">
+                        <Award size={14} /> الشهادة #{index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newCerts = [...(formData.certificates || [])];
+                          newCerts.splice(index, 1);
+                          setFormData({...formData, certificates: newCerts});
+                        }}
+                        className="text-red-500 hover:text-red-700 p-1 rounded-lg hover:bg-red-50 transition-all"
+                        title="حذف الشهادة"
+                      >
+                        <Trash2 size={16}/>
+                      </button>
                     </div>
-                    <div className="w-full md:w-1/3 space-y-1">
-                      <label className={labelClass}>تاريخ الشهادة</label>
-                      <input type="date" className={inputClass} value={cert.date} onChange={e => {
-                        const newCerts = [...(formData.certificates || [])];
-                        newCerts[index].date = e.target.value;
-                        setFormData({...formData, certificates: newCerts});
-                      }} />
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="md:col-span-2 space-y-1">
+                        <label className={labelClass}>اسم الشهادة التدريبية</label>
+                        <input
+                          className={inputClass}
+                          placeholder="مثال: رخصة تدريب A من الاتحاد الآسيوي / دبلوم PRO"
+                          value={cert.name}
+                          onChange={e => {
+                            const newCerts = [...(formData.certificates || [])];
+                            newCerts[index].name = e.target.value;
+                            setFormData({...formData, certificates: newCerts});
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={labelClass}>تاريخ نيل الشهادة</label>
+                        <input
+                          type="date"
+                          className={inputClass}
+                          value={cert.date}
+                          onChange={e => {
+                            const newCerts = [...(formData.certificates || [])];
+                            newCerts[index].date = e.target.value;
+                            setFormData({...formData, certificates: newCerts});
+                          }}
+                        />
+                      </div>
                     </div>
-                    <button type="button" onClick={() => {
-                       const newCerts = [...(formData.certificates || [])];
-                       newCerts.splice(index, 1);
-                       setFormData({...formData, certificates: newCerts});
-                    }} className="mt-6 p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all self-end h-min"><Trash2 size={18}/></button>
+
+                    {/* خيار رفع صورة الشهادة التدريبية مع الضغط الذكي */}
+                    <div className="pt-2">
+                      <DocumentUploadCard
+                        title={`وثيقة الشهادة: ${cert.name || `شهادة #${index + 1}`}`}
+                        description="صورة أو سكانر لوثيقة الشهادة التدريبية الرسمية (يتم ضغطها بدقة عالية للحفاظ على التفاصيل وتوفير الحجم)"
+                        value={cert.image}
+                        onChange={(b64) => {
+                          const newCerts = [...(formData.certificates || [])];
+                          newCerts[index].image = b64;
+                          setFormData({...formData, certificates: newCerts});
+                        }}
+                        badgeLabel="وثيقة تدريبية"
+                        icon={<Award className="text-orange-500" size={18} />}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>

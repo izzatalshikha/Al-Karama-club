@@ -27,7 +27,7 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
 
   const currentUser = state.currentUser;
   const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
-  const safeTournaments = (state.tournaments || []).filter(t => !t.season || t.season === state.activeSeason);
+  const safeTournaments = state.tournaments || [];
   const filteredTournaments = safeTournaments.filter(t => 
     state.globalCategoryFilter === 'الكل' || t.category === state.globalCategoryFilter
   );
@@ -348,6 +348,8 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
   const [matchTime, setMatchTime] = useState('16:00');
   const [pitch, setPitch] = useState('');
 
+  const [isHomeAway, setIsHomeAway] = useState(false);
+
   const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
 
   // Calculate Standings if group stage
@@ -359,7 +361,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     teams.forEach((t:any) => stageTeamIds.add(t.id));
     
     const table: any = {};
-    stageTeamIds.forEach(id => {
+    stageTeamIds.forEach((id: string) => {
       const t = teams.find((x:any) => x.id === id);
       table[id] = { id, name: t?.name || 'مجهول', pld: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
     });
@@ -402,7 +404,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     return Object.values(table)
       .map((t:any) => { t.gd = t.gf - t.ga; return t; })
       .sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
-  }, [stage, matches, teams]);
+  }, [stage, matches, teams, state.matches]);
 
   const handleAddMatch = async () => {
     if(!t1 || !t2 || t1 === t2) { addLog('يرجى اختيار فريقين مختلفين', 'error'); return; }
@@ -413,12 +415,14 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     const involvesOurTeam = t1Obj?.isOurTeam || t2Obj?.isOurTeam;
     
     let linkedMatchId = null;
+    let linkedMatchIdLeg2 = null;
+    let newOurMatch: any = null;
     
     if (involvesOurTeam) {
        // Create a linked match in the matches table
        const newOurMatchId = generateId();
        const opponentTeam = t1Obj?.isOurTeam ? t2Obj : t1Obj;
-       const newOurMatch = {
+       newOurMatch = {
          id: newOurMatchId,
          category: tour.category,
          season: tour.season || state.activeSeason,
@@ -443,13 +447,21 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
            staff: [], 
            captain: '' 
          },
-         notes: `من بطولة: ${tour.name} - ${stage.name}`,
+         notes: `من بطولة: ${tour.name} - ${stage.name}${isHomeAway ? ' (مباراة الذهاب)' : ''}`,
          isHome: t1Obj?.isOurTeam // If we are team1, we consider it home conceptually for score
        };
        
        await syncToCloud('matches', newOurMatch);
        setState((prev:any) => ({ ...prev, matches: [...prev.matches, newOurMatch] }));
        linkedMatchId = newOurMatchId;
+
+       if (isHomeAway) {
+           const newOurMatchIdLeg2 = generateId();
+           const newOurMatch2 = { ...newOurMatch, id: newOurMatchIdLeg2, notes: `من بطولة: ${tour.name} - ${stage.name} (مباراة الإياب)`, isHome: !(t1Obj?.isOurTeam) };
+           await syncToCloud('matches', newOurMatch2);
+           setState((prev:any) => ({ ...prev, matches: [...prev.matches, newOurMatch2] }));
+           linkedMatchIdLeg2 = newOurMatchIdLeg2;
+       }
     }
 
     const nm: TournamentMatch = {
@@ -471,15 +483,37 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
 
     const success = await syncToCloud('tournament_matches', payload);
     if(success) {
-      setState((prev:any) => ({ ...prev, tournamentMatches: [...prev.tournamentMatches, nm] }));
+      let addedMatches = [nm];
+      
+      if (isHomeAway) {
+         const nmLeg2: TournamentMatch = {
+            id: generateId(),
+            tournamentId: tour.id,
+            stageId: stage.id,
+            team1Id: t2, // FLIPPED
+            team2Id: t1, // FLIPPED
+            matchDate,
+            matchTime,
+            status: 'قادمة',
+            linkedMatchId: linkedMatchIdLeg2 || null
+         };
+         const payload2 = { ...nmLeg2 };
+         delete payload2.pitch;
+         await syncToCloud('tournament_matches', payload2);
+         addedMatches.push(nmLeg2);
+      }
+
+      setState((prev:any) => ({ ...prev, tournamentMatches: [...prev.tournamentMatches, ...addedMatches] }));
       setIsAddingMatch(false);
       setT1(''); setT2('');
       setPitch('');
+      setIsHomeAway(false);
+      
       if (linkedMatchId && onMatchClick) {
-        addLog('تمت إضافة المباراة بنجاح، يُرجى استكمال البيانات وتشكيلة الفريق', 'success');
+        addLog('تمت إضافة ' + (isHomeAway ? 'مباراتي الذهاب والإياب' : 'المباراة') + ' بنجاح، يُرجى استكمال البيانات وتشكيلة الفريق', 'success');
         onMatchClick(linkedMatchId);
       } else {
-        addLog('تمت إضافة المباراة بنجاح', 'success');
+        addLog('تمت إضافة ' + (isHomeAway ? 'مباراتي الذهاب والإياب' : 'المباراة') + ' بنجاح', 'success');
       }
     }
   };
@@ -553,6 +587,10 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
                 <label className="block text-xs font-bold text-slate-500 mb-2">الملعب</label>
                 <input type="text" value={pitch} onChange={e=>setPitch(e.target.value)} placeholder="اسم الملعب" className="w-full bg-white border border-slate-200 rounded-xl p-2.5" />
              </div>
+             <div className="flex items-center gap-2 mb-2 w-full sm:w-auto h-full px-2 py-3 border-r-2 border-slate-100 mr-2 pr-4">
+                <input type="checkbox" id="isHomeAwayChk" checked={isHomeAway} onChange={e => setIsHomeAway(e.target.checked)} className="rounded text-orange-500 focus:ring-orange-500 w-4 h-4 cursor-pointer" />
+                <label htmlFor="isHomeAwayChk" className="text-sm font-bold text-slate-600 block cursor-pointer">مباراة ذهاب وإياب</label>
+             </div>
                
              <button onClick={handleAddMatch} className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold w-full sm:w-auto mt-4 sm:mt-0">حفظ</button>
            </div>
@@ -564,7 +602,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
             <h4 className="font-bold text-slate-500 mb-4 text-sm">المباريات</h4>
             {matches.length === 0 ? <p className="text-xs text-slate-400">لا يوجد مباريات مضافة بعد</p> : (
               <div className="space-y-3">
-                  {matches.map((m:any) => {
+                  {[...matches].reverse().map((m:any) => {
                      const team1 = teams.find((x:any)=>x.id===m.team1Id);
                      const team2 = teams.find((x:any)=>x.id===m.team2Id);
                      

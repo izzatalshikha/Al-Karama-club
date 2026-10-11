@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, Trophy, Medal, Briefcase,
-  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby
+  Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Medal, Briefcase,
+  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby, Bell, Edit2
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { AppUser, AppState, Person, AppNotification } from './types';
+import { AppUser, AppState, Person, AppNotification, Role } from './types';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -18,10 +18,15 @@ import PlayerReport from './components/PlayerReport';
 import WarehouseManagement from './components/WarehouseManagement';
 import TournamentsView from './components/TournamentsView';
 import ServicesView from './components/ServicesView';
+import TransfersManagement from './components/TransfersManagement';
 import Login from './components/Login';
 import ClubLogo from './components/ClubLogo';
 import MedicalCenter from './components/MedicalCenter';
 import PublicPlayerView from './components/PublicPlayerView';
+import ParentPortal from './components/ParentPortal';
+import AdminNotifications from './components/AdminNotifications';
+import PlayerPortal from './components/PlayerPortal';
+import EditPersonModal from './components/EditPersonModal';
 
 export const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -51,6 +56,7 @@ const App: React.FC = () => {
   }, [activeTab, appMode]);
 
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [expandedNav, setExpandedNav] = useState<Record<string, boolean>>({});
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'syncing'>('synced');
   const [selectedPlayer, setSelectedPlayer] = useState<Person | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
@@ -78,15 +84,16 @@ const App: React.FC = () => {
            parsed.tacticalPlans = dedupe(parsed.tacticalPlans);
            parsed.injuries = dedupe(parsed.injuries);
            parsed.users = dedupe(parsed.users);
+           parsed.transfers = dedupe(parsed.transfers || []);
 
            return parsed; 
         } catch (e) {} 
     }
     return {
       currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
-      activeSeason: '2025/2026', seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
+      activeSeason: '2026/2027', seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
       people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
-      attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [],
+      attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [],
       globalCategoryFilter: 'الكل'
     };
   });
@@ -104,16 +111,28 @@ const App: React.FC = () => {
   }, [state.people.length, selectedPlayer]);
 
   const derivedState = React.useMemo(() => {
-    const isAcademyCat = (c: string) => c.startsWith('أكاديمية');
+    const isAcademyCat = (c: string) => c.includes('أكاديمية') || c.includes('الأكاديمية');
     const filterFn = appMode === 'academy' ? isAcademyCat : (c: string) => !isAcademyCat(c);
 
     const filteredCategories = state.categories.filter(filterFn);
     
+    // فلترة الأفراد حسب الموسم النشط
+    // الأشخاص الذين ليس لديهم حقل موسم صريح يُعتبر موسمهم الافتراضي 2025/2026
+    const personBelongsToActiveSeason = (p: Person) => {
+      const targetSeason = state.activeSeason || '2026/2027';
+      const personSeasons = Array.isArray(p.seasons) && p.seasons.length > 0 
+        ? p.seasons 
+        : (p.season ? [p.season] : ['2025/2026']);
+      return personSeasons.includes(targetSeason);
+    };
+
     return {
       ...state,
       appMode,
       categories: filteredCategories,
-      people: state.people.filter(p => !p.category || filterFn(p.category)),
+      people: state.people
+        .filter(p => !p.category || filterFn(p.category))
+        .filter(personBelongsToActiveSeason),
       sessions: state.sessions.filter(s => filterFn(s.category)),
       matches: state.matches.filter(m => filterFn(m.category)),
       warehouse: state.warehouse.filter(w => !w.category || w.category === 'المخزن العام' || filterFn(w.category)),
@@ -152,9 +171,33 @@ const App: React.FC = () => {
       let tourSTeamsQ = supabase.from('tournament_stage_teams').select('*');
       let tourMatchesQ = supabase.from('tournament_matches').select('*');
       let servicesQ = supabase.from('services_directory').select('*');
+      let technicalReportsQ = supabase.from('technical_reports').select('*');
+      let transfersQ = supabase.from('transfers').select('*');
+
+      const isPlayer = user.role === 'لاعب';
 
       if (isManager) {
         // المدير يرى كل شيء
+      } else if (isPlayer) {
+        // اللاعب يرى فقط نفسه، وتمارين فئته، ومباريات فئته، وسجل حضوره وتقاريره
+        if (user.relatedPersonId) {
+          peopleQ = peopleQ.eq('id', user.relatedPersonId);
+          attendanceQ = attendanceQ.eq('personId', user.relatedPersonId);
+          injuriesQ = injuriesQ.eq('personId', user.relatedPersonId);
+        } else {
+          peopleQ = peopleQ.limit(0);
+          attendanceQ = attendanceQ.limit(0);
+          injuriesQ = injuriesQ.limit(0);
+        }
+        warehouseQ = warehouseQ.limit(0);
+        usersQ = usersQ.limit(0);
+        tacticalQ = tacticalQ.limit(0);
+        servicesQ = servicesQ.limit(0);
+        transfersQ = transfersQ.limit(0);
+        tourStagesQ = tourStagesQ.limit(0);
+        tourTeamsQ = tourTeamsQ.limit(0);
+        tourSTeamsQ = tourSTeamsQ.limit(0);
+        tourMatchesQ = tourMatchesQ.limit(0);
       } else if (isWarehouse) {
         peopleQ = peopleQ.limit(0);
         matchesQ = matchesQ.limit(0);
@@ -168,6 +211,8 @@ const App: React.FC = () => {
         tourSTeamsQ = tourSTeamsQ.limit(0);
         tourMatchesQ = tourMatchesQ.limit(0);
         servicesQ = servicesQ.limit(0);
+        technicalReportsQ = technicalReportsQ.limit(0);
+        transfersQ = transfersQ.limit(0);
       } else if (isMedic) {
         matchesQ = matchesQ.limit(0);
         sessionsQ = sessionsQ.limit(0);
@@ -179,18 +224,26 @@ const App: React.FC = () => {
         tourTeamsQ = tourTeamsQ.limit(0);
         tourSTeamsQ = tourSTeamsQ.limit(0);
         tourMatchesQ = tourMatchesQ.limit(0);
+        technicalReportsQ = technicalReportsQ.limit(0);
       }
       
       if (cat && !isManager) {
         // --- التعديل الجوهري هنا لدعم تعدد الفئات ---
         const categoriesArray = cat.split(',').filter(Boolean);
         
-        if (!isWarehouse && !isMedic) {
+        if (!isWarehouse && !isMedic && !isPlayer) {
           peopleQ = peopleQ.in('category', categoriesArray);
           matchesQ = matchesQ.in('category', categoriesArray);
           sessionsQ = sessionsQ.in('category', categoriesArray);
           tacticalQ = tacticalQ.in('category', categoriesArray);
           tournamentsQ = tournamentsQ.in('category', categoriesArray);
+          technicalReportsQ = technicalReportsQ.in('category', categoriesArray);
+        } else if (isPlayer) {
+          matchesQ = matchesQ.in('category', categoriesArray);
+          sessionsQ = sessionsQ.in('category', categoriesArray);
+          if (user.relatedPersonId) {
+            technicalReportsQ = technicalReportsQ.eq('targetId', user.relatedPersonId);
+          }
         }
 
         if (isMedic || (!isWarehouse && !isMedic)) {
@@ -205,9 +258,9 @@ const App: React.FC = () => {
         }
       }
 
-      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq] = await Promise.all([
+      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq, tReportsReq] = await Promise.all([
         peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ, categoriesQ,
-        tournamentsQ, tourStagesQ, tourTeamsQ, tourSTeamsQ, tourMatchesQ, servicesQ
+        tournamentsQ, tourStagesQ, tourTeamsQ, tourSTeamsQ, tourMatchesQ, servicesQ, technicalReportsQ
       ]);
 
       const playersCount = p.data?.filter(person => person.role === 'لاعب').length || 0;
@@ -235,7 +288,8 @@ const App: React.FC = () => {
         tournamentTeams: dedupe(tTeamsReq.data),
         tournamentStageTeams: dedupe(tSTeamsReq.data),
         tournamentMatches: dedupe(tMatchesReq.data),
-        servicesDirectory: dedupe(servicesReq.data)
+        servicesDirectory: dedupe(servicesReq.data),
+        technicalReports: dedupe(tReportsReq.data)
       }));
       setSyncStatus('synced');
       if (!silent) {
@@ -288,7 +342,9 @@ const App: React.FC = () => {
           'tournament_teams': 'tournamentTeams',
           'tournament_stage_teams': 'tournamentStageTeams',
           'tournament_matches': 'tournamentMatches',
-          'services_directory': 'servicesDirectory'
+          'services_directory': 'servicesDirectory',
+          'transfers': 'transfers',
+          'technical_reports': 'technicalReports'
         };
 
         const stateKey = tableMap[table];
@@ -364,9 +420,60 @@ const App: React.FC = () => {
     }
   }, [state]);
 
-  const onLoginAttempt = async (u: string, p: string) => {
+  useEffect(() => {
+    if (state.currentUser?.role === 'ولي أمر' && activeTab !== 'parent-portal') {
+      setActiveTab('parent-portal');
+    }
+  }, [state.currentUser?.role, activeTab]);
+
+  const onLoginAttempt = async (u: string, p: string, isPlayerLogin?: boolean) => {
     setSyncStatus('syncing');
     const inputU = u.trim();
+    const inputP = p.trim();
+
+    // 1. If player login mode selected OR explicit check
+    if (isPlayerLogin) {
+      try {
+        // Query people with role = 'لاعب' and matching name
+        const { data: matchedPlayers, error: playerErr } = await supabase
+          .from('people')
+          .select('*')
+          .eq('role', 'لاعب')
+          .ilike('name', `%${inputU}%`);
+
+        if (!playerErr && matchedPlayers && matchedPlayers.length > 0) {
+          // Normalize Arabic text for comparison
+          const normalize = (t: string) => (t || '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim().toLowerCase();
+          const targetNorm = normalize(inputU);
+
+          const found = matchedPlayers.find(pl => {
+            const nameNorm = normalize(pl.name);
+            const rawNat = String(pl.nationalId || '').trim();
+            const last6Nat = rawNat.length >= 6 ? rawNat.slice(-6) : rawNat;
+            
+            // Check name similarity and exact last 6 digits of nationalId
+            const isNameMatch = nameNorm === targetNorm || nameNorm.includes(targetNorm) || targetNorm.includes(nameNorm);
+            const isPassMatch = last6Nat && last6Nat === inputP;
+            return isNameMatch && isPassMatch;
+          });
+
+          if (found) {
+            const playerUser: AppUser = {
+              id: found.id,
+              username: found.name,
+              role: 'لاعب',
+              relatedPersonId: found.id,
+              restrictedCategory: found.category
+            };
+            await fetchAllData(playerUser);
+            return playerUser;
+          }
+        }
+      } catch (err) {}
+      setSyncStatus('error');
+      return null;
+    }
+
     if ((inputU === 'عزت' || inputU.toUpperCase() === 'IZZAT') && p === '123') {
       const rootUser: AppUser = { id: 'root', username: 'عزت عامر الشيخة', role: 'مدير' };
       await fetchAllData(rootUser);
@@ -378,9 +485,83 @@ const App: React.FC = () => {
         await fetchAllData(data);
         return data;
       }
+
+      // Check if user is a coach / staff member in people table (by name and last 6 digits of nationalId or phone)
+      const { data: matchedStaff } = await supabase
+        .from('people')
+        .select('*')
+        .neq('role', 'لاعب')
+        .ilike('name', `%${inputU}%`);
+
+      if (matchedStaff && matchedStaff.length > 0) {
+        const normalize = (t: string) => (t || '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim().toLowerCase();
+        const targetNorm = normalize(inputU);
+
+        const foundStaff = matchedStaff.find(st => {
+          const nameNorm = normalize(st.name);
+          const rawNat = String(st.nationalId || '').trim();
+          const last6Nat = rawNat.length >= 6 ? rawNat.slice(-6) : rawNat;
+          const phone = String(st.phone || '').trim();
+
+          const isNameMatch = nameNorm === targetNorm || nameNorm.includes(targetNorm) || targetNorm.includes(nameNorm);
+          const isPassMatch = (last6Nat && last6Nat === inputP) || (phone && phone === inputP);
+          return isNameMatch && isPassMatch;
+        });
+
+        if (foundStaff) {
+          const staffUser: AppUser = {
+            id: foundStaff.id,
+            username: foundStaff.name,
+            role: (foundStaff.role as any) || 'مدرب',
+            relatedPersonId: foundStaff.id,
+            restrictedCategory: foundStaff.category
+          };
+          await fetchAllData(staffUser);
+          return staffUser;
+        }
+      }
+
+      // Check if user is a parent in people table
+      const { data: parentData } = await supabase.from('people').select('*').eq('phone', inputU).limit(1);
+      if (parentData && parentData.length > 0) {
+        const parentRecord = parentData[0];
+        if (parentRecord.birthDate && parentRecord.birthDate.substring(0, 4) === p.trim()) {
+          const parentUser: AppUser = {
+            id: parentRecord.id,
+            username: parentRecord.phone,
+            role: 'ولي أمر',
+            relatedPersonId: parentRecord.id,
+            restrictedCategory: parentRecord.category
+          };
+          await fetchAllData(parentUser);
+          return parentUser;
+        }
+      }
     } catch (err) {}
     setSyncStatus('error');
     return null;
+  };
+
+  const [editingSelfPerson, setEditingSelfPerson] = useState<Person | null>(null);
+
+  const handleOpenSelfProfile = () => {
+    if (!state.currentUser) return;
+    let matched = state.people.find(p => 
+      (state.currentUser?.relatedPersonId && p.id === state.currentUser.relatedPersonId) ||
+      p.name === state.currentUser?.username ||
+      p.id === state.currentUser?.id
+    );
+    if (!matched) {
+      matched = {
+        id: state.currentUser.relatedPersonId || generateUUID(),
+        name: state.currentUser.username,
+        role: (state.currentUser.role as Role) || 'مدير',
+        category: state.currentUser.restrictedCategory || state.categories[0] || 'الرجال',
+        certificates: [],
+        experiences: []
+      };
+    }
+    setEditingSelfPerson(matched);
   };
 
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
@@ -415,26 +596,84 @@ const App: React.FC = () => {
     return <Login onLoginAttempt={onLoginAttempt} />;
   }
 
+  // إذا كان المستخدم لاعباً، يتم عزله بالكامل في بوابة اللاعب المخصصة
+  if (state.currentUser.role === 'لاعب') {
+    const playerObj = state.people.find(p => p.id === state.currentUser?.relatedPersonId) || state.people[0];
+    const handlePlayerLogout = () => {
+      setState({
+        currentUser: null,
+        categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
+        people: [],
+        sessions: [],
+        matches: [],
+        warehouse: [],
+        technicalReports: [],
+        tournaments: [],
+        tournamentStages: [],
+        tournamentTeams: [],
+        tournamentStageTeams: [],
+        tournamentMatches: [],
+        attendance: [],
+        injuries: [],
+        tacticalPlans: [],
+        users: [],
+        notifications: [],
+        servicesDirectory: [],
+        transfers: [],
+      });
+      localStorage.clear();
+    };
+
+    if (playerObj) {
+      return <PlayerPortal player={playerObj} state={state} onLogout={handlePlayerLogout} setState={setState} />;
+    }
+  }
+
+  
+  const toggleNavGroup = (id: string) => {
+    setExpandedNav(prev => ({ ...prev, [id]: !prev[id] }));
+    if (!isSidebarOpen) setSidebarOpen(true);
+  };
+
   const navItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
-    { id: 'squad', label: 'اللاعبين', icon: Users },
-    { id: 'staff', label: 'المدربين والكوادر', icon: Briefcase },
-    { id: 'training', label: 'التدريبات', icon: Calendar },
-    { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
-    { id: 'medical', label: 'الطبابة', icon: HeartPulse },
-    { id: 'matches', label: 'المباريات', icon: Trophy },
-    { id: 'baraaem-matches', label: 'مباريات البراعم', icon: Baby },
-    { id: 'tournaments', label: 'البطولات', icon: Medal },
-    { id: 'services', label: 'خدمات', icon: MapPin },
-    { id: 'warehouse', label: 'المستودع', icon: Package },
+    { id: 'notifications', label: 'إشعارات الأهالي', icon: Bell },
+    { id: 'parent-portal', label: 'بوابة الأهل', icon: LayoutDashboard },
+    { 
+      id: 'personnel', label: 'شؤون الأفراد', icon: Users, isGroup: true,
+      items: [
+        { id: 'squad', label: 'اللاعبين', icon: Users },
+        { id: 'staff', label: 'المدربين والكوادر', icon: Briefcase },
+      ]
+    },
+    {
+      id: 'sports_activity', label: 'النشاط الرياضي', icon: Trophy, isGroup: true,
+      items: [
+        { id: 'training', label: 'التدريبات', icon: Calendar },
+        { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
+        { id: 'matches', label: 'المباريات', icon: Trophy },
+        { id: 'baraaem-matches', label: 'مباريات البراعم', icon: Baby },
+        { id: 'tournaments', label: 'البطولات', icon: Medal },
+      ]
+    },
+    {
+      id: 'logistics', label: 'اللوجستيات والطبابة', icon: Package, isGroup: true,
+      items: [
+        { id: 'medical', label: 'الطبابة', icon: HeartPulse },
+        { id: 'transfers', label: 'الانتقالات والإعارة', icon: RefreshCw },
+        { id: 'services', label: 'خدمات', icon: MapPin },
+        { id: 'warehouse', label: 'المستودع', icon: Package },
+      ]
+    },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ].filter(item => {
     const role = state.currentUser?.role;
-    if (role === 'مدير') return true;
+    if (role === 'مدير') return item.id !== 'parent-portal';
+    if (role === 'ولي أمر') return ['parent-portal'].includes(item.id);
     if (role === 'مسؤول تجهيزات') return ['warehouse', 'dashboard'].includes(item.id);
-    return item.id !== 'settings';
+    if (item.isGroup) return true;
+    return item.id !== 'parent-portal' && item.id !== 'settings';
   });
-
   return (
     <div className="flex h-[100dvh] bg-slate-50 text-slate-900 font-['IBM_Plex_Sans_Arabic'] overflow-hidden print:h-auto print:block print:overflow-visible" dir="rtl">
       <aside className={`${isSidebarOpen ? 'translate-x-0 w-72' : 'translate-x-full lg:translate-x-0 w-72 lg:w-24'} bg-blue-900 border-l border-blue-800 transition-all duration-300 flex flex-col z-[100] shadow-2xl fixed inset-y-0 right-0 lg:static h-full overflow-hidden print:hidden`}>
@@ -453,29 +692,85 @@ const App: React.FC = () => {
         )}
 
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
-          {navItems.map(item => (
+          {navItems.map(item => {
+             const isNotifications = item.id === 'notifications';
+             const pendingCount = isNotifications ? state.technicalReports.filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
+             
+             if (item.isGroup) {
+                const isExpanded = expandedNav[item.id];
+                const hasActiveChild = item.items?.some(sub => sub.id === activeTab);
+                
+                return (
+                  <div key={item.id} className="mb-1">
+                    <button onClick={() => toggleNavGroup(item.id)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${hasActiveChild ? 'bg-white/10 text-white' : 'hover:bg-white/10 text-blue-100 hover:text-white'}`}>
+                      <div className="flex items-center gap-4">
+                         <item.icon size={20} className="shrink-0" />
+                         <span className={`text-sm font-medium whitespace-nowrap ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>{item.label}</span>
+                      </div>
+                      {isSidebarOpen && (
+                        <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                      )}
+                    </button>
+                    {isExpanded && isSidebarOpen && (
+                      <div className="mt-1 space-y-1 px-2 border-r-2 border-white/10 mr-4 pr-2">
+                        {item.items?.map(subItem => (
+                          <button key={subItem.id} onClick={() => { setActiveTab(subItem.id); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${activeTab === subItem.id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'hover:bg-white/10 text-blue-100/70 hover:text-white'}`}>
+                            <subItem.icon size={16} className="shrink-0" />
+                            <span className="text-xs font-bold whitespace-nowrap">{subItem.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+             }
+
+             return (
             <button key={item.id} onClick={() => { setActiveTab(item.id); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200
               ${activeTab === item.id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'hover:bg-white/10 text-blue-100 hover:text-white'}`}>
-              <item.icon size={20} className="shrink-0" />
-              <span className={`text-sm font-medium whitespace-nowrap ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>{item.label}</span>
+              <div className="flex items-center gap-4">
+                 <item.icon size={20} className="shrink-0" />
+                 <span className={`text-sm font-medium whitespace-nowrap ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>{item.label}</span>
+              </div>
+              {isNotifications && pendingCount > 0 && isSidebarOpen && (
+                 <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">{pendingCount}</span>
+              )}
             </button>
-          ))}
+             );
+          })}
         </nav>
         <div className="p-4 mt-auto shrink-0">
-          <div className="bg-white/10 rounded-xl p-3 mb-4 flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                {state.currentUser.username.charAt(0)}
+          <div className="bg-white/10 rounded-xl p-3 mb-4 flex items-center justify-between gap-3">
+             <div className="flex items-center gap-3 min-w-0">
+               <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                  {state.currentUser.username.charAt(0)}
+               </div>
+               {isSidebarOpen && (
+                 <div className="min-w-0">
+                    <p className="text-[10px] font-bold truncate text-white">{state.currentUser.username}</p>
+                    <p className="text-[8px] text-blue-100 uppercase font-black">{state.currentUser.role}</p>
+                 </div>
+               )}
              </div>
              {isSidebarOpen && (
-               <div className="min-w-0">
-                  <p className="text-[10px] font-bold truncate text-white">{state.currentUser.username}</p>
-                  <p className="text-[8px] text-blue-100 uppercase font-black">{state.currentUser.role}</p>
-               </div>
+               <button
+                 type="button"
+                 onClick={handleOpenSelfProfile}
+                 title="تعديل بياناتي الشخصية"
+                 className="p-1.5 bg-white/10 hover:bg-orange-500 text-white rounded-lg transition-all shrink-0 flex items-center gap-1 text-[10px] font-bold"
+               >
+                 <Edit2 size={12} />
+                 <span>بياناتي</span>
+               </button>
              )}
           </div>
           <button onClick={() => { 
-              setState({ currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'], people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [], attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], });
+              setState({ currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'], people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [], attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [], });
               localStorage.clear();
             }} 
             className="w-full p-3 rounded-xl text-white bg-red-600/30 hover:bg-red-600 transition-all flex items-center justify-center gap-3">
@@ -498,9 +793,18 @@ const App: React.FC = () => {
              </div>
           </div>
           <div className="flex items-center gap-2">
+             <button
+               type="button"
+               onClick={handleOpenSelfProfile}
+               title="تعديل ملفي الشخصي وبياناتي"
+               className="p-2 md:px-3 md:py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+             >
+               <Edit2 size={14} />
+               <span className="hidden sm:inline">تعديل بياناتي</span>
+             </button>
              <select
                className="bg-slate-100 text-blue-900 px-2 md:px-3 py-2 md:py-2.5 rounded-xl font-bold text-[10px] md:text-xs outline-none border border-slate-200"
-               value={state.activeSeason || '2025/2026'}
+               value={state.activeSeason || '2026/2027'}
                onChange={(e) => setState({ ...state, activeSeason: e.target.value })}
              >
                {state.seasons?.map(s => (
@@ -518,12 +822,15 @@ const App: React.FC = () => {
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar print:p-0">
           <div className="max-w-6xl mx-auto space-y-8">
+            {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={derivedState} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
             {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
+            {activeTab === 'notifications' && <AdminNotifications state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} />}
             {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
             {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
             {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
+            {activeTab === 'transfers' && <TransfersManagement state={derivedState} setState={updateState as any} addLog={addNotify} />}
             {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} />}
             {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
@@ -534,21 +841,43 @@ const App: React.FC = () => {
           </div>
         </main>
 
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-20 bg-white border-t border-slate-200 flex items-center justify-around px-4 z-[80] shadow-lg">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-[72px] bg-white border-t border-slate-200 flex items-center justify-around px-2 z-[80] shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
            {[
              { id: 'dashboard', icon: LayoutDashboard, label: 'الرئيسية' },
-             { id: 'squad', icon: Users, label: 'الفريق' },
-             { id: 'training', icon: Calendar, label: 'التدريبات' },
-             { id: 'matches', icon: Trophy, label: 'المباريات' },
-             { id: 'tournaments', icon: Medal, label: 'البطولات' },
-           ].map(item => (
-             <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 ${activeTab === item.id ? 'text-orange-500' : 'text-slate-400'}`}>
+             { id: 'notifications', icon: Bell, label: 'إشعارات' },
+             { id: 'menu', icon: isSidebarOpen ? X : Menu, label: 'القائمة', onClick: () => setSidebarOpen(!isSidebarOpen) },
+           ].map(item => {
+               const isNotifications = item.id === 'notifications';
+               const pendingCount = isNotifications ? state.technicalReports.filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
+               const isActive = item.id === 'menu' ? isSidebarOpen : activeTab === item.id;
+               return (
+             <button key={item.id} onClick={item.onClick || (() => { setActiveTab(item.id); setSidebarOpen(false); })} className={`flex shrink-0 w-16 flex-col items-center gap-1.5 relative ${isActive ? 'text-orange-500' : 'text-slate-400'}`}>
                 <item.icon size={24} />
-                <span className="text-[10px] font-bold">{item.label}</span>
+                <span className="text-[10px] font-black">{item.label}</span>
+                {isNotifications && pendingCount > 0 && <span className="absolute -top-1 right-3 bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full animate-pulse shadow-sm shadow-red-500/50">{pendingCount}</span>}
              </button>
-           ))}
+             );
+           })}
         </nav>
       </div>
+
+      {editingSelfPerson && (
+        <EditPersonModal
+          person={editingSelfPerson}
+          isOpen={Boolean(editingSelfPerson)}
+          onClose={() => setEditingSelfPerson(null)}
+          onSaved={(updated) => {
+            setState(prev => ({
+              ...prev,
+              people: prev.people.some(p => p.id === updated.id)
+                ? prev.people.map(p => p.id === updated.id ? updated : p)
+                : [updated, ...prev.people]
+            }));
+            addNotify('تم حفظ وتحديث بياناتك الشخصية بنجاح!', 'success');
+          }}
+          isSelf={true}
+        />
+      )}
     </div>
   );
 };

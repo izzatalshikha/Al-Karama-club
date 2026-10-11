@@ -2,7 +2,7 @@
 export type Category = string;
 export type Role = 'لاعب' | 'مدير' | 'مدرب' | 'مساعد مدرب' | 'مدرب حراس' | 'مدرب لياقة' | 'إداري' | 'طبيب' | 'معالج' | 'منسق إعلامي' | 'مرافق';
 export type AttendanceStatus = 'حاضر' | 'متأخر' | 'غائب' | 'غياب بعذر';
-export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد' | 'أمين مستودع' | 'مسؤول تجهيزات' | 'معالج' | 'مدرب' | 'مساعد مدرب' | 'مدرب حراس';
+export type UserRole = 'مدير' | 'إداري فئة' | 'مشاهد' | 'أمين مستودع' | 'مسؤول تجهيزات' | 'معالج' | 'مدرب' | 'مساعد مدرب' | 'مدرب حراس' | 'ولي أمر' | 'لاعب';
 export type MatchType = 'دوري' | 'كأس' | 'ودية' | 'بطولة ودية' | 'مباراة دولية' | 'مباراة بطولة';
 
 export interface Tournament {
@@ -101,6 +101,7 @@ export interface CoachingCertificate {
   id: string;
   name: string;
   date: string;
+  image?: string;
 }
 
 export interface PreviousExperience {
@@ -132,6 +133,12 @@ export interface Person {
   contractStart?: string;
   contractEnd?: string;
   contractValue?: string;
+  subscriptionAmount?: string;
+  subscriptionMonth?: string;
+  registrationDate?: string;
+  receivedKit?: boolean;
+  kitAmount?: string;
+  isAcademyPlayer?: boolean;
   medicalHistory?: string;
   injuries?: string;
   penalties?: string;
@@ -141,6 +148,14 @@ export interface Person {
   monthlyReports?: { [key: string]: string };
   certificates?: CoachingCertificate[];
   experiences?: PreviousExperience[];
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportExpiryDate?: string;
+  idCardImage?: string;
+  idCardBackImage?: string;
+  passportImage?: string;
+  season?: string;
+  seasons?: string[];
 }
 
 export interface AttendanceRecord {
@@ -243,6 +258,7 @@ export interface AppUser {
   role: UserRole;
   password?: string;
   restrictedCategory?: Category;
+  relatedPersonId?: string;
 }
 
 export type ServiceCategory = 'فنادق' | 'مطاعم' | 'مشافي';
@@ -256,6 +272,19 @@ export interface DirectoryService {
   phone: string;
   description: string;
   features: string;
+}
+
+export interface TransferRequest {
+  id: string;
+  playerId: string;
+  playerName?: string; // For display
+  playerData?: string; // Additional info
+  coachName: string;
+  supervisorName: string;
+  documentUrl?: string; // Image/document attachment
+  notes?: string;
+  status: 'قيد الانتظار' | 'مقبول' | 'مرفوض';
+  date: string;
 }
 
 export interface AppState {
@@ -281,4 +310,5 @@ export interface AppState {
   tournamentStageTeams: TournamentStageTeam[];
   tournamentMatches: TournamentMatch[];
   servicesDirectory: DirectoryService[];
+  transfers: TransferRequest[];
 }
