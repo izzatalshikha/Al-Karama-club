@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { supabase, generateUUID } from '../App';
+import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 import { compressDocumentImage } from '../utils/imageCompressor';
 
@@ -56,16 +57,8 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
         name: formData.name?.trim() || person.name
       };
 
-      ['birthDate', 'passportIssueDate', 'passportExpiryDate'].forEach(k => {
-        if (cleanData[k] === '') cleanData[k] = null;
-      });
-
-      const { error } = await supabase
-        .from('people')
-        .update(cleanData)
-        .eq('id', person.id);
-
-      if (error) throw error;
+      const saveRes = await safeSavePerson(cleanData, 'update', person.id);
+      if (!saveRes.success) throw saveRes.error;
 
       const updated = { ...person, ...cleanData };
       onSaved(updated);

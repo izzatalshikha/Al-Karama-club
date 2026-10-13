@@ -9,10 +9,12 @@ import {
   Globe, BarChart, Users, Star, AlertCircle, FileText,
   Loader2, GraduationCap, Award, Home, Info, Zap, Medal,
   Save, History, BookOpen, Briefcase, DollarSign, CalendarCheck, UserX, Clock, Map,
-  CreditCard, Eye, X, Download, FileCheck, Edit2, Plus, Trash2, Upload, UserCheck, ShieldCheck
+  CreditCard, Eye, X, Download, FileCheck, Edit2, Plus, Trash2, Upload, UserCheck, ShieldCheck,
+  Shirt, Footprints, Droplet, Package, PhoneCall
 } from 'lucide-react';
 import { AppState, Person, Match, CoachingCertificate, PreviousExperience } from '../types';
 import { supabase, generateUUID } from '../App';
+import { safeSavePerson } from '../utils/supabaseSanitizer';
 import ClubLogo from './ClubLogo';
 import { QRCodeSVG } from 'qrcode.react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
@@ -64,16 +66,8 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     setIsSavingEdit(true);
     try {
       const cleanData: any = { ...editFormData };
-      ['birthDate', 'passportIssueDate', 'passportExpiryDate'].forEach(k => {
-        if (cleanData[k] === '') cleanData[k] = null;
-      });
-
-      const { error } = await supabase
-        .from('people')
-        .update(cleanData)
-        .eq('id', player.id);
-
-      if (error) throw error;
+      const saveRes = await safeSavePerson(cleanData, 'update', player.id);
+      if (!saveRes.success) throw saveRes.error;
 
       setState(prev => ({
         ...prev,
@@ -371,7 +365,13 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                   <InfoBlock icon={Hash} label="الرقم الاتحادي" value={player.federalNumber} />
                   <InfoBlock icon={Globe} label="الرقم الدولي ID" value={player.internationalId} />
                   <InfoBlock icon={Phone} label="رقم الهاتف" value={player.phone} color="text-blue-600" />
+                  {player.emergencyPhone && (
+                    <InfoBlock icon={PhoneCall} label="هاتف الطوارئ / ولي الأمر" value={player.emergencyPhone} color="text-rose-600" />
+                  )}
                   <InfoBlock icon={Map} label="عنوان السكن" value={player.address} />
+                  {player.registrationDate && (
+                    <InfoBlock icon={CalendarCheck} label="تاريخ التسجيل الرسمي" value={player.registrationDate} color="text-emerald-700" />
+                  )}
                </div>
             </div>
 
@@ -616,16 +616,51 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                </div>
             )}
 
-            {/* المواصفات الفنية والبدنية */}
+            {/* المواصفات الفنية والبدنية الشاملة */}
             {player.role === 'لاعب' ? (
-               <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">
-                  <SectionTitle icon={Activity} title="المواصفات الفنية والبدنية" color="text-emerald-500" />
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-                     <InfoBlock icon={Target} label="المركز" value={player.position} />
-                     <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
-                     <InfoBlock icon={Ruler} label="الطول" value={player.height} color="text-emerald-700" />
-                     <InfoBlock icon={Weight} label="الوزن" value={player.weight} color="text-emerald-700" />
-                     <InfoBlock icon={GraduationCap} label="الشهادة العلمية" value={player.academicDegree} />
+               <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600 space-y-6">
+                  <div>
+                     <SectionTitle icon={Activity} title="المواصفات الفنية والبدنية" color="text-emerald-500" />
+                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
+                        <InfoBlock icon={Target} label="المركز" value={player.position} />
+                        <InfoBlock icon={Droplet} label="زمرة الدم" value={player.bloodType} color="text-red-600 font-black" />
+                        <InfoBlock icon={Footprints} label="القدم المفضلة" value={player.preferredFoot} color="text-orange-600 font-bold" />
+                        <InfoBlock icon={Footprints} label="قياس الحذاء" value={player.shoeSize} color="text-blue-700 font-black" />
+                        <InfoBlock icon={Shirt} label="قياس الملابس" value={player.clothesSize} color="text-indigo-700 font-black" />
+                        <InfoBlock icon={Ruler} label="الطول" value={player.height ? `${player.height} سم` : '---'} color="text-emerald-700" />
+                        <InfoBlock icon={Weight} label="الوزن" value={player.weight ? `${player.weight} كغ` : '---'} color="text-emerald-700" />
+                        <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
+                        <InfoBlock icon={GraduationCap} label="الشهادة العلمية" value={player.academicDegree} />
+                        <InfoBlock icon={UserCheck} label="تصنيف اللاعب" value={player.isAcademyPlayer ? 'لاعب أكاديمية' : 'لاعب نادي'} color="text-blue-900" />
+                        {player.coachingCertificate && (
+                           <InfoBlock icon={Award} label="الشهادة التدريبية" value={player.coachingCertificate} />
+                        )}
+                     </div>
+                  </div>
+
+                  {/* بيانات التجهيزات والعهد الرياضية والاشتراكات */}
+                  <div className="pt-4 border-t border-slate-100">
+                     <h4 className="text-xs font-black text-slate-700 flex items-center gap-2 mb-3">
+                        <Package size={15} className="text-orange-500" />
+                        التجهيزات الرياضية والاشتراكات
+                     </h4>
+                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex flex-col gap-1">
+                           <span className="text-[9px] font-black text-slate-500 uppercase">استلام طقم اللباس</span>
+                           <span className={`text-xs font-black ${player.receivedKit ? 'text-emerald-600' : 'text-slate-500'}`}>
+                              {player.receivedKit ? 'تم الاستلام بنجاح ✓' : 'لم يستلم بعد'}
+                           </span>
+                        </div>
+                        {player.kitAmount && (
+                           <InfoBlock icon={Wallet} label="مبلغ طقم اللباس" value={`${player.kitAmount} ل.س`} color="text-emerald-600" />
+                        )}
+                        {player.isAcademyPlayer && player.subscriptionAmount && (
+                           <InfoBlock icon={Wallet} label="قسط الاشتراك" value={`${player.subscriptionAmount} ل.س`} color="text-emerald-600" />
+                        )}
+                        {player.isAcademyPlayer && player.subscriptionMonth && (
+                           <InfoBlock icon={Calendar} label="شهر الاشتراك" value={player.subscriptionMonth} color="text-blue-600" />
+                        )}
+                     </div>
                   </div>
                </div>
             ) : (
@@ -695,13 +730,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
               </div>
             )}
 
-            {/* السجل المالي والتعاقدي (مخفي حالياً بناء على طلب المستخدم) */}
-            {false && (
+            {/* السجل المالي والتعاقدي */}
+            {(Boolean(player.contractStart) || Boolean(player.contractEnd) || Boolean(player.contractValue) || Boolean(player.contractDuration)) && (
               <div className="modern-card p-6 md:p-8 border-r-8 border-yellow-600 bg-yellow-600/5">
                  <SectionTitle icon={Wallet} title="السجل التعاقدي" color="text-yellow-500" />
-                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                     <InfoBlock icon={Calendar} label="بداية العقد" value={player.contractStart} />
                     <InfoBlock icon={Calendar} label="نهاية العقد" value={player.contractEnd} />
+                    <InfoBlock icon={CalendarCheck} label="مدة العقد" value={player.contractDuration} />
                     <InfoBlock icon={DollarSign} label="قيمة العقد" value={player.contractValue} color="text-yellow-700" />
                  </div>
               </div>

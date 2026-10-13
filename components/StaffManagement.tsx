@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { generateUUID, supabase } from '../App';
+import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 
 interface StaffManagementProps {
@@ -92,8 +93,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
          newAccountStr = `\nتنبيه: تم إنشاء حساب بصلاحية (${uRole}) للمستخدم الجديد: اسم الحساب: ${updatedPerson.name} | كلمة المرور: ${pass}`;
       }
 
-      const { error } = await supabase.from('people').upsert(updatedPerson);
-      if (error) throw error;
+      const saveRes = await safeSavePerson(updatedPerson, 'upsert');
+      if (!saveRes.success) throw saveRes.error;
 
       setState(prev => ({
         ...prev,

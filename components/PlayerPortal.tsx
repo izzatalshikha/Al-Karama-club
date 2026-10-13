@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import DocumentUploadCard from './DocumentUploadCard';
 import { supabase } from '../App';
+import { safeSavePerson } from '../utils/supabaseSanitizer';
 
 interface PlayerPortalProps {
   player: Person;
@@ -57,10 +58,10 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
     setPersonalSuccessMsg('');
 
     try {
-      const updates: Partial<Person> = {
+      const updates: any = {
         phone: phone.trim() || null,
         address: address.trim() || null,
-        emergencyContact: emergencyContact.trim() || null,
+        emergencyPhone: emergencyContact.trim() || null,
         fatherName: fatherName.trim() || null,
         motherName: motherName.trim() || null,
         birthDate: birthDate || null,
@@ -76,12 +77,8 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
         number: number.trim() || null,
       };
 
-      const { error } = await supabase
-        .from('people')
-        .update(updates)
-        .eq('id', player.id);
-
-      if (error) throw error;
+      const saveRes = await safeSavePerson(updates, 'update', player.id);
+      if (!saveRes.success) throw saveRes.error;
 
       // Update local state in parent
       setState?.(prev => ({

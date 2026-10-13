@@ -47,6 +47,8 @@ export interface TournamentMatch {
   pitch?: string;
   status: 'قادمة' | 'ملعوبة';
   linkedMatchId?: string; // links to existing Match.id if it's our match
+  round?: number; // رقم الأسبوع / الجولة
+  leg?: 'ذهاب' | 'إياب'; // مرحلة الذهاب أو مرحلة الإياب
 }
 
 export interface InjuryRecord {
@@ -156,6 +158,13 @@ export interface Person {
   passportImage?: string;
   season?: string;
   seasons?: string[];
+  preferredFoot?: 'يمنى' | 'يسرى' | 'كلاهما' | string;
+  bloodType?: string;
+  shoeSize?: string;
+  clothesSize?: string;
+  emergencyPhone?: string;
+  contractDuration?: string;
+  jobTitle?: string;
 }
 
 export interface AttendanceRecord {

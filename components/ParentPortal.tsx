@@ -85,6 +85,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ state, setState, user, sync
         
         // Also update actual fields if possible, we'll store in notes for sure visibility and medicalHistory
         if (allergies) updatedChild.medicalHistory = allergies;
+        if (emergency) updatedChild.emergencyPhone = emergency;
         
         updatedChild.notes = newNotes;
         setState(prev => ({ ...prev, people: prev.people.map(p => p.id === updatedChild.id ? updatedChild : p) }));

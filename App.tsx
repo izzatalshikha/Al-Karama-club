@@ -27,6 +27,8 @@ import ParentPortal from './components/ParentPortal';
 import AdminNotifications from './components/AdminNotifications';
 import PlayerPortal from './components/PlayerPortal';
 import EditPersonModal from './components/EditPersonModal';
+import { safeSavePerson } from './utils/supabaseSanitizer';
+import { decodeMatchPitch, encodeMatchPitch } from './utils/tournamentHelpers';
 
 export const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -71,8 +73,16 @@ const App: React.FC = () => {
            if (!parsed.activeSeason || !parsed.seasons.includes(parsed.activeSeason)) parsed.activeSeason = '2025/2026';
            
            const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
-           parsed.people = dedupe(parsed.people);
-           parsed.matches = dedupe(parsed.matches);
+           parsed.people = dedupe(parsed.people).map((person: any) => ({
+             ...person,
+             isAcademyPlayer: Boolean(person.isAcademyPlayer === true || String(person.isAcademyPlayer) === 'true'),
+             receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
+           }));
+           parsed.matches = dedupe(parsed.matches).map((match: any) => ({
+             ...match,
+             isCompleted: Boolean(match.isCompleted === true || String(match.isCompleted) === 'true'),
+             isFinal: Boolean(match.isFinal === true || String(match.isFinal) === 'true')
+           }));
            parsed.sessions = dedupe(parsed.sessions);
            parsed.attendance = dedupe(parsed.attendance);
            parsed.warehouse = dedupe(parsed.warehouse);
@@ -91,7 +101,7 @@ const App: React.FC = () => {
     }
     return {
       currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
-      activeSeason: '2026/2027', seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
+      activeSeason: '2025/2026', seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
       people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
       attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [],
       globalCategoryFilter: 'الكل'
@@ -119,7 +129,7 @@ const App: React.FC = () => {
     // فلترة الأفراد حسب الموسم النشط
     // الأشخاص الذين ليس لديهم حقل موسم صريح يُعتبر موسمهم الافتراضي 2025/2026
     const personBelongsToActiveSeason = (p: Person) => {
-      const targetSeason = state.activeSeason || '2026/2027';
+      const targetSeason = state.activeSeason || '2025/2026';
       const personSeasons = Array.isArray(p.seasons) && p.seasons.length > 0 
         ? p.seasons 
         : (p.season ? [p.season] : ['2025/2026']);
@@ -272,8 +282,16 @@ const App: React.FC = () => {
       setState(prev => ({
         ...prev,
         currentUser: user,
-        people: dedupe(p.data),
-        matches: dedupe(m.data),
+        people: dedupe(p.data).map((person: any) => ({
+          ...person,
+          isAcademyPlayer: Boolean(person.isAcademyPlayer === true || String(person.isAcademyPlayer) === 'true'),
+          receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
+        })),
+        matches: dedupe(m.data).map((match: any) => ({
+          ...match,
+          isCompleted: Boolean(match.isCompleted === true || String(match.isCompleted) === 'true'),
+          isFinal: Boolean(match.isFinal === true || String(match.isFinal) === 'true')
+        })),
         sessions: dedupe(s.data),
         attendance: dedupe(a.data),
         warehouse: dedupe(w.data),
@@ -287,7 +305,15 @@ const App: React.FC = () => {
         tournamentStages: dedupe(tStagesReq.data),
         tournamentTeams: dedupe(tTeamsReq.data),
         tournamentStageTeams: dedupe(tSTeamsReq.data),
-        tournamentMatches: dedupe(tMatchesReq.data),
+        tournamentMatches: dedupe(tMatchesReq.data).map((tm: any) => {
+          const meta = decodeMatchPitch(tm.pitch);
+          return {
+            ...tm,
+            round: tm.round || meta.round,
+            leg: tm.leg || meta.leg,
+            pitch: meta.displayPitch || tm.pitch
+          };
+        }),
         servicesDirectory: dedupe(servicesReq.data),
         technicalReports: dedupe(tReportsReq.data)
       }));
@@ -304,6 +330,54 @@ const App: React.FC = () => {
   const syncToCloud = useCallback(async (table: string, data: any | any[]) => {
     setSyncStatus('syncing');
     try {
+      if (table === 'people') {
+        if (!Array.isArray(data)) {
+          const res = await safeSavePerson(data, 'upsert');
+          if (!res.success) throw res.error;
+          setSyncStatus('synced');
+          return true;
+        } else {
+          for (const item of data) {
+            await safeSavePerson(item, 'upsert');
+          }
+          setSyncStatus('synced');
+          return true;
+        }
+      }
+      if (table === 'tournament_matches') {
+        const items = Array.isArray(data) ? data : [data];
+        const prepared = items.map(it => {
+          const c = { ...it };
+          c.pitch = encodeMatchPitch(c.displayPitch || c.pitch, c.round, c.leg);
+          return c;
+        });
+        const payload = Array.isArray(data) ? prepared : prepared[0];
+        try {
+          const { error } = await supabase.from(table).upsert(payload);
+          if (!error) {
+            setSyncStatus('synced');
+            return true;
+          }
+          if (error.message?.includes('column') || error.code === 'PGRST204') {
+            const stripped = prepared.map(it => {
+              const c = { ...it };
+              delete c.round;
+              delete c.leg;
+              return c;
+            });
+            const strippedPayload = Array.isArray(data) ? stripped : stripped[0];
+            const { error: retryErr } = await supabase.from(table).upsert(strippedPayload);
+            if (retryErr) throw retryErr;
+            setSyncStatus('synced');
+            return true;
+          }
+          throw error;
+        } catch (err: any) {
+          setSyncStatus('error');
+          addNotify(`خطأ مزامنة المباريات: ${err.message}`, 'error');
+          return false;
+        }
+      }
       const { error } = await supabase.from(table).upsert(data);
       if (error) throw error;
       setSyncStatus('synced');
@@ -804,7 +878,7 @@ const App: React.FC = () => {
              </button>
              <select
                className="bg-slate-100 text-blue-900 px-2 md:px-3 py-2 md:py-2.5 rounded-xl font-bold text-[10px] md:text-xs outline-none border border-slate-200"
-               value={state.activeSeason || '2026/2027'}
+               value={state.activeSeason || '2025/2026'}
                onChange={(e) => setState({ ...state, activeSeason: e.target.value })}
              >
                {state.seasons?.map(s => (

@@ -4,10 +4,12 @@ import {
   UserPlus, Trash2, Search, Edit2, MapPin, Calendar, ChevronRight, 
   X, Save, Target, Phone, Ruler, Weight, Home, Fingerprint, 
   BadgeCheck, Edit3, Wallet, HeartPulse, ShieldAlert, 
-  GraduationCap, Award, Activity, Loader2, Filter, Gavel, FileText, Hash, Globe, Briefcase, Bot, CreditCard, FileCheck
+  GraduationCap, Award, Activity, Loader2, Filter, Gavel, FileText, Hash, Globe, Briefcase, Bot, CreditCard, FileCheck,
+  PhoneCall, Footprints, Shirt, Droplet
 } from 'lucide-react';
 import { AppState, Person, Role } from '../types';
 import { generateUUID, supabase } from '../App';
+import { safeSavePerson } from '../utils/supabaseSanitizer';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import html2pdf from 'html2pdf.js';
 import DocumentUploadCard from './DocumentUploadCard';
@@ -69,8 +71,9 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     subscriptionAmount: '', subscriptionMonth: '', registrationDate: new Date().toISOString().split('T')[0], receivedKit: false, kitAmount: '', isAcademyPlayer: false,
     medicalHistory: '', injuries: '', penalties: '', notes: '', coachingCertificate: '', academicDegree: '',
     passportNumber: '', passportIssueDate: '', passportExpiryDate: '', idCardImage: '', idCardBackImage: '', passportImage: '',
-    season: state.activeSeason || '2026/2027',
-    seasons: [state.activeSeason || '2026/2027']
+    season: state.activeSeason || '2025/2026',
+    seasons: [state.activeSeason || '2025/2026'],
+    bloodType: '', shoeSize: '', clothesSize: '', preferredFoot: 'يمنى', emergencyPhone: ''
   };
 
   const [formData, setFormData] = useState<Partial<Person>>(initialFormState);
@@ -225,14 +228,9 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
       name: formData.name!.trim(),
     } as any;
 
-    ['number', 'height', 'weight', 'contractValue', 'birthDate', 'contractStart', 'contractEnd', 'passportIssueDate', 'passportExpiryDate'].forEach(key => {
-      if (updatedPerson[key] === '') updatedPerson[key] = null;
-    });
-    if (Number.isNaN(updatedPerson.number)) updatedPerson.number = null;
-
     try {
-      const { error } = await supabase.from('people').upsert(updatedPerson);
-      if (error) throw error;
+      const saveRes = await safeSavePerson(updatedPerson, 'upsert');
+      if (!saveRes.success) throw saveRes.error;
 
       setState(prev => ({
         ...prev,
@@ -288,6 +286,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     setEditingId(p.id);
     setFormData({
       ...p,
+      isAcademyPlayer: Boolean(p.isAcademyPlayer === true || String(p.isAcademyPlayer) === 'true'),
+      receivedKit: Boolean(p.receivedKit === true || String(p.receivedKit) === 'true'),
       season: p.season || pSeasons[0] || '2025/2026',
       seasons: pSeasons
     });
@@ -342,6 +342,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
            <FileText size={20}/> تصدير CSV
          </button>
 
+
+
          {canAddOrDelete && (
            <button onClick={() => { setEditingId(null); setFormData(initialFormState); setIsModalOpen(true); }}
              className="bg-orange-500 text-white px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-orange-500/10 hover:bg-orange-600 transition-all whitespace-nowrap w-full md:w-auto justify-center">
@@ -377,6 +379,22 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 {(person.federalNumber || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">اتحادي: {person.federalNumber}</span>}
                 {(person.internationalId || '').trim() !== '' && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">دولي: {person.internationalId}</span>}
                 {(person.passportNumber || '').trim() !== '' && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">جواز: {person.passportNumber}</span>}
+                {Boolean(person.bloodType) && <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap">🩸 {person.bloodType}</span>}
+                {Boolean(person.shoeSize) && <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">👟 حذاء: {person.shoeSize}</span>}
+                {Boolean(person.clothesSize) && <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">👕 {person.clothesSize}</span>}
+                {Boolean(person.preferredFoot) && <span className="bg-slate-50 text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">قدم: {person.preferredFoot}</span>}
+                {(Boolean(person.height) || Boolean(person.weight)) && (
+                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">
+                    📏 {person.height ? `${person.height}سم` : ''}{person.height && person.weight ? ' • ' : ''}{person.weight ? `${person.weight}كغ` : ''}
+                  </span>
+                )}
+                {Boolean(person.phone) && <span className="bg-slate-50 text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">📞 {person.phone}</span>}
+                {Boolean(person.emergencyPhone) && <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🚨 طوارئ: {person.emergencyPhone}</span>}
+                {Boolean(person.birthDate) && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🎂 {getAge(person.birthDate)}</span>}
+                {Boolean(person.khana) && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">قيد: {person.khana}</span>}
+                {Boolean(person.isAcademyPlayer) && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🎓 أكاديمية</span>}
+                {Boolean(person.receivedKit) && <span className="bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🎽 استلم لباس</span>}
+                {Boolean(person.season) && <span className="bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">موسم {person.season}</span>}
                 {(person.idCardImage || person.passportImage) && (
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-bold flex items-center gap-1">
                     <FileCheck size={10} /> الوثائق مرفوعة
@@ -505,11 +523,11 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   <label className={labelClass}>تصنيف اللاعب</label>
                   <div className="flex gap-4 mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="playerType" className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300" checked={!formData.isAcademyPlayer} onChange={() => setFormData({...formData, isAcademyPlayer: false})} />
+                      <input type="radio" name="playerType" className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300" checked={!Boolean(formData.isAcademyPlayer === true || String(formData.isAcademyPlayer) === 'true')} onChange={() => setFormData({...formData, isAcademyPlayer: false})} />
                       <span className="font-bold text-sm text-slate-700">لاعب نادي</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="playerType" className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300" checked={formData.isAcademyPlayer} onChange={() => setFormData({...formData, isAcademyPlayer: true})} />
+                      <input type="radio" name="playerType" className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300" checked={Boolean(formData.isAcademyPlayer === true || String(formData.isAcademyPlayer) === 'true')} onChange={() => setFormData({...formData, isAcademyPlayer: true})} />
                       <span className="font-bold text-sm text-slate-700">لاعب أكاديمية</span>
                     </label>
                   </div>
@@ -564,12 +582,48 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
                 <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input disabled={isMedic} type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
                 <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input disabled={isMedic} className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
+                <div className="space-y-1">
+                  <label className={labelClass}>القدم المفضلة</label>
+                  <select disabled={isMedic} className={inputClass} value={formData.preferredFoot || 'يمنى'} onChange={e => setFormData({...formData, preferredFoot: e.target.value as any})}>
+                    <option value="يمنى">يمنى</option>
+                    <option value="يسرى">يسرى</option>
+                    <option value="كلاهما">كلاهما</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>زمرة الدم</label>
+                  <select disabled={isMedic} className={inputClass} value={formData.bloodType || ''} onChange={e => setFormData({...formData, bloodType: e.target.value})}>
+                    <option value="">اختر...</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+                <div className="space-y-1"><label className={labelClass}>قياس الحذاء</label><input disabled={isMedic} type="text" placeholder="مثال: 42" className={inputClass} value={formData.shoeSize || ''} onChange={e => setFormData({...formData, shoeSize: e.target.value})} /></div>
+                <div className="space-y-1">
+                  <label className={labelClass}>قياس الملابس</label>
+                  <select disabled={isMedic} className={inputClass} value={formData.clothesSize || ''} onChange={e => setFormData({...formData, clothesSize: e.target.value})}>
+                    <option value="">اختر...</option>
+                    <option value="XS">XS</option>
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                    <option value="XL">XL</option>
+                    <option value="XXL">XXL</option>
+                  </select>
+                </div>
                 <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input disabled={isMedic} type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input disabled={isMedic} className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>الوزن (كغ)</label><input disabled={isMedic} className={inputClass} value={formData.weight || ''} onChange={e => setFormData({...formData, weight: e.target.value})} /></div>
                 <div className="space-y-1"><label className={labelClass}>الشهادة التدريبية</label><input disabled={isMedic} className={inputClass} value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
                 <div className="sm:col-span-2 space-y-1"><label className={labelClass}>التحصيل العلمي</label><input disabled={isMedic} className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
-                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>رقم الهاتف</label><input disabled={isMedic} className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>رقم الهاتف</label><input disabled={isMedic} className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>هاتف الطوارئ / ولي الأمر</label><input disabled={isMedic} className={inputClass} value={formData.emergencyPhone || ''} onChange={e => setFormData({...formData, emergencyPhone: e.target.value})} /></div>
                 <div className="sm:col-span-full space-y-1"><label className={labelClass}>عنوان السكن التفصيلي</label><input disabled={isMedic} className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
               </div>
 
@@ -584,7 +638,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                     
                     <div className="space-y-1 flex items-center mt-6">
                       <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-slate-300" checked={formData.receivedKit || false} onChange={e => setFormData({...formData, receivedKit: e.target.checked})} />
+                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-slate-300" checked={Boolean(formData.receivedKit === true || String(formData.receivedKit) === 'true')} onChange={e => setFormData({...formData, receivedKit: e.target.checked})} />
                         <span className="font-black text-sm text-slate-800">استلم لباس</span>
                       </label>
                     </div>
@@ -842,6 +896,11 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                         <td className="p-3 font-semibold">{player2.phone || '-'}</td>
                       </tr>
 <tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.emergencyPhone || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">هاتف الطوارئ / الولي</td>
+                        <td className="p-3 font-semibold">{player2.emergencyPhone || '-'}</td>
+                      </tr>
+<tr className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="p-3 border-l border-slate-100 font-semibold">{player1.academicDegree || '-'}</td>
                         <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">التحصيل العلمي</td>
                         <td className="p-3 font-semibold">{player2.academicDegree || '-'}</td>
@@ -865,6 +924,26 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                         <td className="p-3 border-l border-slate-100 font-semibold">{player1.weight ? `${player1.weight} كغ` : '-'}</td>
                         <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الوزن</td>
                         <td className="p-3 font-semibold">{player2.weight ? `${player2.weight} كغ` : '-'}</td>
+                      </tr>
+<tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-black text-rose-600">{player1.bloodType || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">زمرة الدم</td>
+                        <td className="p-3 font-black text-rose-600">{player2.bloodType || '-'}</td>
+                      </tr>
+<tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.preferredFoot || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">القدم المفضلة</td>
+                        <td className="p-3 font-semibold">{player2.preferredFoot || '-'}</td>
+                      </tr>
+<tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.shoeSize || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">قياس الحذاء</td>
+                        <td className="p-3 font-semibold">{player2.shoeSize || '-'}</td>
+                      </tr>
+<tr className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.clothesSize || '-'}</td>
+                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">قياس الملابس</td>
+                        <td className="p-3 font-semibold">{player2.clothesSize || '-'}</td>
                       </tr>
 {progressionData.length > 0 && (
                         <tr className="border-b border-slate-100 hover:bg-slate-50">

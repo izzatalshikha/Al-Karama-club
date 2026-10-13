@@ -511,7 +511,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                  </div>
 
                  <label className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl cursor-pointer hover:border-orange-500 transition-all">
-                    <input type="checkbox" className="w-5 h-5 rounded text-orange-500 focus:ring-orange-500" checked={formData.isFinal || false} onChange={e => setFormData({...formData, isFinal: e.target.checked})} />
+                    <input type="checkbox" className="w-5 h-5 rounded text-orange-500 focus:ring-orange-500" checked={Boolean(formData.isFinal === true || String(formData.isFinal) === 'true')} onChange={e => setFormData({...formData, isFinal: e.target.checked})} />
                     <span className="text-sm font-black text-blue-900">مباراة نهائية (تتضمن أشواط إضافية وركلات ترجيح)</span>
                  </label>
 
