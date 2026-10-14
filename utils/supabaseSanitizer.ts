@@ -29,18 +29,22 @@ export async function safeSavePerson(
     cleanData.number = null;
   }
 
-  // ضمان سلامة القيم المنطقية (boolean)
+  // ضمان سلامة القيم المنطقية (boolean) وتأكيد تصنيفهم كلاعبي/كوادر نادي وليس أكاديمية
   cleanData.receivedKit = cleanData.receivedKit === true || String(cleanData.receivedKit) === 'true';
-  cleanData.isAcademyPlayer = cleanData.isAcademyPlayer === true || String(cleanData.isAcademyPlayer) === 'true';
+  cleanData.isAcademyPlayer = false; // دائماً لاعب نادي أو كادر نادي
+
+  // ضمان سلامة مصفوفة المواسم وقيد الموسم
+  const validSeasons = Array.isArray(cleanData.seasons) && cleanData.seasons.length > 0
+    ? cleanData.seasons
+    : (cleanData.season ? (cleanData.season.includes(',') ? cleanData.season.split(',').map((x: string) => x.trim()) : [cleanData.season]) : ['2025/2026']);
+  cleanData.seasons = validSeasons;
+  cleanData.season = cleanData.season || validSeasons[validSeasons.length - 1] || '2025/2026';
 
   // 2. تجهيز حمولة السحابة:
-  // عمود seasons في بعض قواعد البيانات في Supabase تم إنشاؤه مسبقاً كـ numeric
-  // إرسال مصفوفة ["2025/2026", "2026/2027"] يسبب خطأ:
-  // invalid input syntax for type numeric: "["2025/2026","2026/2027"]"
-  // نقوم بحذف seasons من حمولة السحابة تماماً، بينما نحتفظ بحقل season (الموسم النشط كنص مثل "2026/2027")
-  // ونحتفظ بمصفوفة seasons كاملة في cleanData للواجهة والتخزين المحلي
   const cloudPayload: any = { ...cleanData };
-  delete cloudPayload.seasons;
+  cloudPayload.seasons = validSeasons;
+  cloudPayload.season = cleanData.season;
+  cloudPayload.isAcademyPlayer = false;
 
   // المحاولة الأولى: حفظ البيانات المنظفة في السحابة
   let res: any;

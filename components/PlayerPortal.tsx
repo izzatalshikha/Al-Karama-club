@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { AppState, Person } from '../types';
 import PlayerReport from './PlayerReport';
 import ClubLogo from './ClubLogo';
+import PlayerWelcomeSplash from './PlayerWelcomeSplash';
 import { 
   LogOut, Calendar, Trophy, ClipboardCheck, ArrowRight, User, 
   CreditCard, FileText, CheckCircle2, Save, Loader2, AlertCircle, FileCheck, ShieldCheck,
-  Edit, UserCheck, Heart, Ruler, Scale, Phone, MapPin, Sparkles
+  Edit, UserCheck, Heart, Ruler, Scale, Phone, MapPin, Sparkles, Award
 } from 'lucide-react';
 import DocumentUploadCard from './DocumentUploadCard';
 import { supabase } from '../App';
@@ -20,6 +21,7 @@ interface PlayerPortalProps {
 
 export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLogout, setState }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'edit-profile' | 'documents' | 'schedule'>('profile');
+  const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
 
   // Personal & Athletic info form state
   const [phone, setPhone] = useState(player.phone || '');
@@ -178,7 +180,15 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
   const hasDocumentsUploaded = Boolean(idCardImage || idCardBackImage || passportImage || passportNumber);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-['IBM_Plex_Sans_Arabic'] flex flex-col" dir="rtl">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-['IBM_Plex_Sans_Arabic'] flex flex-col relative" dir="rtl">
+      {/* Spectacular Champions Welcome for Player */}
+      {showWelcomeSplash && (
+        <PlayerWelcomeSplash 
+          player={player} 
+          onComplete={() => setShowWelcomeSplash(false)} 
+        />
+      )}
+
       {/* Top Header for Player */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm print:hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
@@ -195,7 +205,17 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Champions Welcome Replay Button بألوان النادي */}
+            <button
+              onClick={() => setShowWelcomeSplash(true)}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-blue-700 via-blue-600 to-orange-500 hover:from-blue-600 hover:to-orange-400 text-white font-black px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs shadow-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all border border-blue-400/40"
+              title="عرض شارة وبطولة النادي"
+            >
+              <Trophy size={14} className="text-orange-300" />
+              <span className="hidden sm:inline">ترحيب الأبطال</span>
+            </button>
+
             <div className="hidden sm:flex bg-slate-100 p-1 rounded-xl gap-1">
               <button
                 onClick={() => setActiveTab('profile')}

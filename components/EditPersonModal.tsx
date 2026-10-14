@@ -28,11 +28,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
   const defaultPersonSeasons = Array.isArray(person.seasons) && person.seasons.length > 0
     ? person.seasons
-    : (person.season ? [person.season] : ['2025/2026']);
+    : (person.season ? (person.season.includes(',') ? person.season.split(',').map((x: string) => x.trim()) : [person.season]) : ['2025/2026']);
 
   const [formData, setFormData] = useState<Partial<Person>>({
     ...person,
-    season: person.season || defaultPersonSeasons[0] || '2025/2026',
+    isAcademyPlayer: false, // تأكيد كعضو نادي رسمي وليس أكاديمية
+    season: person.season || defaultPersonSeasons[defaultPersonSeasons.length - 1] || '2025/2026',
     seasons: defaultPersonSeasons,
     certificates: person.certificates ? [...person.certificates] : [],
     experiences: person.experiences ? [...person.experiences] : [],
@@ -52,9 +53,16 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     setSuccessMsg('');
 
     try {
+      const finalSeasons = (formData.seasons && formData.seasons.length > 0)
+        ? formData.seasons
+        : (formData.season ? (formData.season.includes(',') ? formData.season.split(',').map((x: string) => x.trim()) : [formData.season]) : ['2025/2026']);
+
       const cleanData: any = {
         ...formData,
-        name: formData.name?.trim() || person.name
+        isAcademyPlayer: false, // تأكيد كلاعب/كادر نادي دائماً
+        name: formData.name?.trim() || person.name,
+        seasons: finalSeasons,
+        season: formData.season || finalSeasons[finalSeasons.length - 1] || '2025/2026'
       };
 
       const saveRes = await safeSavePerson(cleanData, 'update', person.id);
@@ -62,7 +70,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
       const updated = { ...person, ...cleanData };
       onSaved(updated);
-      setSuccessMsg('تم حفظ وتحديث البيانات بنجاح!');
+      setSuccessMsg('تم حفظ وتحديث البيانات والمواسم بنجاح!');
       setTimeout(() => {
         onClose();
       }, 1000);
@@ -120,6 +128,26 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
         {/* نموذج البيانات */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-6 custom-scrollbar bg-slate-50">
           
+          {/* تصنيف الانتماء كعضو نادي رسمي */}
+          <div className="bg-gradient-to-r from-blue-900 to-blue-800 text-white p-4 rounded-2xl shadow-sm flex items-center justify-between border border-blue-700">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-lg font-black text-orange-400">
+                ⚽
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-black text-white">
+                  {isPlayer ? 'لاعب نادي رسمي (فريق النادي الكروي)' : 'كادر نادي رسمي'}
+                </p>
+                <p className="text-[11px] text-blue-200 font-bold">
+                  عضو مسجل في صفوف النادي وليس لاعباً في الأكاديمية
+                </p>
+              </div>
+            </div>
+            <span className="bg-orange-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-xs">
+              نادي رسمي ✓
+            </span>
+          </div>
+
           {/* 1. المعلومات الشخصية والتواصل */}
           <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
             <h4 className="text-xs font-black text-orange-600 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -250,16 +278,9 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
               </span>
             </div>
 
-            <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900">
-              <p className="font-bold">
-                💡 الموسم الافتراضي الحالي للنظام هو <span className="font-black text-orange-600">2026/2027</span>.
-                إذا كان العضو مقيداً في موسم سابق (مثل <span className="font-black">2025/2026</span>)، يمكنك ترفيعه أو تجديد قيده لكي يظهر في الموسم الجديد عبر تحديد موسم 2026/2027 أدناه.
-              </p>
-            </div>
-
             <div className="space-y-3">
               <label className="text-[11px] font-black text-slate-700 block">
-                المواسم التي شارك/يلعب بها العضو (حدد جميع المواسم المعتمدة):
+                المواسم المعتمدة لقيد {isPlayer ? 'اللاعب' : 'الكادر'} في النادي:
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                 {availableClubSeasons.map(s => {
@@ -294,27 +315,6 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   );
                 })}
               </div>
-
-              {/* زر ترفيع / ترقية سريع إلى 2026/2027 */}
-              {!(formData.seasons || []).includes('2026/2027') && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const cur = formData.seasons || [];
-                      const updated = Array.from(new Set([...cur, '2026/2027']));
-                      setFormData({
-                        ...formData,
-                        seasons: updated,
-                        season: '2026/2027'
-                      });
-                    }}
-                    className="text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
-                  >
-                    <span>✓ ترفيع وتثبيت القيد في موسم 2026/2027 فوراً</span>
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 

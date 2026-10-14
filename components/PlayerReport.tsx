@@ -43,7 +43,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   const months = ["كانون الثاني", "شباط", "آذار", "نيسان", "أيار", "حزيران", "تموز", "آب", "أيلول", "تشرين الأول", "تشرين الثاني", "كانون الأول"];
   const currentMonthIndex = new Date().getMonth();
   const [selectedMonth, setSelectedMonth] = useState(months[currentMonthIndex]);
-  const [selectedSeason, setSelectedSeason] = useState<string>(state.activeSeason || '2026/2027');
+  const [selectedSeason, setSelectedSeason] = useState<string>(state.activeSeason || '2025/2026');
 
   if (!player || !state.currentUser) return null;
 
@@ -631,7 +631,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                         <InfoBlock icon={Weight} label="الوزن" value={player.weight ? `${player.weight} كغ` : '---'} color="text-emerald-700" />
                         <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
                         <InfoBlock icon={GraduationCap} label="الشهادة العلمية" value={player.academicDegree} />
-                        <InfoBlock icon={UserCheck} label="تصنيف اللاعب" value={player.isAcademyPlayer ? 'لاعب أكاديمية' : 'لاعب نادي'} color="text-blue-900" />
+                        <InfoBlock icon={UserCheck} label="تصنيف اللاعب" value="لاعب نادي رسمي" color="text-blue-900 font-black" />
                         {player.coachingCertificate && (
                            <InfoBlock icon={Award} label="الشهادة التدريبية" value={player.coachingCertificate} />
                         )}
@@ -666,8 +666,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             ) : (
                <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600">
                   <SectionTitle icon={Activity} title="2. التوصيف الوظيفي بالنادي" color="text-emerald-500" />
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                      <InfoBlock icon={Target} label="الدور الوظيفي" value={player.role} />
+                     <InfoBlock icon={UserCheck} label="الصفة والانتماء" value="كادر نادي رسمي" color="text-blue-900 font-black" />
                      <InfoBlock icon={CalendarCheck} label="الفئة" value={player.category || 'غير محدد'} />
                      <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
                   </div>

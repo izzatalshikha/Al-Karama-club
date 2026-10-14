@@ -221,9 +221,16 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     if (!formData.name?.trim() || isSaving || !canEdit) return;
 
     setIsSaving(true);
+    const validSeasons = (formData.seasons && formData.seasons.length > 0)
+      ? formData.seasons
+      : (formData.season ? (formData.season.includes(',') ? formData.season.split(',').map((x: string) => x.trim()) : [formData.season]) : [state.activeSeason || '2025/2026']);
+
     const updatedPerson = {
       ...initialFormState,
       ...formData,
+      isAcademyPlayer: false, // دائماً لاعب نادي
+      seasons: validSeasons,
+      season: formData.season || validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
       id: editingId || generateUUID(),
       name: formData.name!.trim(),
     } as any;
@@ -282,13 +289,13 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     if (!canEdit) return;
     const pSeasons = Array.isArray(p.seasons) && p.seasons.length > 0
       ? p.seasons
-      : (p.season ? [p.season] : ['2025/2026']);
+      : (p.season ? (p.season.includes(',') ? p.season.split(',').map(x => x.trim()) : [p.season]) : ['2025/2026']);
     setEditingId(p.id);
     setFormData({
       ...p,
-      isAcademyPlayer: Boolean(p.isAcademyPlayer === true || String(p.isAcademyPlayer) === 'true'),
+      isAcademyPlayer: false, // نادي دائماً
       receivedKit: Boolean(p.receivedKit === true || String(p.receivedKit) === 'true'),
-      season: p.season || pSeasons[0] || '2025/2026',
+      season: p.season || pSeasons[pSeasons.length - 1] || '2025/2026',
       seasons: pSeasons
     });
     setIsModalOpen(true);
@@ -334,6 +341,21 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
            </div>
          )}
 
+         {/* محدد الموسم الرياضي في إدارة الفريق */}
+         <div className="relative w-full md:w-56">
+            <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
+            <select 
+              value={state.activeSeason || '2025/2026'} 
+              onChange={e => setState(prev => ({ ...prev, activeSeason: e.target.value }))}
+              className="w-full bg-white border border-slate-200 rounded-xl py-3 md:py-4 pr-12 pl-6 text-blue-900 outline-none focus:ring-2 focus:ring-orange-500/10 transition-all font-black text-xs cursor-pointer appearance-none shadow-sm"
+              title="اختيار الموسم المعروض"
+            >
+               {['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].map(s => (
+                 <option key={s} value={s}>موسم {s}</option>
+               ))}
+            </select>
+         </div>
+
          <button onClick={() => setIsCompareModalOpen(true)} className="bg-blue-100 text-blue-700 px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 hover:bg-blue-200 transition-all whitespace-nowrap w-full md:w-auto justify-center shadow-sm">
            <Activity size={20}/> مقارنة لاعبين
          </button>
@@ -352,11 +374,14 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
          )}
       </div>
 
-      {/* العنوان */}
-      <div className="flex p-1 bg-slate-100 border border-slate-200 rounded-xl w-full sm:w-fit shadow-inner">
-          <button className="flex-1 sm:flex-none px-4 md:px-10 py-2.5 rounded-lg font-black text-[10px] md:text-xs transition-all bg-white text-blue-950 shadow-md">
-            اللاعبين ({filteredMembers.length})
-          </button>
+      {/* العنوان والموسم النشط */}
+      <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100 border border-slate-200 rounded-xl w-full sm:w-fit shadow-inner">
+          <div className="px-4 md:px-8 py-2.5 rounded-lg font-black text-[10px] md:text-xs bg-white text-blue-950 shadow-md flex items-center gap-2.5">
+            <span>اللاعبين ({filteredMembers.length})</span>
+            <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-md text-[10px] font-black">
+              الموسم النشط: {state.activeSeason || '2025/2026'}
+            </span>
+          </div>
       </div>
 
       {/* قائمة البطاقات */}
@@ -392,9 +417,13 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 {Boolean(person.emergencyPhone) && <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🚨 طوارئ: {person.emergencyPhone}</span>}
                 {Boolean(person.birthDate) && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🎂 {getAge(person.birthDate)}</span>}
                 {Boolean(person.khana) && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">قيد: {person.khana}</span>}
-                {Boolean(person.isAcademyPlayer) && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🎓 أكاديمية</span>}
+                <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap">⚽ لاعب نادي</span>
                 {Boolean(person.receivedKit) && <span className="bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">🎽 استلم لباس</span>}
-                {Boolean(person.season) && <span className="bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">موسم {person.season}</span>}
+                {(Array.isArray(person.seasons) && person.seasons.length > 0 ? person.seasons : (person.season ? (person.season.includes(',') ? person.season.split(',').map((x: string) => x.trim()) : [person.season]) : ['2025/2026'])).map(s => (
+                  <span key={s} className={`border px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap ${s === state.activeSeason ? 'bg-orange-500 text-white border-orange-600 shadow-xs' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                    موسم {s}
+                  </span>
+                ))}
                 {(person.idCardImage || person.passportImage) && (
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-bold flex items-center gap-1">
                     <FileCheck size={10} /> الوثائق مرفوعة
@@ -520,16 +549,14 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 <div className="space-y-1"><label className={labelClass}>الفئة</label><select disabled={isMedic} className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 
                 <div className="space-y-1 sm:col-span-2 flex flex-col justify-center">
-                  <label className={labelClass}>تصنيف اللاعب</label>
-                  <div className="flex gap-4 mt-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="playerType" className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300" checked={!Boolean(formData.isAcademyPlayer === true || String(formData.isAcademyPlayer) === 'true')} onChange={() => setFormData({...formData, isAcademyPlayer: false})} />
-                      <span className="font-bold text-sm text-slate-700">لاعب نادي</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="playerType" className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300" checked={Boolean(formData.isAcademyPlayer === true || String(formData.isAcademyPlayer) === 'true')} onChange={() => setFormData({...formData, isAcademyPlayer: true})} />
-                      <span className="font-bold text-sm text-slate-700">لاعب أكاديمية</span>
-                    </label>
+                  <label className={labelClass}>تصنيف اللاعب والانتماء</label>
+                  <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl flex items-center justify-between mt-1">
+                    <span className="font-black text-xs text-blue-900 flex items-center gap-1.5">
+                      ⚽ لاعب نادي رسمي (فريق النادي)
+                    </span>
+                    <span className="text-[10px] bg-blue-600 text-white px-2.5 py-0.5 rounded-full font-black">
+                      نادي رسمي ✓
+                    </span>
                   </div>
                 </div>
 
@@ -538,21 +565,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-black text-blue-900 flex items-center gap-2">
                       <Calendar size={14} className="text-orange-600" />
-                      مواسم المشاركة والتقييد في النادي (الموسم الافتراضي الحالي: {state.activeSeason || '2026/2027'}):
+                      مواسم المشاركة والتقييد في النادي (الموسم النشط: {state.activeSeason || '2025/2026'}):
                     </label>
-                    {!(formData.seasons || []).includes('2026/2027') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cur = formData.seasons || [];
-                          const updated = Array.from(new Set([...cur, '2026/2027']));
-                          setFormData({ ...formData, seasons: updated, season: '2026/2027' });
-                        }}
-                        className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg"
-                      >
-                        ✓ ترفيع إلى 2026/2027
-                      </button>
-                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].map(s => {

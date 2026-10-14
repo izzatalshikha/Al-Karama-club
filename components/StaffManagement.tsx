@@ -38,8 +38,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     role: 'مدرب', phone: '', joinDate: new Date().toISOString().split('T')[0],
     academicDegree: '', certificates: [], experiences: [],
     passportNumber: '', passportIssueDate: '', passportExpiryDate: '', idCardImage: '', idCardBackImage: '', passportImage: '',
-    season: state.activeSeason || '2026/2027',
-    seasons: [state.activeSeason || '2026/2027']
+    season: state.activeSeason || '2025/2026',
+    seasons: [state.activeSeason || '2025/2026']
   };
 
   const [formData, setFormData] = useState<Partial<Person>>(initialFormState);
@@ -63,9 +63,16 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     if (isViewer && !isEditingSelf && !isManager) return;
 
     setIsSaving(true);
+    const validSeasons = (formData.seasons && formData.seasons.length > 0)
+      ? formData.seasons
+      : (formData.season ? (formData.season.includes(',') ? formData.season.split(',').map((x: string) => x.trim()) : [formData.season]) : [state.activeSeason || '2025/2026']);
+
     const updatedPerson = {
       ...initialFormState,
       ...formData,
+      isAcademyPlayer: false, // دائماً كادر نادي رسمي
+      seasons: validSeasons,
+      season: formData.season || validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
       id: editingId || generateUUID(),
       name: formData.name!.trim(),
     } as any;
@@ -188,11 +195,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     if (isViewer) return;
     const pSeasons = Array.isArray(p.seasons) && p.seasons.length > 0
       ? p.seasons
-      : (p.season ? [p.season] : ['2025/2026']);
+      : (p.season ? (p.season.includes(',') ? p.season.split(',').map(x => x.trim()) : [p.season]) : ['2025/2026']);
     setEditingId(p.id);
     setFormData({ 
       ...p, 
-      season: p.season || pSeasons[0] || '2025/2026',
+      isAcademyPlayer: false, // كادر نادي رسمي
+      season: p.season || pSeasons[pSeasons.length - 1] || '2025/2026',
       seasons: pSeasons,
       certificates: p.certificates || [], 
       experiences: p.experiences || [] 
@@ -240,6 +248,21 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
            </div>
          )}
 
+         {/* محدد الموسم الرياضي في إدارة الكوادر */}
+         <div className="relative w-full md:w-56">
+            <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
+            <select 
+              value={state.activeSeason || '2025/2026'} 
+              onChange={e => setState(prev => ({ ...prev, activeSeason: e.target.value }))}
+              className="w-full bg-white border border-slate-200 rounded-xl py-3 md:py-4 pr-12 pl-6 text-blue-900 outline-none focus:ring-2 focus:ring-orange-500/10 transition-all font-black text-xs cursor-pointer appearance-none shadow-sm"
+              title="اختيار الموسم المعروض"
+            >
+               {['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].map(s => (
+                 <option key={s} value={s}>موسم {s}</option>
+               ))}
+            </select>
+         </div>
+
          <button onClick={exportToCSV} className="bg-slate-100 text-slate-700 px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 hover:bg-slate-200 transition-all whitespace-nowrap w-full md:w-auto justify-center">
            <FileText size={20}/> تصدير CSV
          </button>
@@ -252,10 +275,14 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
          )}
       </div>
 
-      <div className="flex p-1 bg-slate-100 border border-slate-200 rounded-xl w-full sm:w-fit shadow-inner">
-          <button className="flex-1 sm:flex-none px-4 md:px-10 py-2.5 rounded-lg font-black text-[10px] md:text-xs transition-all bg-white text-blue-950 shadow-md">
-            المدربين والكوادر ({filteredMembers.length})
-          </button>
+      {/* العنوان والموسم النشط */}
+      <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100 border border-slate-200 rounded-xl w-full sm:w-fit shadow-inner">
+          <div className="px-4 md:px-8 py-2.5 rounded-lg font-black text-[10px] md:text-xs bg-white text-blue-950 shadow-md flex items-center gap-2.5">
+            <span>المدربين والكوادر ({filteredMembers.length})</span>
+            <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-md text-[10px] font-black">
+              الموسم النشط: {state.activeSeason || '2025/2026'}
+            </span>
+          </div>
       </div>
 
       {/* قائمة البطاقات */}
@@ -303,6 +330,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
              </div>
              <p className="text-[8px] md:text-[9px] text-slate-600 font-bold mb-2 italic truncate">{person.academicDegree || 'بدون تحصيل'}</p>
              <div className="flex flex-wrap gap-1 mb-3">
+                <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap">🛡️ كادر نادي</span>
+                {(Array.isArray(person.seasons) && person.seasons.length > 0 ? person.seasons : (person.season ? (person.season.includes(',') ? person.season.split(',').map((x: string) => x.trim()) : [person.season]) : ['2025/2026'])).map(s => (
+                  <span key={s} className={`border px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap ${s === state.activeSeason ? 'bg-orange-500 text-white border-orange-600 shadow-xs' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                    موسم {s}
+                  </span>
+                ))}
                 {person.certificates && person.certificates.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.certificates.length} شهادات</span>}
                 {person.experiences && person.experiences.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.experiences.length} خبرات</span>}
                 {(person.passportNumber || '').trim() !== '' && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">جواز: {person.passportNumber}</span>}
@@ -461,21 +494,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-black text-blue-900 flex items-center gap-2">
                       <Calendar size={14} className="text-orange-600" />
-                      مواسم الكادر في النادي (الموسم الافتراضي الحالي: {state.activeSeason || '2026/2027'}):
+                      مواسم الكادر في النادي (الموسم النشط: {state.activeSeason || '2025/2026'}):
                     </label>
-                    {!(formData.seasons || []).includes('2026/2027') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cur = formData.seasons || [];
-                          const updated = Array.from(new Set([...cur, '2026/2027']));
-                          setFormData({ ...formData, seasons: updated, season: '2026/2027' });
-                        }}
-                        className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg"
-                      >
-                        ✓ ترفيع إلى 2026/2027
-                      </button>
-                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].map(s => {
