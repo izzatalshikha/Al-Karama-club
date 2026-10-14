@@ -73,11 +73,25 @@ const App: React.FC = () => {
            if (!parsed.activeSeason || !parsed.seasons.includes(parsed.activeSeason)) parsed.activeSeason = '2025/2026';
            
            const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
-           parsed.people = dedupe(parsed.people).map((person: any) => ({
-             ...person,
-             isAcademyPlayer: Boolean(person.isAcademyPlayer === true || String(person.isAcademyPlayer) === 'true'),
-             receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
-           }));
+           parsed.people = dedupe(parsed.people).map((person: any) => {
+             let seasonsList: string[] = [];
+             if (Array.isArray(person.seasons) && person.seasons.length > 0) {
+               seasonsList = person.seasons;
+             } else if (typeof person.season === 'string' && person.season.trim()) {
+               seasonsList = person.season.split(',').map((s: string) => s.trim()).filter(Boolean);
+             } else {
+               seasonsList = ['2025/2026'];
+             }
+             if (seasonsList.length === 0) seasonsList = ['2025/2026'];
+
+             return {
+               ...person,
+               isAcademyPlayer: false, // وضع جميع اللاعبين والكوادر كأعضاء نادي رسمي
+               seasons: seasonsList,
+               season: person.season || seasonsList[seasonsList.length - 1] || '2025/2026',
+               receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
+             };
+           });
            parsed.matches = dedupe(parsed.matches).map((match: any) => ({
              ...match,
              isCompleted: Boolean(match.isCompleted === true || String(match.isCompleted) === 'true'),
@@ -132,7 +146,7 @@ const App: React.FC = () => {
       const targetSeason = state.activeSeason || '2025/2026';
       const personSeasons = Array.isArray(p.seasons) && p.seasons.length > 0 
         ? p.seasons 
-        : (p.season ? [p.season] : ['2025/2026']);
+        : (p.season ? (p.season.includes(',') ? p.season.split(',').map((x: string) => x.trim()) : [p.season]) : ['2025/2026']);
       return personSeasons.includes(targetSeason);
     };
 
@@ -141,7 +155,7 @@ const App: React.FC = () => {
       appMode,
       categories: filteredCategories,
       people: state.people
-        .filter(p => !p.category || filterFn(p.category))
+        .filter(p => !p.category || p.category.split(',').some(c => filterFn(c.trim())))
         .filter(personBelongsToActiveSeason),
       sessions: state.sessions.filter(s => filterFn(s.category)),
       matches: state.matches.filter(m => filterFn(m.category)),
@@ -282,11 +296,25 @@ const App: React.FC = () => {
       setState(prev => ({
         ...prev,
         currentUser: user,
-        people: dedupe(p.data).map((person: any) => ({
-          ...person,
-          isAcademyPlayer: Boolean(person.isAcademyPlayer === true || String(person.isAcademyPlayer) === 'true'),
-          receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
-        })),
+        people: dedupe(p.data).map((person: any) => {
+          let seasonsList: string[] = [];
+          if (Array.isArray(person.seasons) && person.seasons.length > 0) {
+            seasonsList = person.seasons;
+          } else if (typeof person.season === 'string' && person.season.trim()) {
+            seasonsList = person.season.split(',').map((s: string) => s.trim()).filter(Boolean);
+          } else {
+            seasonsList = ['2025/2026'];
+          }
+          if (seasonsList.length === 0) seasonsList = ['2025/2026'];
+
+          return {
+            ...person,
+            isAcademyPlayer: false, // جميع اللاعبين والكوادر هم لاعبو/كوادر نادي
+            seasons: seasonsList,
+            season: person.season || seasonsList[seasonsList.length - 1] || '2025/2026',
+            receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
+          };
+        }),
         matches: dedupe(m.data).map((match: any) => ({
           ...match,
           isCompleted: Boolean(match.isCompleted === true || String(match.isCompleted) === 'true'),
@@ -476,7 +504,7 @@ const App: React.FC = () => {
       clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [state.currentUser, fetchAllData]);
+  }, [state.currentUser?.id, fetchAllData]);
 
   // إضافة الجلب التلقائي عند بدء التشغيل إذا كان هناك مستخدم مسجل الدخول
   useEffect(() => {
