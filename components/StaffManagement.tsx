@@ -63,16 +63,19 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     if (isViewer && !isEditingSelf && !isManager) return;
 
     setIsSaving(true);
-    const validSeasons = (formData.seasons && formData.seasons.length > 0)
-      ? formData.seasons
-      : (formData.season ? (formData.season.includes(',') ? formData.season.split(',').map((x: string) => x.trim()) : [formData.season]) : [state.activeSeason || '2025/2026']);
+    const rawSeasons: string[] = [
+      ...(Array.isArray(formData.seasons) ? formData.seasons : []),
+      ...(typeof formData.season === 'string' ? formData.season.split(',') : [])
+    ].map(s => String(s || '').trim()).filter(Boolean);
+    const finalSeasons = Array.from(new Set(rawSeasons));
+    const validSeasons = finalSeasons.length > 0 ? finalSeasons : [state.activeSeason || '2025/2026'];
 
     const updatedPerson = {
       ...initialFormState,
       ...formData,
       isAcademyPlayer: false, // دائماً كادر نادي رسمي
       seasons: validSeasons,
-      season: formData.season || validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
+      season: validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
       id: editingId || generateUUID(),
       name: formData.name!.trim(),
     } as any;
@@ -193,15 +196,19 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
 
   const openEdit = (p: Person) => {
     if (isViewer) return;
-    const pSeasons = Array.isArray(p.seasons) && p.seasons.length > 0
-      ? p.seasons
-      : (p.season ? (p.season.includes(',') ? p.season.split(',').map(x => x.trim()) : [p.season]) : ['2025/2026']);
+    const rawSeasons: string[] = [
+      ...(Array.isArray(p.seasons) ? p.seasons : []),
+      ...(typeof p.season === 'string' ? p.season.split(',') : [])
+    ].map(x => String(x || '').trim()).filter(Boolean);
+    const pSeasons = Array.from(new Set(rawSeasons));
+    const finalSeasons = pSeasons.length > 0 ? pSeasons : ['2025/2026'];
+
     setEditingId(p.id);
     setFormData({ 
       ...p, 
       isAcademyPlayer: false, // كادر نادي رسمي
-      season: p.season || pSeasons[pSeasons.length - 1] || '2025/2026',
-      seasons: pSeasons,
+      season: finalSeasons[finalSeasons.length - 1],
+      seasons: finalSeasons,
       certificates: p.certificates || [], 
       experiences: p.experiences || [] 
     });
@@ -331,7 +338,10 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
              <p className="text-[8px] md:text-[9px] text-slate-600 font-bold mb-2 italic truncate">{person.academicDegree || 'بدون تحصيل'}</p>
              <div className="flex flex-wrap gap-1 mb-3">
                 <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap">🛡️ كادر نادي</span>
-                {(Array.isArray(person.seasons) && person.seasons.length > 0 ? person.seasons : (person.season ? (person.season.includes(',') ? person.season.split(',').map((x: string) => x.trim()) : [person.season]) : ['2025/2026'])).map(s => (
+                {Array.from(new Set([
+                  ...(Array.isArray(person.seasons) ? person.seasons : []),
+                  ...(typeof person.season === 'string' ? person.season.split(',') : [])
+                ].map(s => String(s || '').trim()).filter(Boolean))).map(s => (
                   <span key={s} className={`border px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap ${s === state.activeSeason ? 'bg-orange-500 text-white border-orange-600 shadow-xs' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
                     موسم {s}
                   </span>
@@ -499,7 +509,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'].map(s => {
-                      const cur = formData.seasons || [];
+                      const cur = Array.from(new Set(formData.seasons || []));
                       const isChecked = cur.includes(s);
                       return (
                         <label key={s} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${isChecked ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200'}`}>
@@ -507,11 +517,14 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                             type="checkbox"
                             checked={isChecked}
                             onChange={e => {
-                              const next = e.target.checked ? [...cur, s] : cur.filter(x => x !== s);
+                              const next = e.target.checked 
+                                ? Array.from(new Set([...cur, s])) 
+                                : cur.filter(x => x !== s);
+                              const validNext = next.length > 0 ? next : [s];
                               setFormData({
                                 ...formData,
-                                seasons: next,
-                                season: next[next.length - 1] || s
+                                seasons: validNext,
+                                season: validNext[validNext.length - 1] || s
                               });
                             }}
                             className="w-3.5 h-3.5 rounded text-orange-500"
