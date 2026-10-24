@@ -141,13 +141,20 @@ const App: React.FC = () => {
     const filteredCategories = state.categories.filter(filterFn);
     
     // فلترة الأفراد حسب الموسم النشط
-    // الأشخاص الذين ليس لديهم حقل موسم صريح يُعتبر موسمهم الافتراضي 2025/2026
+    // دمج مصفوفة المواسم وحقل الموسم النصي بدون أي تكرار لضمان ظهور العضو في كافة مواسمه المقيد بها
     const personBelongsToActiveSeason = (p: Person) => {
       const targetSeason = state.activeSeason || '2025/2026';
-      const personSeasons = Array.isArray(p.seasons) && p.seasons.length > 0 
-        ? p.seasons 
-        : (p.season ? (p.season.includes(',') ? p.season.split(',').map((x: string) => x.trim()) : [p.season]) : ['2025/2026']);
-      return personSeasons.includes(targetSeason);
+      const allSeasons = new Set<string>();
+      if (Array.isArray(p.seasons)) {
+        p.seasons.forEach(s => s && allSeasons.add(String(s).trim()));
+      }
+      if (typeof p.season === 'string' && p.season.trim()) {
+        p.season.split(',').forEach(s => s && allSeasons.add(String(s).trim()));
+      }
+      if (allSeasons.size === 0) {
+        allSeasons.add('2025/2026');
+      }
+      return allSeasons.has(targetSeason);
     };
 
     return {
@@ -297,21 +304,19 @@ const App: React.FC = () => {
         ...prev,
         currentUser: user,
         people: dedupe(p.data).map((person: any) => {
-          let seasonsList: string[] = [];
-          if (Array.isArray(person.seasons) && person.seasons.length > 0) {
-            seasonsList = person.seasons;
-          } else if (typeof person.season === 'string' && person.season.trim()) {
-            seasonsList = person.season.split(',').map((s: string) => s.trim()).filter(Boolean);
-          } else {
-            seasonsList = ['2025/2026'];
-          }
-          if (seasonsList.length === 0) seasonsList = ['2025/2026'];
+          const rawSeasons: string[] = [
+            ...(Array.isArray(person.seasons) ? person.seasons : []),
+            ...(typeof person.season === 'string' ? person.season.split(',') : [])
+          ].map(s => String(s || '').trim()).filter(Boolean);
+          const seasonsList = Array.from(new Set(rawSeasons));
+          const finalSeasons = seasonsList.length > 0 ? seasonsList : ['2025/2026'];
+          const latestSeason = finalSeasons[finalSeasons.length - 1];
 
           return {
             ...person,
             isAcademyPlayer: false, // جميع اللاعبين والكوادر هم لاعبو/كوادر نادي
-            seasons: seasonsList,
-            season: person.season || seasonsList[seasonsList.length - 1] || '2025/2026',
+            seasons: finalSeasons,
+            season: latestSeason,
             receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
           };
         }),

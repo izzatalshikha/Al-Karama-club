@@ -33,18 +33,39 @@ export async function safeSavePerson(
   cleanData.receivedKit = cleanData.receivedKit === true || String(cleanData.receivedKit) === 'true';
   cleanData.isAcademyPlayer = false; // دائماً لاعب نادي أو كادر نادي
 
-  // ضمان سلامة مصفوفة المواسم وقيد الموسم
-  const validSeasons = Array.isArray(cleanData.seasons) && cleanData.seasons.length > 0
-    ? cleanData.seasons
-    : (cleanData.season ? (cleanData.season.includes(',') ? cleanData.season.split(',').map((x: string) => x.trim()) : [cleanData.season]) : ['2025/2026']);
+  // ضمان سلامة مصفوفة المواسم وقيد الموسم بدون تكرار
+  const rawSeasons: string[] = [
+    ...(Array.isArray(cleanData.seasons) ? cleanData.seasons : []),
+    ...(typeof cleanData.season === 'string' ? cleanData.season.split(',') : [])
+  ].map(s => String(s || '').trim()).filter(Boolean);
+  const deduplicatedSeasons = Array.from(new Set(rawSeasons));
+  const validSeasons = deduplicatedSeasons.length > 0 ? deduplicatedSeasons : ['2025/2026'];
   cleanData.seasons = validSeasons;
-  cleanData.season = cleanData.season || validSeasons[validSeasons.length - 1] || '2025/2026';
+  cleanData.season = validSeasons[validSeasons.length - 1] || '2025/2026';
+
+  // ضمان حفظ سجل الوزن بشكل مرن (سواء في عمود مستقل أو داخل monthlyReports)
+  if (Array.isArray(cleanData.weightHistory)) {
+    cleanData.monthlyReports = {
+      ...(cleanData.monthlyReports || {}),
+      _weightHistory: JSON.stringify(cleanData.weightHistory)
+    };
+  } else if (cleanData.monthlyReports?._weightHistory) {
+    try {
+      cleanData.weightHistory = JSON.parse(cleanData.monthlyReports._weightHistory);
+    } catch (e) {
+      // ignore
+    }
+  }
 
   // 2. تجهيز حمولة السحابة:
   const cloudPayload: any = { ...cleanData };
   cloudPayload.seasons = validSeasons;
   cloudPayload.season = cleanData.season;
   cloudPayload.isAcademyPlayer = false;
+  if (Array.isArray(cleanData.weightHistory)) {
+    cloudPayload.weight_history = cleanData.weightHistory;
+    cloudPayload.weightHistory = cleanData.weightHistory;
+  }
 
   // المحاولة الأولى: حفظ البيانات المنظفة في السحابة
   let res: any;
@@ -107,7 +128,7 @@ export async function safeSavePerson(
       'bloodType', 'shoeSize', 'clothesSize', 'preferredFoot', 
       'emergencyPhone', 'isAcademyPlayer', 'registrationDate', 
       'subscriptionMonth', 'contractDuration', 'jobTitle',
-      'season', 'seasons', 'kitAmount', 'receivedKit'
+      'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history'
     ];
     newColumns.forEach(c => delete fallbackData[c]);
 

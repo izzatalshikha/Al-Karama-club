@@ -26,15 +26,18 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 }) => {
   const isPlayer = person.role === 'لاعب';
 
-  const defaultPersonSeasons = Array.isArray(person.seasons) && person.seasons.length > 0
-    ? person.seasons
-    : (person.season ? (person.season.includes(',') ? person.season.split(',').map((x: string) => x.trim()) : [person.season]) : ['2025/2026']);
+  const rawPersonSeasons = [
+    ...(Array.isArray(person.seasons) ? person.seasons : []),
+    ...(typeof person.season === 'string' ? person.season.split(',') : [])
+  ].map(s => String(s || '').trim()).filter(Boolean);
+  const defaultPersonSeasons = Array.from(new Set(rawPersonSeasons));
+  const finalDefaultSeasons = defaultPersonSeasons.length > 0 ? defaultPersonSeasons : ['2025/2026'];
 
   const [formData, setFormData] = useState<Partial<Person>>({
     ...person,
     isAcademyPlayer: false, // تأكيد كعضو نادي رسمي وليس أكاديمية
-    season: person.season || defaultPersonSeasons[defaultPersonSeasons.length - 1] || '2025/2026',
-    seasons: defaultPersonSeasons,
+    season: finalDefaultSeasons[finalDefaultSeasons.length - 1],
+    seasons: finalDefaultSeasons,
     certificates: person.certificates ? [...person.certificates] : [],
     experiences: person.experiences ? [...person.experiences] : [],
   });
@@ -53,16 +56,19 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
     setSuccessMsg('');
 
     try {
-      const finalSeasons = (formData.seasons && formData.seasons.length > 0)
-        ? formData.seasons
-        : (formData.season ? (formData.season.includes(',') ? formData.season.split(',').map((x: string) => x.trim()) : [formData.season]) : ['2025/2026']);
+      const rawSeasons: string[] = [
+        ...(Array.isArray(formData.seasons) ? formData.seasons : []),
+        ...(typeof formData.season === 'string' ? formData.season.split(',') : [])
+      ].map(s => String(s || '').trim()).filter(Boolean);
+      const finalSeasons = Array.from(new Set(rawSeasons));
+      const validSeasons = finalSeasons.length > 0 ? finalSeasons : ['2025/2026'];
 
       const cleanData: any = {
         ...formData,
         isAcademyPlayer: false, // تأكيد كلاعب/كادر نادي دائماً
         name: formData.name?.trim() || person.name,
-        seasons: finalSeasons,
-        season: formData.season || finalSeasons[finalSeasons.length - 1] || '2025/2026'
+        seasons: validSeasons,
+        season: validSeasons[validSeasons.length - 1] || '2025/2026'
       };
 
       const saveRes = await safeSavePerson(cleanData, 'update', person.id);
@@ -299,13 +305,15 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                         type="checkbox"
                         checked={isChecked}
                         onChange={e => {
+                          const currentSet = Array.from(new Set(currentSeasons));
                           const nextSeasons = e.target.checked
-                            ? [...currentSeasons, s]
-                            : currentSeasons.filter(x => x !== s);
+                            ? Array.from(new Set([...currentSet, s]))
+                            : currentSet.filter(x => x !== s);
+                          const validNext = nextSeasons.length > 0 ? nextSeasons : [s];
                           setFormData({
                             ...formData,
-                            seasons: nextSeasons,
-                            season: nextSeasons[nextSeasons.length - 1] || s
+                            seasons: validNext,
+                            season: validNext[validNext.length - 1] || s
                           });
                         }}
                         className="rounded text-orange-500 focus:ring-orange-400 w-4 h-4"

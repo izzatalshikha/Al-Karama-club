@@ -165,6 +165,13 @@ export interface Person {
   emergencyPhone?: string;
   contractDuration?: string;
   jobTitle?: string;
+  weightHistory?: WeightEntry[];
+}
+
+export interface WeightEntry {
+  date: string;
+  weight: number;
+  note?: string;
 }
 
 export interface AttendanceRecord {

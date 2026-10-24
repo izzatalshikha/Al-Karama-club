@@ -101,21 +101,143 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
     }
   };
 
-  // Next matches and sessions for this player's category
-  const upcomingMatches = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return state.matches
-      .filter(m => m.category === player.category && !m.isCompleted && m.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 5);
-  }, [state.matches, player.category]);
+  // تطبيع صيغ التواريخ لدقة المقارنة والترتيب
+  const normalizeDate = (raw: string | undefined | null): string => {
+    if (!raw) return '';
+    const str = String(raw).trim();
+    if (str.includes('/')) {
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+    return str;
+  };
 
-  const upcomingSessions = useMemo(() => {
+  // المباريات القادمة والمكتملة لفئة اللاعب (تشمل المباريات العادية ومباريات البطولات المضافة من الإداري)
+  const { upcomingMatches, completedMatches } = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    return state.sessions
-      .filter(s => s.category === player.category && !s.isCompleted && s.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 5);
+    const allMatches: any[] = [];
+    const regularIds = new Set<string>();
+
+    // 1. المباريات العادية
+    (state.matches || []).forEach(m => {
+      const inSquad = Array.isArray(m.squad) && m.squad.includes(player.id);
+      const isMyCat = m.category === player.category;
+      if (!isMyCat && !inSquad) return;
+
+      const normDate = normalizeDate(m.date);
+      const isDone = Boolean(m.isCompleted) || (m.ourScore !== '' && m.ourScore !== undefined && m.opponentScore !== '' && m.opponentScore !== undefined);
+      
+      let resType: 'win' | 'draw' | 'loss' | 'pending' = 'pending';
+      if (isDone && m.ourScore !== undefined && m.opponentScore !== undefined) {
+        const our = Number(m.ourScore);
+        const opp = Number(m.opponentScore);
+        if (our > opp) resType = 'win';
+        else if (our === opp) resType = 'draw';
+        else resType = 'loss';
+      }
+
+      regularIds.add(m.id);
+      allMatches.push({
+        id: m.id,
+        category: m.category,
+        opponent: m.opponent,
+        ourTeamName: `الكرامة (${m.category})`,
+        matchType: m.matchType || 'مباراة ودية',
+        date: normDate || m.date,
+        rawDate: m.date,
+        time: m.time || '15:00',
+        pitch: m.pitch,
+        isCompleted: isDone,
+        scoreText: isDone ? `${m.ourScore} - ${m.opponentScore}` : '',
+        resType,
+        notes: m.notes
+      });
+    });
+
+    // 2. مباريات البطولات المضافة من الإداري
+    (state.tournamentMatches || []).forEach(tm => {
+      if (tm.linkedMatchId && regularIds.has(tm.linkedMatchId)) return;
+      const tour = (state.tournaments || []).find(t => t.id === tm.tournamentId);
+      const tourCat = tour?.category || '';
+      if (tourCat !== player.category) return;
+
+      const t1 = (state.tournamentTeams || []).find(t => t.id === tm.team1Id);
+      const t2 = (state.tournamentTeams || []).find(t => t.id === tm.team2Id);
+      const isOur1 = Boolean(t1?.isOurTeam || t1?.name?.includes('الكرامة') || t1?.name?.trim() === tourCat);
+      const isOur2 = Boolean(t2?.isOurTeam || t2?.name?.includes('الكرامة') || t2?.name?.trim() === tourCat);
+      if (!isOur1 && !isOur2) return;
+
+      const opp = isOur1 ? (t2?.name || 'الخصم') : (t1?.name || 'الخصم');
+      const ourScore = isOur1 ? tm.team1Score : tm.team2Score;
+      const oppScore = isOur1 ? tm.team2Score : tm.team1Score;
+      const hasScore = (ourScore !== null && ourScore !== undefined && oppScore !== null && oppScore !== undefined);
+      const isDone = tm.status === 'ملعوبة' || hasScore;
+      
+      let resType: 'win' | 'draw' | 'loss' | 'pending' = 'pending';
+      if (isDone && hasScore) {
+        if (ourScore! > oppScore!) resType = 'win';
+        else if (ourScore! === oppScore!) resType = 'draw';
+        else resType = 'loss';
+      }
+
+      const normDate = normalizeDate(tm.matchDate);
+      allMatches.push({
+        id: tm.id,
+        category: tourCat,
+        opponent: opp,
+        ourTeamName: `الكرامة (${tourCat})`,
+        matchType: tour?.name ? `بطولة: ${tour.name}` : 'بطولة رسمية',
+        date: normDate || tm.matchDate,
+        rawDate: tm.matchDate,
+        time: tm.matchTime || '15:00',
+        pitch: tm.pitch,
+        isCompleted: isDone,
+        scoreText: hasScore ? `${ourScore} - ${oppScore}` : '',
+        resType,
+        notes: tm.notes
+      });
+    });
+
+    const upcoming = allMatches
+      .filter(m => !m.isCompleted && m.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const completed = allMatches
+      .filter(m => m.isCompleted)
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    return { upcomingMatches: upcoming, completedMatches: completed };
+  }, [state.matches, state.tournamentMatches, state.tournaments, state.tournamentTeams, player.category, player.id]);
+
+  // التمارين القادمة والمنتهية لفئة اللاعب
+  const { upcomingSessions, completedSessions } = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const catSessions = (state.sessions || [])
+      .filter(s => s.category === player.category)
+      .map(s => ({
+        ...s,
+        normDate: normalizeDate(s.date) || s.date
+      }));
+
+    const upcoming = catSessions
+      .filter(s => !s.isCompleted && s.normDate >= today)
+      .sort((a, b) => a.normDate.localeCompare(b.normDate));
+
+    const completed = catSessions
+      .filter(s => s.isCompleted || s.normDate < today)
+      .sort((a, b) => b.normDate.localeCompare(a.normDate));
+
+    return { upcomingSessions: upcoming, completedSessions: completed };
   }, [state.sessions, player.category]);
 
   // Handle saving documents from the portal
@@ -726,77 +848,140 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
           </div>
         ) : (
           <div className="space-y-6 animate-in fade-in">
-            {/* Upcoming Sessions */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-              <h2 className="text-lg font-black text-blue-900 mb-4 flex items-center gap-2">
-                <Calendar className="text-orange-500" size={22} />
-                التمارين والتدريبات القادمة
-              </h2>
+            {/* التمارين والتدريبات القادمة */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+                <h2 className="text-base sm:text-lg font-black text-blue-950 flex items-center gap-2">
+                  <Calendar className="text-teal-600" size={22} />
+                  <span>التمارين والتدريبات القادمة (فئة {player.category})</span>
+                </h2>
+                <span className="bg-teal-50 text-teal-800 text-xs font-black px-2.5 py-1 rounded-full border border-teal-200">
+                  {upcomingSessions.length} تمرين مجدول
+                </span>
+              </div>
+
               {upcomingSessions.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 font-bold text-sm">
+                <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 font-bold text-xs sm:text-sm">
                   لا توجد تدريبات مجدولة قادمة حالياً لفريق {player.category}.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {upcomingSessions.map(session => (
-                    <div key={session.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start justify-between">
+                    <div key={session.id} className="p-4 sm:p-5 rounded-2xl bg-teal-50/40 border border-teal-200/70 hover:border-teal-400 transition-all flex flex-col justify-between gap-3 shadow-xs">
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-black text-slate-800 text-sm">{session.objective || 'تمرين فني وتكتيكي'}</span>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="font-black text-slate-900 text-sm sm:text-base">{session.objective || 'تمرين فني وبدني'}</span>
+                          <span className="bg-teal-100 text-teal-800 text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0">
+                            {session.duration || '90 دقيقة'}
+                          </span>
                         </div>
-                        <p className="text-xs text-slate-500 font-semibold mb-1">
-                          التاريخ: <span className="text-slate-700 font-bold">{session.date}</span> | الوقت: <span className="text-slate-700 font-bold">{session.time}</span>
-                        </p>
-                        {session.pitch && (
-                          <p className="text-xs text-slate-500">
-                            الملعب: <span className="text-slate-700 font-bold">{session.pitch}</span>
-                          </p>
-                        )}
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-bold">
+                          <span className="flex items-center gap-1 text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                            <Calendar size={12} className="text-teal-600" /> {session.normDate}
+                          </span>
+                          <span className="flex items-center gap-1 text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                            <Clock size={12} className="text-teal-600" /> {session.time}
+                          </span>
+                          {session.pitch && (
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <MapPin size={12} className="text-slate-400" /> {session.pitch}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-1 rounded-full">
-                        {session.duration || '90 دقيقة'}
-                      </span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Upcoming Matches */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-              <h2 className="text-lg font-black text-blue-900 mb-4 flex items-center gap-2">
-                <Trophy className="text-orange-500" size={22} />
-                المباريات القادمة
-              </h2>
+            {/* المباريات القادمة */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+                <h2 className="text-base sm:text-lg font-black text-blue-950 flex items-center gap-2">
+                  <Trophy className="text-orange-500" size={22} />
+                  <span>المباريات القادمة (فريق {player.category})</span>
+                </h2>
+                <span className="bg-orange-50 text-orange-800 text-xs font-black px-2.5 py-1 rounded-full border border-orange-200">
+                  {upcomingMatches.length} مباراة مرتقبة
+                </span>
+              </div>
+
               {upcomingMatches.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 font-bold text-sm">
+                <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 font-bold text-xs sm:text-sm">
                   لا توجد مباريات رسمية أو ودية معلنة حالياً.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {upcomingMatches.map(m => (
-                    <div key={m.id} className="p-4 rounded-2xl bg-orange-50/40 border border-orange-200/60 flex items-start justify-between">
+                    <div key={m.id} className="p-4 sm:p-5 rounded-2xl bg-orange-50/40 border border-orange-200/80 hover:border-orange-400 transition-all flex flex-col justify-between gap-3 shadow-xs">
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-black text-blue-900 text-sm">ضد: {m.opponent}</span>
-                          <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-2 py-0.5 rounded-full">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="font-black text-blue-950 text-sm sm:text-base">ضد: {m.opponent}</span>
+                          <span className="bg-orange-100 text-orange-800 text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0">
                             {m.matchType}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 font-semibold mb-1">
-                          التاريخ: <span className="text-slate-700 font-bold">{m.date}</span> | الوقت: <span className="text-slate-700 font-bold">{m.time}</span>
-                        </p>
-                        {m.pitch && (
-                          <p className="text-xs text-slate-500">
-                            الملعب: <span className="text-slate-700 font-bold">{m.pitch}</span>
-                          </p>
-                        )}
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-bold">
+                          <span className="flex items-center gap-1 text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                            <Calendar size={12} className="text-orange-600" /> {m.date}
+                          </span>
+                          <span className="flex items-center gap-1 text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                            <Clock size={12} className="text-orange-600" /> {m.time}
+                          </span>
+                          {m.pitch && (
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <MapPin size={12} className="text-slate-400" /> {m.pitch}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* آخر نتائج ومباريات الفريق المعتمدة */}
+            {completedMatches.length > 0 && (
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+                  <h2 className="text-base sm:text-lg font-black text-blue-950 flex items-center gap-2">
+                    <Trophy className="text-emerald-600" size={22} />
+                    <span>آخر نتائج ومباريات الفريق المعتمدة</span>
+                  </h2>
+                  <span className="bg-emerald-50 text-emerald-800 text-xs font-black px-2.5 py-1 rounded-full border border-emerald-200">
+                    {completedMatches.length} مباراة منتهية
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {completedMatches.slice(0, 6).map(m => {
+                    const isWin = m.resType === 'win';
+                    const isDraw = m.resType === 'draw';
+                    return (
+                      <div key={m.id} className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all flex items-center justify-between gap-4 shadow-xs">
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{m.matchType}</span>
+                          <h4 className="font-black text-slate-900 text-sm sm:text-base">ضد: {m.opponent}</h4>
+                          <p className="text-xs text-slate-500 font-bold">{m.date} | {m.pitch || 'ملعب غير محدد'}</p>
+                        </div>
+                        <div className="text-center shrink-0">
+                          <div className={`text-xl sm:text-2xl font-black font-mono tracking-wider ${isWin ? 'text-emerald-700' : isDraw ? 'text-amber-700' : 'text-rose-700'}`}>
+                            {m.scoreText}
+                          </div>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full inline-block mt-0.5 ${
+                            isWin ? 'bg-emerald-100 text-emerald-800' : isDraw ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {isWin ? 'فوز للكرامة ✓' : isDraw ? 'تعادل' : 'خسارة'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

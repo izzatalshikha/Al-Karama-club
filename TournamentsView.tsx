@@ -466,7 +466,9 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     
     const t1Obj = teams.find((tz: any) => tz.id === t1);
     const t2Obj = teams.find((tz: any) => tz.id === t2);
-    const involvesOurTeam = t1Obj?.isOurTeam || t2Obj?.isOurTeam;
+    const isOurTeam1 = Boolean(t1Obj?.isOurTeam || t1Obj?.name?.includes('الكرامة') || (tour.category && t1Obj?.name?.includes(tour.category)));
+    const isOurTeam2 = Boolean(t2Obj?.isOurTeam || t2Obj?.name?.includes('الكرامة') || (tour.category && t2Obj?.name?.includes(tour.category)));
+    const involvesOurTeam = isOurTeam1 || isOurTeam2;
     
     let linkedMatchId = null;
     let linkedMatchIdLeg2 = null;
@@ -474,7 +476,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
     
     if (involvesOurTeam) {
        const newOurMatchId = generateId();
-       const opponentTeam = t1Obj?.isOurTeam ? t2Obj : t1Obj;
+       const opponentTeam = isOurTeam1 ? t2Obj : t1Obj;
        newOurMatch = {
          id: newOurMatchId,
          category: tour.category,
@@ -501,7 +503,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
            captain: '' 
          },
          notes: `بطولة: ${tour.name} - ${stage.name} - الأسبوع ${matchRound} (${matchLeg})`,
-         isHome: t1Obj?.isOurTeam
+         isHome: isOurTeam1
        };
        
        await syncToCloud('matches', newOurMatch);
@@ -600,7 +602,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
 
     if (mm.linkedMatchId) {
        const t1Obj = teams.find((tz: any) => tz.id === mm.team1Id);
-       const isOurTeam1 = t1Obj?.isOurTeam;
+       const isOurTeam1 = Boolean(t1Obj?.isOurTeam || t1Obj?.name?.includes('الكرامة') || (tour.category && t1Obj?.name?.includes(tour.category)));
        const linkedMatch = state.matches.find((x: any) => x.id === mm.linkedMatchId);
        if (linkedMatch) {
          const upLinked = { ...linkedMatch, isCompleted: true, ourScore: isOurTeam1 ? s1.toString() : s2.toString(), opponentScore: isOurTeam1 ? s2.toString() : s1.toString() };
