@@ -67,6 +67,34 @@ export async function safeSavePerson(
     cleanData.photo = cleanData.monthlyReports._photo;
   }
 
+  // ضمان حفظ واسترجاع الشهادات التدريبية للكوادر بشكل فوري
+  if (Array.isArray(cleanData.certificates) && cleanData.certificates.length > 0) {
+    cleanData.monthlyReports = {
+      ...(cleanData.monthlyReports || {}),
+      _certificates: JSON.stringify(cleanData.certificates)
+    };
+  } else if ((!cleanData.certificates || cleanData.certificates.length === 0) && cleanData.monthlyReports?._certificates) {
+    try {
+      cleanData.certificates = JSON.parse(cleanData.monthlyReports._certificates);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // ضمان حفظ واسترجاع الخبرات السابقة للكوادر
+  if (Array.isArray(cleanData.experiences) && cleanData.experiences.length > 0) {
+    cleanData.monthlyReports = {
+      ...(cleanData.monthlyReports || {}),
+      _experiences: JSON.stringify(cleanData.experiences)
+    };
+  } else if ((!cleanData.experiences || cleanData.experiences.length === 0) && cleanData.monthlyReports?._experiences) {
+    try {
+      cleanData.experiences = JSON.parse(cleanData.monthlyReports._experiences);
+    } catch (e) {
+      // ignore
+    }
+  }
+
   // 2. تجهيز حمولة السحابة:
   const cloudPayload: any = { ...cleanData };
   cloudPayload.seasons = validSeasons;
@@ -138,7 +166,8 @@ export async function safeSavePerson(
       'bloodType', 'shoeSize', 'clothesSize', 'preferredFoot', 
       'emergencyPhone', 'isAcademyPlayer', 'registrationDate', 
       'subscriptionMonth', 'contractDuration', 'jobTitle',
-      'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history', 'photo'
+      'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history', 'photo',
+      'certificates', 'experiences', 'academicDegree', 'coachingCertificate'
     ];
     newColumns.forEach(c => delete fallbackData[c]);
 

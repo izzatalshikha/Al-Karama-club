@@ -2,13 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { 
   UserPlus, Trash2, Search, Edit2, ChevronRight, 
   X, Save, Fingerprint, Activity, GraduationCap, Award, Loader2, Filter, Briefcase, Plus, Calendar,
-  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal, Key, FileText, CreditCard, FileCheck
+  Shield, Dumbbell, Stethoscope, HeartPulse, Camera, User, Users, UserCog, Goal, Key, FileText, CreditCard, FileCheck,
+  Eye, Download, Upload, CheckCircle2
 } from 'lucide-react';
 import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from '../types';
 import { generateUUID, supabase } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
+import { compressDocumentImage } from '../utils/imageCompressor';
 
 interface StaffManagementProps {
   state: AppState;
@@ -23,6 +25,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<{ title: string; src: string } | null>(null);
 
   const currentUser = state.currentUser!;
   const isManager = currentUser.role === 'مدير';
@@ -204,14 +207,24 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     const pSeasons = Array.from(new Set(rawSeasons));
     const finalSeasons = pSeasons.length > 0 ? pSeasons : ['2025/2026'];
 
+    const parsedCerts = (p.certificates && Array.isArray(p.certificates) && p.certificates.length > 0)
+      ? p.certificates
+      : (p.monthlyReports?._certificates ? (() => { try { return JSON.parse(p.monthlyReports._certificates); } catch(e) { return []; } })() : []);
+
+    const parsedExps = (p.experiences && Array.isArray(p.experiences) && p.experiences.length > 0)
+      ? p.experiences
+      : (p.monthlyReports?._experiences ? (() => { try { return JSON.parse(p.monthlyReports._experiences); } catch(e) { return []; } })() : []);
+
     setEditingId(p.id);
     setFormData({ 
       ...p, 
       isAcademyPlayer: false, // كادر نادي رسمي
       season: finalSeasons[finalSeasons.length - 1],
       seasons: finalSeasons,
-      certificates: p.certificates || [], 
-      experiences: p.experiences || [] 
+      academicDegree: p.academicDegree || '',
+      coachingCertificate: p.coachingCertificate || '',
+      certificates: parsedCerts, 
+      experiences: parsedExps 
     });
     setIsModalOpen(true);
   };
@@ -340,7 +353,71 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                  </span>
                )}
              </div>
-             <p className="text-[8px] md:text-[9px] text-slate-600 font-bold mb-2 italic truncate">{person.academicDegree || 'بدون تحصيل'}</p>
+             {/* المؤهل والتحصيل العلمي */}
+             {person.academicDegree ? (
+               <div className="flex items-center gap-1.5 text-[10px] text-blue-900 font-black bg-blue-50/80 border border-blue-100 px-2.5 py-1 rounded-lg mb-2">
+                 <GraduationCap size={13} className="text-blue-700 shrink-0" />
+                 <span className="truncate">{person.academicDegree}</span>
+               </div>
+             ) : (
+               <p className="text-[8px] md:text-[9px] text-slate-400 font-bold mb-2 italic">لم يحدد التحصيل العلمي</p>
+             )}
+
+             {/* الشهادات التدريبية الرسمية مع روابط الصور المضغوطة */}
+             {person.certificates && person.certificates.length > 0 && (
+               <div className="space-y-1 mb-2 bg-orange-50/60 p-2 rounded-xl border border-orange-100">
+                 <div className="flex items-center justify-between text-[9px] font-black text-orange-900">
+                   <span className="flex items-center gap-1">
+                     <Award size={12} className="text-orange-600" />
+                     الشهادات التدريبية ({person.certificates.length})
+                   </span>
+                 </div>
+                 <div className="flex flex-col gap-1 mt-1">
+                   {person.certificates.slice(0, 3).map((cert, cIdx) => (
+                     <div key={cert.id || cIdx} className="flex items-center justify-between gap-1 text-[9px] bg-white px-2 py-1 rounded-lg border border-slate-100 shadow-2xs">
+                       <span className="font-bold text-slate-800 truncate" title={cert.name}>
+                         {cert.name || `شهادة #${cIdx + 1}`}
+                         {cert.date ? ` (${cert.date})` : ''}
+                       </span>
+                       {cert.image && (
+                         <button
+                           type="button"
+                           onClick={() => setPreviewDoc({ title: `وثيقة شهادة: ${cert.name || 'شهادة تدريبية'}`, src: cert.image! })}
+                           className="text-[8px] font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0 transition-colors border border-emerald-200"
+                           title="عرض وثيقة الشهادة"
+                         >
+                           <Eye size={10} /> الوثيقة
+                         </button>
+                       )}
+                     </div>
+                   ))}
+                   {person.certificates.length > 3 && (
+                     <span className="text-[8px] font-bold text-orange-700 text-center">+{person.certificates.length - 3} شهادات أخرى بالملف</span>
+                   )}
+                 </div>
+               </div>
+             )}
+
+             {/* الخبرات ومحطات العمل السابقة */}
+             {person.experiences && person.experiences.length > 0 && (
+               <div className="space-y-1 mb-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                 <div className="flex items-center justify-between text-[9px] font-black text-slate-700">
+                   <span className="flex items-center gap-1">
+                     <Briefcase size={11} className="text-blue-700" />
+                     الخبرات السابقة ({person.experiences.length})
+                   </span>
+                 </div>
+                 <div className="flex flex-wrap gap-1 mt-0.5">
+                   {person.experiences.map((exp, eIdx) => (
+                     <span key={exp.id || eIdx} className="bg-white text-slate-800 px-1.5 py-0.5 rounded border border-slate-200 text-[8px] font-bold truncate">
+                       {exp.employer} {exp.position ? `(${exp.position})` : ''}
+                     </span>
+                   ))}
+                 </div>
+               </div>
+             )}
+
+             {/* الشارات والمواسم والوثائق */}
              <div className="flex flex-wrap gap-1 mb-3">
                 <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap">🛡️ كادر نادي</span>
                 {Array.from(new Set([
@@ -351,8 +428,6 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                     موسم {s}
                   </span>
                 ))}
-                {person.certificates && person.certificates.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.certificates.length} شهادات</span>}
-                {person.experiences && person.experiences.length > 0 && <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">{person.experiences.length} خبرات</span>}
                 {(person.passportNumber || '').trim() !== '' && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">جواز: {person.passportNumber}</span>}
                 {(person.idCardImage || person.passportImage) && (
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-bold flex items-center gap-1">
@@ -438,6 +513,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                 <div className="space-y-1"><label className={labelClass}>الرقم الدولي</label><input className={inputClass} value={formData.internationalId || ''} onChange={e => setFormData({...formData, internationalId: e.target.value})} /></div>
                 <div className="sm:col-span-1 space-y-1"><label className={labelClass}>رقم الهاتف</label><input className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
                 <div className="sm:col-span-2 space-y-1"><label className={labelClass}>العنوان التفصيلي</label><input className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
+                <div className="sm:col-span-2 space-y-1"><label className={labelClass}><GraduationCap size={13} className="text-orange-500" /> التحصيل العلمي / المؤهل الدراسي</label><input className={inputClass} placeholder="مثال: دبلوم تربية رياضية / ليسانس / معهد رياضي" value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
+                <div className="sm:col-span-1 space-y-1"><label className={labelClass}><Award size={13} className="text-orange-500" /> الرخصة التدريبية الأساسية</label><input className={inputClass} placeholder="مثال: رخصة آسيوية A" value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
               </div>
 
               {/* وثائق الهوية وجواز السفر للكادر */}
@@ -587,11 +664,18 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                   </div>
                 )}
                 {(formData.certificates || []).map((cert, index) => (
-                  <div key={cert.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm relative space-y-4">
+                  <div key={cert.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm relative space-y-3">
                     <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                      <span className="text-xs font-black text-orange-600 flex items-center gap-1.5">
-                        <Award size={14} /> الشهادة #{index + 1}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-orange-600 flex items-center gap-1.5">
+                          <Award size={15} /> الشهادة التدريبية #{index + 1}
+                        </span>
+                        {cert.image && (
+                          <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                            <FileCheck size={11} /> وثيقة الشهادة مرفقة
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
@@ -599,65 +683,154 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                           newCerts.splice(index, 1);
                           setFormData({...formData, certificates: newCerts});
                         }}
-                        className="text-red-500 hover:text-red-700 p-1 rounded-lg hover:bg-red-50 transition-all"
+                        className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-all"
                         title="حذف الشهادة"
                       >
                         <Trash2 size={16}/>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="md:col-span-2 space-y-1">
-                        <label className={labelClass}>اسم الشهادة التدريبية</label>
-                        <input
-                          className={inputClass}
-                          placeholder="مثال: رخصة تدريب A من الاتحاد الآسيوي / دبلوم PRO"
-                          value={cert.name}
-                          onChange={e => {
-                            const newCerts = [...(formData.certificates || [])];
-                            newCerts[index].name = e.target.value;
-                            setFormData({...formData, certificates: newCerts});
-                          }}
-                        />
+                    {/* الحقول وخانة رفع صورة الشهادة جنباً إلى جنب */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+                      {/* بيانات الشهادة: الاسم والتاريخ */}
+                      <div className="lg:col-span-7 space-y-3">
+                        <div className="space-y-1">
+                          <label className={labelClass}>اسم الشهادة أو الرخصة التدريبية</label>
+                          <input
+                            className={inputClass}
+                            placeholder="مثال: رخصة تدريب آسيوية A / دبلوم PRO / رخصة لياقة B"
+                            value={cert.name}
+                            onChange={e => {
+                              const newCerts = [...(formData.certificates || [])];
+                              newCerts[index].name = e.target.value;
+                              setFormData({...formData, certificates: newCerts});
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className={labelClass}>تاريخ نيل الشهادة / الدورة</label>
+                          <input
+                            type="date"
+                            className={inputClass}
+                            value={cert.date}
+                            onChange={e => {
+                              const newCerts = [...(formData.certificates || [])];
+                              newCerts[index].date = e.target.value;
+                              setFormData({...formData, certificates: newCerts});
+                            }}
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className={labelClass}>تاريخ نيل الشهادة</label>
-                        <input
-                          type="date"
-                          className={inputClass}
-                          value={cert.date}
-                          onChange={e => {
-                            const newCerts = [...(formData.certificates || [])];
-                            newCerts[index].date = e.target.value;
-                            setFormData({...formData, certificates: newCerts});
-                          }}
-                        />
-                      </div>
-                    </div>
 
-                    {/* خيار رفع صورة الشهادة التدريبية مع الضغط الذكي */}
-                    <div className="pt-2">
-                      <DocumentUploadCard
-                        title={`وثيقة الشهادة: ${cert.name || `شهادة #${index + 1}`}`}
-                        description="صورة أو سكانر لوثيقة الشهادة التدريبية الرسمية (يتم ضغطها بدقة عالية للحفاظ على التفاصيل وتوفير الحجم)"
-                        value={cert.image}
-                        onChange={(b64) => {
-                          const newCerts = [...(formData.certificates || [])];
-                          newCerts[index].image = b64;
-                          setFormData({...formData, certificates: newCerts});
-                        }}
-                        badgeLabel="وثيقة تدريبية"
-                        icon={<Award className="text-orange-500" size={18} />}
-                      />
+                      {/* خانة جانب الشهادة: رفع صورة الشهادة مع الضغط التلقائي الفوري */}
+                      <div className="lg:col-span-5 bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black text-slate-700 flex items-center gap-1">
+                            <FileCheck size={13} className="text-orange-500" />
+                            <span>وثيقة الشهادة الرسمية</span>
+                          </label>
+                          <span className="text-[9px] font-bold text-slate-500">ضغط ذكي</span>
+                        </div>
+
+                        {cert.image ? (
+                          <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-emerald-200 shadow-2xs">
+                            <img
+                              src={cert.image}
+                              alt="وثيقة الشهادة"
+                              onClick={() => setPreviewDoc({ title: `وثيقة: ${cert.name || `شهادة #${index + 1}`}`, src: cert.image! })}
+                              className="w-16 h-16 object-cover rounded-lg border border-slate-200 shadow-xs cursor-pointer hover:opacity-85 transition-opacity shrink-0"
+                              title="انقر للتكبير"
+                            />
+                            <div className="flex-1 space-y-1.5 min-w-0">
+                              <span className="text-[10px] font-black text-emerald-700 flex items-center gap-1">
+                                <CheckCircle2 size={12} /> تم الحفظ والضغط بنجاح
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewDoc({ title: `وثيقة: ${cert.name || `شهادة #${index + 1}`}`, src: cert.image! })}
+                                  className="text-[10px] font-black text-blue-900 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1 transition-colors"
+                                >
+                                  <Eye size={11} /> عرض مكبّر
+                                </button>
+                                <label className="cursor-pointer text-[10px] font-black text-orange-700 hover:text-orange-900 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
+                                  <Upload size={11} /> تغيير
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const f = e.target.files?.[0];
+                                      if (f) {
+                                        try {
+                                          const res = await compressDocumentImage(f, { maxWidth: 1400, maxHeight: 1400, quality: 0.78 });
+                                          const newCerts = [...(formData.certificates || [])];
+                                          newCerts[index].image = res.base64;
+                                          setFormData({...formData, certificates: newCerts});
+                                        } catch (err: any) {
+                                          alert('خطأ أثناء معالجة الصورة: ' + err.message);
+                                        }
+                                      }
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newCerts = [...(formData.certificates || [])];
+                                    newCerts[index].image = '';
+                                    setFormData({...formData, certificates: newCerts});
+                                  }}
+                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 p-1 transition-colors"
+                                  title="إزالة الصورة"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer border-2 border-dashed border-orange-300 hover:border-orange-500 bg-white hover:bg-orange-50/40 rounded-xl p-3 flex flex-col items-center justify-center text-center gap-1.5 transition-all group">
+                            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                              <Upload size={16} />
+                            </div>
+                            <span className="text-xs font-black text-blue-950">انقر لرفع وثيقة الشهادة</span>
+                            <span className="text-[9px] font-bold text-slate-500">من المعرض أو الكاميرا (ضغط خفيف ودقة عالية)</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                if (f) {
+                                  try {
+                                    const res = await compressDocumentImage(f, { maxWidth: 1400, maxHeight: 1400, quality: 0.78 });
+                                    const newCerts = [...(formData.certificates || [])];
+                                    newCerts[index].image = res.base64;
+                                    setFormData({...formData, certificates: newCerts});
+                                  } catch (err: any) {
+                                    alert('خطأ أثناء معالجة الصورة: ' + err.message);
+                                  }
+                                }
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* الخبرات السابقة */}
+              {/* الخبرات ومحطات العمل السابقة */}
               <div className="mt-8 flex justify-between items-center bg-orange-50 px-3 py-2 rounded-l-lg border-r-4 border-orange-500 mb-6 w-full">
-                <h4 className="text-orange-700 font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 m-0"><Briefcase size={16}/> 4. الخبرات السابقة</h4>
-                <button type="button" onClick={() => setFormData({...formData, experiences: [...(formData.experiences || []), { id: generateUUID(), employer: '', position: '' }]})} className="bg-orange-500 text-white p-1 rounded hover:bg-orange-600 transition-all"><Plus size={16}/></button>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-orange-700 font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 m-0"><Briefcase size={16}/> 5. الخبرات ومحطات العمل السابقة</h4>
+                  <span className="text-[10px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">
+                    {(formData.experiences || []).length} خبرات
+                  </span>
+                </div>
+                <button type="button" onClick={() => setFormData({...formData, experiences: [...(formData.experiences || []), { id: generateUUID(), employer: '', position: '' }]})} className="bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-all font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95"><Plus size={16}/><span>إضافة خبرة سابقة</span></button>
               </div>
 
               <div className="space-y-3">
@@ -708,6 +881,46 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* مودال معاينة صور الشهادات والوثائق عالية الدقة */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 print:hidden" onClick={() => setPreviewDoc(null)} dir="rtl">
+          <div className="relative bg-white rounded-3xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="text-sm sm:text-base font-black text-blue-950 flex items-center gap-2">
+                <Award size={18} className="text-orange-500" />
+                <span>{previewDoc.title}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="max-h-[65vh] overflow-auto flex items-center justify-center bg-slate-100 rounded-2xl p-2 border border-slate-200">
+              <img src={previewDoc.src} alt={previewDoc.title} className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-sm" />
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              <a
+                href={previewDoc.src}
+                download={`${previewDoc.title}.jpg`}
+                className="px-4 py-2.5 bg-blue-900 text-white rounded-xl text-xs font-black flex items-center gap-2 hover:bg-blue-800 transition-colors shadow-sm"
+              >
+                <Download size={14} /> تحميل الوثيقة
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black transition-colors"
+              >
+                إغلاق
+              </button>
+            </div>
           </div>
         </div>
       )}

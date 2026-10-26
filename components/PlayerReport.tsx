@@ -91,6 +91,43 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     }
   };
 
+  // الشهادات والخبرات المعتمدة للكادر
+  const cadreCertificates: CoachingCertificate[] = useMemo(() => {
+    if (Array.isArray(player.certificates) && player.certificates.length > 0) return player.certificates;
+    if (player.monthlyReports?._certificates) {
+      try { return JSON.parse(player.monthlyReports._certificates); } catch(e) {}
+    }
+    return [];
+  }, [player.certificates, player.monthlyReports]);
+
+  const cadreExperiences: PreviousExperience[] = useMemo(() => {
+    if (Array.isArray(player.experiences) && player.experiences.length > 0) return player.experiences;
+    if (player.monthlyReports?._experiences) {
+      try { return JSON.parse(player.monthlyReports._experiences); } catch(e) {}
+    }
+    return [];
+  }, [player.experiences, player.monthlyReports]);
+
+  const handleCertificateImageUpdate = async (index: number, file: File) => {
+    if (!player || !canEditPerson) return;
+    try {
+      const compressed = await compressDocumentImage(file, { maxWidth: 1400, maxHeight: 1400, quality: 0.78 });
+      const newCerts = [...cadreCertificates];
+      newCerts[index] = { ...newCerts[index], image: compressed.base64 };
+      const updated = { ...player, certificates: newCerts };
+      const res = await safeSavePerson(updated, 'update', player.id);
+      if (!res.success) throw res.error;
+      setState(prev => ({
+        ...prev,
+        people: prev.people.map(p => p.id === player.id ? updated : p)
+      }));
+      Object.assign(player, { certificates: newCerts });
+      addLog?.('تم تحديث وثيقة الشهادة بنجاح', 'success');
+    } catch (err: any) {
+      alert('خطأ أثناء معالجة وحفظ صورة الشهادة: ' + err.message);
+    }
+  };
+
   // ==============================================================
   // 1. حساب إحصائيات الأداء الرقمي المباشر الحقيقية من المباريات
   // ==============================================================
