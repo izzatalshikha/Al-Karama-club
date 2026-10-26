@@ -315,7 +315,16 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm print:hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ClubLogo size={42} />
+            {player.photo ? (
+              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-orange-500 shadow-md shrink-0">
+                <img src={player.photo} alt={player.name} className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white flex items-center justify-center font-black text-xl border-2 border-orange-500/50 shadow-md shrink-0">
+                {player.name.charAt(0)}
+              </div>
+            )}
+            <ClubLogo size={36} className="hidden sm:block" />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base sm:text-lg font-black text-blue-900">{player.name}</h1>
@@ -323,7 +332,7 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
                   فئة {player.category}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-bold">بوابة اللاعب الإلكترونية</p>
+              <p className="text-[11px] text-slate-500 font-bold">بوابة اللاعب الإلكترونية • نادي الكرامة</p>
             </div>
           </div>
 

@@ -57,6 +57,16 @@ export async function safeSavePerson(
     }
   }
 
+  // ضمان حفظ واسترجاع الصورة الشخصية بشكل فوري حتى قبل تشغيل كود SQL
+  if (cleanData.photo) {
+    cleanData.monthlyReports = {
+      ...(cleanData.monthlyReports || {}),
+      _photo: cleanData.photo
+    };
+  } else if (cleanData.monthlyReports?._photo) {
+    cleanData.photo = cleanData.monthlyReports._photo;
+  }
+
   // 2. تجهيز حمولة السحابة:
   const cloudPayload: any = { ...cleanData };
   cloudPayload.seasons = validSeasons;
@@ -128,7 +138,7 @@ export async function safeSavePerson(
       'bloodType', 'shoeSize', 'clothesSize', 'preferredFoot', 
       'emergencyPhone', 'isAcademyPlayer', 'registrationDate', 
       'subscriptionMonth', 'contractDuration', 'jobTitle',
-      'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history'
+      'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history', 'photo'
     ];
     newColumns.forEach(c => delete fallbackData[c]);
 

@@ -8,6 +8,7 @@ import { supabase, generateUUID } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 import { compressDocumentImage } from '../utils/imageCompressor';
+import ProfilePhotoUploader from './ProfilePhotoUploader';
 
 interface EditPersonModalProps {
   person: Person;
@@ -152,6 +153,29 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
             <span className="bg-orange-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-xs">
               نادي رسمي ✓
             </span>
+          </div>
+
+          {/* قسم الصورة الشخصية الرسمية */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center gap-5">
+            <ProfilePhotoUploader
+              photo={formData.photo}
+              name={formData.name || (isPlayer ? 'لاعب' : 'عضو كادر')}
+              role={formData.role}
+              number={formData.number}
+              onPhotoChange={(newPhoto) => setFormData(prev => ({ ...prev, photo: newPhoto || undefined }))}
+              disabled={isSelf && isPlayer}
+              size="lg"
+            />
+            <div className="space-y-1 text-center sm:text-right">
+              <h4 className="text-sm font-black text-blue-950">
+                الصورة الشخصية الرسمية {isPlayer ? 'للاعب' : 'للمدرب / عضو الكادر'}
+              </h4>
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                {isSelf && isPlayer 
+                  ? 'الصورة الشخصية الرسمية معتمدة من إدارة النادي ولا يمكن تعديلها إلا من قِبل الإداري أو المدرب.'
+                  : 'يمكنك رفع الصورة من الجهاز أو التقاطها مباشرة بكاميرا الموبايل/الكمبيوتر. يتم ضغط الصورة تلقائياً للحفاظ على مساحة السيرفر مع بقاء الملامح فائقة الدقة.'}
+              </p>
+            </div>
           </div>
 
           {/* 1. المعلومات الشخصية والتواصل */}

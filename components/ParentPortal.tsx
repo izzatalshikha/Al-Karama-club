@@ -169,10 +169,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ state, setState, user, sync
       
       {/* Header Profile Info */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-6">
-        <div className="w-24 h-24 bg-gradient-to-tr from-blue-100 to-orange-100 rounded-full flex items-center justify-center shadow-inner border-4 border-white">
-          <span className="text-blue-900 font-black text-3xl">
-            {child.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
-          </span>
+        <div className="w-24 h-24 bg-gradient-to-tr from-blue-100 to-orange-100 rounded-full flex items-center justify-center shadow-inner border-4 border-white overflow-hidden shrink-0">
+          {child.photo ? (
+            <img src={child.photo} alt={child.name} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-blue-900 font-black text-3xl">
+              {child.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+            </span>
+          )}
         </div>
         <div className="flex-1 text-center md:text-right">
           <h1 className="text-2xl font-black text-blue-900">{child.name}</h1>

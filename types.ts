@@ -166,6 +166,7 @@ export interface Person {
   contractDuration?: string;
   jobTitle?: string;
   weightHistory?: WeightEntry[];
+  photo?: string;
 }
 
 export interface WeightEntry {

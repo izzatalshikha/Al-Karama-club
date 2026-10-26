@@ -8,6 +8,7 @@ import { AppState, Person, Role, CoachingCertificate, PreviousExperience } from 
 import { generateUUID, supabase } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
+import ProfilePhotoUploader from './ProfilePhotoUploader';
 
 interface StaffManagementProps {
   state: AppState;
@@ -316,8 +317,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
           return (
           <div key={person.id} className={`modern-card p-4 md:p-5 group hover:border-orange-500 transition-all flex flex-col border-b-4 ${isSelf ? 'border-b-orange-500 ring-2 ring-orange-400/30' : 'border-b-orange-500/20'}`}>
              <div className="flex justify-between items-start mb-3">
-                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center font-black text-xl transition-all border shadow-sm ${isSelf ? 'bg-orange-500 text-white border-orange-400' : 'bg-blue-50 text-blue-900 border-blue-100 group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400'}`}>
-                   {person.name.charAt(0)}
+                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center font-black text-xl transition-all border shadow-sm overflow-hidden shrink-0 ${isSelf ? 'bg-orange-500 text-white border-orange-400' : 'bg-blue-50 text-blue-900 border-blue-100 group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400'}`}>
+                   {person.photo ? (
+                     <img src={person.photo} alt={person.name} className="w-full h-full object-cover" />
+                   ) : (
+                     person.name.charAt(0)
+                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                    <span className="text-[8px] md:text-[9px] font-black text-orange-700 uppercase tracking-widest leading-tight text-right w-full sm:max-w-24 break-words truncate" title={person.category}>{person.category.split(',').join(' • ')}</span>
@@ -399,8 +404,26 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
               <button onClick={() => setIsModalOpen(false)} className="p-2.5 bg-slate-100 hover:bg-red-500 text-slate-600 hover:text-white rounded-xl transition-all shadow-sm"><X size={20}/></button>
             </div>
 
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 md:p-10 space-y-2 custom-scrollbar bg-slate-50 text-right pb-32 lg:pb-10" dir="rtl">
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 md:p-10 space-y-4 custom-scrollbar bg-slate-50 text-right pb-32 lg:pb-10" dir="rtl">
               
+              {/* قسم الصورة الشخصية الرسمية لعضو الكادر */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center gap-5">
+                <ProfilePhotoUploader
+                  photo={formData.photo}
+                  name={formData.name || 'عضو كادر'}
+                  role={formData.role || 'كادر'}
+                  onPhotoChange={(newPhoto) => setFormData(prev => ({ ...prev, photo: newPhoto || undefined }))}
+                  disabled={isViewer}
+                  size="lg"
+                />
+                <div className="space-y-1 text-center sm:text-right">
+                  <h4 className="text-sm font-black text-blue-950">الصورة الشخصية الرسمية للمدرب / عضو الكادر</h4>
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                    يمكنك رفع صورة من الجهاز أو التقاطها مباشرة بكاميرا الموبايل/الكمبيوتر. يتم ضغط الصورة تلقائياً لتكون خفيفة جداً وسريعة التحميل مع بقاء الملامح واضحة.
+                  </p>
+                </div>
+              </div>
+
               {/* القسم 1: الهوية */}
               <h4 className={sectionHeader}><Fingerprint size={16}/> 1. معلومات الهوية والنقابة</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">

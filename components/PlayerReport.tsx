@@ -20,6 +20,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCo
 import DocumentUploadCard from './DocumentUploadCard';
 import { compressDocumentImage } from '../utils/imageCompressor';
 import EditPersonModal from './EditPersonModal';
+import ProfilePhotoUploader from './ProfilePhotoUploader';
 
 interface PlayerReportProps {
   state: AppState;
@@ -71,6 +72,24 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   const canEditPerson = isManager || isSelf || (isCoach && (!state.currentUser?.restrictedCategory || String(state.currentUser.restrictedCategory).includes(player.category)));
 
   const isViewer = state.currentUser.role === 'مشاهد' || state.currentUser.role === 'لاعب';
+  const canUploadOfficialPhoto = isManager || (isCoach && (!state.currentUser?.restrictedCategory || String(state.currentUser.restrictedCategory).includes(player.category)));
+
+  const handlePhotoUpdate = async (newPhoto: string | null) => {
+    if (!player || !canUploadOfficialPhoto) return;
+    try {
+      const updated = { ...player, photo: newPhoto || undefined };
+      const res = await safeSavePerson(updated, 'update', player.id);
+      if (!res.success) throw res.error;
+      setState(prev => ({
+        ...prev,
+        people: prev.people.map(p => p.id === player.id ? updated : p)
+      }));
+      Object.assign(player, { photo: newPhoto || undefined });
+      addLog?.('تم تحديث الصورة الشخصية بنجاح', 'success');
+    } catch (err: any) {
+      alert('خطأ أثناء حفظ الصورة: ' + (err.message || err));
+    }
+  };
 
   // ==============================================================
   // 1. حساب إحصائيات الأداء الرقمي المباشر الحقيقية من المباريات
@@ -452,14 +471,15 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
           <div className="flex flex-col sm:flex-row items-center gap-5 md:gap-6 text-center sm:text-right">
-            <div className="w-24 h-24 md:w-28 md:h-28 bg-blue-900/80 rounded-2xl flex items-center justify-center font-black text-4xl md:text-5xl text-white border-4 border-orange-500/30 shadow-2xl relative shrink-0">
-              {player.name.charAt(0)}
-              {player.number && (
-                <div className="absolute -bottom-2 -right-2 bg-orange-500 text-white font-black text-xs px-2.5 py-1 rounded-lg border-2 border-blue-950 shadow-md">
-                  #{player.number}
-                </div>
-              )}
-            </div>
+            <ProfilePhotoUploader
+              photo={player.photo}
+              name={player.name}
+              role={player.role}
+              number={player.number}
+              onPhotoChange={handlePhotoUpdate}
+              disabled={!canUploadOfficialPhoto}
+              size="lg"
+            />
             <div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
                 <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
