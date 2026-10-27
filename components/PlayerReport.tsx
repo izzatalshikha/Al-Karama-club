@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { 
   ChevronRight, Printer, Target, Calendar, 
   TrendingUp, TrendingDown, Activity, Trophy, 
-  CheckCircle, Hash, User, Timer, StickyNote, 
+  CheckCircle, CheckCircle2, Hash, User, Timer, StickyNote, 
   HeartPulse, ShieldAlert, Gavel, Wallet, 
   Phone, Fingerprint, Ruler, Weight, BadgeCheck, MapPin, 
   Globe, BarChart, Users, Star, AlertCircle, FileText,
@@ -32,7 +32,13 @@ interface PlayerReportProps {
 
 const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, onBack, addLog }) => {
   const [isSavingReport, setIsSavingReport] = useState(false);
-  const [monthlyNotes, setMonthlyNotes] = useState<{ [key: string]: string }>(player?.monthlyReports || {});
+  const [monthlyNotes, setMonthlyNotes] = useState<{ [key: string]: string }>(() => {
+    if (!player?.monthlyReports) return {};
+    if (typeof player.monthlyReports === "string") {
+      try { return JSON.parse(player.monthlyReports); } catch { return {}; }
+    }
+    return typeof player.monthlyReports === "object" ? player.monthlyReports : {};
+  });
   const [previewDoc, setPreviewDoc] = useState<{ title: string; src: string } | null>(null);
   
   // Edit Person Modal state
@@ -217,7 +223,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     const records = (state.attendance || []).filter(a => {
       if (a.personId !== player.id) return false;
       if (targetSeason === 'all') return true;
-      const sess = sessionMap.get(a.sessionId);
+      const sess = sessionMap.get(a.sessionId) as any;
       const sessSeason = sess?.season || (a.date?.startsWith('2027') ? '2026/2027' : '2025/2026');
       return sessSeason === targetSeason;
     });
@@ -455,14 +461,19 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   const sortedSavedReports = useMemo(() => {
     return months
       .map(m => ({ month: m, content: monthlyNotes[m] }))
-      .filter(r => r.content && r.content.trim().length > 0);
+      .filter(r => r.content && (typeof r.content === "string" ? r.content.trim().length > 0 : Boolean(r.content)));
   }, [monthlyNotes, months]);
 
   return (
     <div className="space-y-7 md:space-y-9 animate-in fade-in duration-500 pb-20 print:pb-0 px-2 md:px-0" dir="rtl">
       {/* هيدر الطباعة الرسمي */}
       <div className="hidden print:flex flex-col items-center justify-center text-center space-y-2 mb-8 border-b-4 border-slate-900 pb-6 w-full">
-         <img src="https://rbrkrntnjmwgtspmhbau.supabase.co/storage/v1/object/public/courts/LOGO.jpeg" alt="Logo" className="w-24 h-24 rounded-full object-contain mb-2 border-2 border-slate-200" />
+         <div className="flex items-center justify-center gap-6 mb-2">
+           <img src="https://rbrkrntnjmwgtspmhbau.supabase.co/storage/v1/object/public/courts/LOGO.jpeg" alt="Logo" className="w-24 h-24 rounded-full object-contain border-2 border-slate-200" />
+           {player.photo && (
+             <img src={player.photo} alt={player.name} className="w-24 h-24 rounded-2xl object-cover border-2 border-slate-900 shadow-sm" />
+           )}
+         </div>
          <h1 className="text-3xl font-black text-slate-900">نادي الكرامة الرياضي</h1>
          <h2 className="text-xl font-bold text-slate-700">مكتب كرة القدم</h2>
          <div className="mt-2 text-xl font-black bg-slate-900 text-white px-6 py-2 rounded-full inline-block tracking-widest">
@@ -507,7 +518,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
       <div className="modern-card p-6 md:p-8 bg-gradient-to-l from-blue-950 via-[#0f172a] to-blue-900 text-white border-2 border-blue-900 rounded-[2rem] shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-          <div className="flex flex-col sm:flex-row items-center gap-5 md:gap-6 text-center sm:text-right">
+          <div className="flex flex-col sm:flex-row items-center gap-6 md:gap-7 text-center sm:text-right">
             <ProfilePhotoUploader
               photo={player.photo}
               name={player.name}
@@ -515,7 +526,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
               number={player.number}
               onPhotoChange={handlePhotoUpdate}
               disabled={!canUploadOfficialPhoto}
-              size="lg"
+              size="2xl"
             />
             <div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
@@ -1273,13 +1284,129 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             </div>
           </div>
         ) : (
-          <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600 bg-white">
-            <SectionTitle icon={Activity} title="التوصيف الوظيفي للكادر في النادي" color="text-emerald-500" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              <InfoBlock icon={Target} label="الدور الوظيفي" value={player.role} />
-              <InfoBlock icon={UserCheck} label="الصفة والانتماء" value="كادر نادي رسمي" color="text-blue-900 font-black" />
-              <InfoBlock icon={CalendarCheck} label="الفئة" value={player.category || 'غير محدد'} />
-              <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
+          <div className="space-y-6">
+            {/* بطاقة التوصيف الوظيفي للكادر */}
+            <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600 bg-white space-y-4">
+              <SectionTitle icon={Activity} title="التوصيف الوظيفي للكادر في النادي" color="text-emerald-500" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                <InfoBlock icon={Target} label="الدور الوظيفي" value={player.role} />
+                <InfoBlock icon={UserCheck} label="الصفة والانتماء" value="كادر نادي رسمي" color="text-blue-900 font-black" />
+                <InfoBlock icon={CalendarCheck} label="الفئة" value={player.category || 'غير محدد'} />
+                <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
+                {player.academicDegree && (
+                  <InfoBlock icon={GraduationCap} label="المؤهل العلمي" value={player.academicDegree} />
+                )}
+                {player.coachingCertificate && (
+                  <InfoBlock icon={Award} label="الشهادة التدريبية الأساسية" value={player.coachingCertificate} color="text-emerald-700 font-bold" />
+                )}
+              </div>
+            </div>
+
+            {/* الشهادات التدريبية التخصصية ووثائقها المرفوعة */}
+            <div className="modern-card p-6 md:p-8 border-r-8 border-blue-600 bg-white space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <SectionTitle icon={GraduationCap} title={"الشهادات التدريبية والتأهيلية (" + cadreCertificates.length + ")"} color="text-blue-600" />
+                <span className="text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-full">
+                  معتمدة في سجل النادي
+                </span>
+              </div>
+
+              {cadreCertificates.length === 0 ? (
+                <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 font-bold text-xs">
+                  لم يتم إضافة شهادات تدريبية تخصصية للكادر بعد.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {cadreCertificates.map((cert, cIdx) => (
+                    <div key={cIdx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-blue-300 transition-all shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="font-black text-sm text-blue-950 flex items-center gap-1.5">
+                            <Award size={16} className="text-blue-600 shrink-0" />
+                            {cert.name}
+                          </h4>
+                          <p className="text-xs text-slate-500 font-bold mt-1">
+                            الجهة المانحة: {cert.issuer || 'غير محدد'}
+                          </p>
+                        </div>
+                        {cert.year && (
+                          <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono shrink-0">
+                            سنة {cert.year}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
+                        {cert.image ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc({ title: "وثيقة شهادة " + cert.name, src: cert.image })}
+                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                            >
+                              <Eye size={13} />
+                              <span>معاينة وثيقة الشهادة</span>
+                            </button>
+                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              وثيقة مرفقة ✓
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-bold">لا توجد صورة للشهادة</span>
+                        )}
+
+                        {canEditPerson && (
+                          <label className="cursor-pointer px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-orange-500 text-slate-700 hover:text-orange-600 font-black text-xs flex items-center gap-1.5 transition-all shadow-xs">
+                            <Upload size={13} />
+                            <span>{cert.image ? 'تعديل الوثيقة' : 'رفع صورة الشهادة'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) handleCertificateImageUpdate(cIdx, f);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* الخبرات التدريبية والمهنية السابقة */}
+            <div className="modern-card p-6 md:p-8 border-r-8 border-indigo-600 bg-white space-y-4">
+              <SectionTitle icon={Briefcase} title={"الخبرات السابقة في الأندية والمؤسسات (" + cadreExperiences.length + ")"} color="text-indigo-600" />
+              {cadreExperiences.length === 0 ? (
+                <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 font-bold text-xs">
+                  لم يتم إضافة سجل خبرات سابقة بعد.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {cadreExperiences.map((exp, eIdx) => (
+                    <div key={eIdx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-sm text-blue-950 flex items-center gap-1.5">
+                          <Briefcase size={16} className="text-indigo-600" />
+                          {exp.clubOrOrg}
+                        </span>
+                        <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                          {exp.fromYear} - {exp.toYear || 'حتى الآن'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-700">المسمى الوظيفي: {exp.role}</p>
+                      {exp.achievements && (
+                        <p className="text-[11px] font-medium text-slate-500 italic">
+                          أبرز المهام والإنجازات: {exp.achievements}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

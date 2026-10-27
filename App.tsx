@@ -15,6 +15,7 @@ import TrainingPlanner from './components/TrainingPlanner';
 import MatchPlanner from './components/MatchPlanner';
 import SettingsView from './components/SettingsView';
 import PlayerReport from './components/PlayerReport';
+import ErrorBoundary from './components/ErrorBoundary';
 import WarehouseManagement from './components/WarehouseManagement';
 import TournamentsView from './components/TournamentsView';
 import ServicesView from './components/ServicesView';
@@ -521,7 +522,26 @@ const App: React.FC = () => {
   useEffect(() => {
     if (state.currentUser) {
       const timeoutId = setTimeout(() => {
-        localStorage.setItem('eagle_os_v3', JSON.stringify(state));
+        try {
+          // حماية التخزين المحلي من QuotaExceededError وتسريع الأداء
+          const safePeople = state.people.map(p => {
+            const hasHeavyId = p.idCardImage && p.idCardImage.length > 40000;
+            const hasHeavyBack = p.idCardBackImage && p.idCardBackImage.length > 40000;
+            const hasHeavyPassport = p.passportImage && p.passportImage.length > 40000;
+            if (hasHeavyId || hasHeavyBack || hasHeavyPassport) {
+              return {
+                ...p,
+                idCardImage: hasHeavyId ? undefined : p.idCardImage,
+                idCardBackImage: hasHeavyBack ? undefined : p.idCardBackImage,
+                passportImage: hasHeavyPassport ? undefined : p.passportImage,
+              };
+            }
+            return p;
+          });
+          localStorage.setItem('eagle_os_v3', JSON.stringify({ ...state, people: safePeople }));
+        } catch (e) {
+          console.warn('تنبيه حفظ التخزين المحلي:', e);
+        }
       }, 500);
       return () => clearTimeout(timeoutId);
     }
@@ -732,7 +752,11 @@ const App: React.FC = () => {
     };
 
     if (playerObj) {
-      return <PlayerPortal player={playerObj} state={state} onLogout={handlePlayerLogout} setState={setState} />;
+      return (
+        <ErrorBoundary fallbackTitle="بوابة اللاعب الإلكترونية">
+          <PlayerPortal player={playerObj} state={state} onLogout={handlePlayerLogout} setState={setState} />
+        </ErrorBoundary>
+      );
     }
   }
 
@@ -944,7 +968,11 @@ const App: React.FC = () => {
             {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
             {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
             {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'report' && <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />}
+            {activeTab === 'report' && (
+          <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي" onReset={() => setActiveTab(previousTab)}>
+            <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />
+          </ErrorBoundary>
+        )}
           </div>
         </main>
 

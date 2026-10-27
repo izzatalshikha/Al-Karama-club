@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Camera, Upload, Trash2, X, RefreshCw, Check, Loader2, 
-  User, ZoomIn, ZoomOut, Move, RotateCcw, FlipHorizontal
+  User, ZoomIn, ZoomOut, Move, RotateCcw, FlipHorizontal,
+  Maximize2, Eye, Download
 } from 'lucide-react';
 import { compressProfilePhoto } from '../utils/imageCompressor';
 
@@ -12,9 +13,10 @@ interface ProfilePhotoUploaderProps {
   number?: string | number;
   onPhotoChange: (newPhotoBase64: string | null) => void;
   disabled?: boolean;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'hero';
   className?: string;
   showBadges?: boolean;
+  allowPreview?: boolean;
 }
 
 export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
@@ -27,7 +29,11 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
   size = 'lg',
   className = '',
   showBadges = true,
+  allowPreview = true,
 }) => {
+  // حالات معاينة الصورة بالحجم الكامل وفائق الدقة
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState<number>(1);
   // حالات الكاميرا
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -188,7 +194,7 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
 
     try {
       const img = imageRef.current;
-      const exportSize = 480; // الحجم النهائي المربع للبروفايل
+      const exportSize = 640; // الحجم النهائي المربع للبروفايل بدقة فائقة وشاشة ريتينا
       const canvas = document.createElement('canvas');
       canvas.width = exportSize;
       canvas.height = exportSize;
@@ -227,10 +233,10 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
         renderH * factor
       );
 
-      // ضغط الصورة إلى WebP أو JPEG بحجم خفيف جداً (~25-35 ك.ب) ونقاء فائق
+      // ضغط الصورة إلى WebP أو JPEG بحجم خفيف جداً (~30-50 ك.ب) ونقاء عالي الدقة
       canvas.toBlob(async (blob) => {
         if (!blob) throw new Error('فشل تصدير الصورة');
-        const compressed = await compressProfilePhoto(blob, { targetSize: 480, quality: 0.80 });
+        const compressed = await compressProfilePhoto(blob, { targetSize: 640, quality: 0.82 });
         onPhotoChange(compressed.base64);
         setSavedBadge(`تم الحفظ بنقاء عالي (${compressed.compressedSizeKB} ك.ب)`);
         setTimeout(() => setSavedBadge(null), 4000);
@@ -287,6 +293,8 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
     md: 'w-16 h-16 text-2xl rounded-2xl',
     lg: 'w-24 h-24 md:w-28 md:h-28 text-4xl md:text-5xl rounded-[1.8rem]',
     xl: 'w-32 h-32 md:w-36 md:h-36 text-5xl md:text-6xl rounded-[2.2rem]',
+    '2xl': 'w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 text-6xl md:text-7xl rounded-[2.5rem]',
+    hero: 'w-48 h-48 sm:w-56 sm:h-56 md:w-64 md:h-64 text-7xl md:text-8xl rounded-[3rem]',
   }[size];
 
   return (
@@ -302,12 +310,23 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
       />
 
       {/* حاوية الصورة الأساسية */}
-      <div className={`relative ${sizeClasses} bg-gradient-to-br from-blue-900 to-indigo-950 text-white flex items-center justify-center font-black border-4 border-orange-500/40 shadow-xl overflow-hidden group select-none shrink-0`}>
+      <div 
+        onClick={() => {
+          if (photo && allowPreview) {
+            setIsPreviewOpen(true);
+            setPreviewZoom(1);
+          }
+        }}
+        className={`relative ${sizeClasses} bg-gradient-to-br from-blue-900 to-indigo-950 text-white flex items-center justify-center font-black border-4 border-orange-500/40 shadow-xl overflow-hidden group select-none shrink-0 ${photo && allowPreview ? 'cursor-pointer hover:border-orange-500 transition-all hover:shadow-2xl' : ''}`}
+        title={photo && allowPreview ? 'انقر لتكبير واستعراض الصورة بجودة فائقة' : undefined}
+      >
         {photo ? (
           <img
             src={photo}
             alt={name}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="eager"
+            decoding="async"
           />
         ) : (
           <span className="font-black text-white/95">
@@ -323,6 +342,22 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
           </div>
         )}
 
+        {/* زر التكبير السريع في الزاوية */}
+        {photo && allowPreview && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsPreviewOpen(true);
+              setPreviewZoom(1);
+            }}
+            className="absolute top-2 left-2 bg-slate-950/70 hover:bg-orange-600 text-white p-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-all shadow-md z-15 backdrop-blur-xs"
+            title="تكبير الصورة بجودة كاملة"
+          >
+            <Maximize2 size={13} />
+          </button>
+        )}
+
         {/* شارة رقم القميص */}
         {showBadges && number && (
           <div className="absolute -bottom-1 -right-1 bg-orange-500 text-white font-black text-[11px] px-2 py-0.5 rounded-lg border-2 border-blue-950 shadow-md z-10 font-mono">
@@ -332,7 +367,10 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
 
         {/* أزرار التحكم عند التحويم للإداريين فقط */}
         {!disabled && (
-          <div className="absolute inset-0 bg-blue-950/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 z-10 backdrop-blur-[2px]">
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 bg-blue-950/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 z-10 backdrop-blur-[2px]"
+          >
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -349,6 +387,19 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
             >
               <Camera size={16} />
             </button>
+            {photo && allowPreview && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewOpen(true);
+                  setPreviewZoom(1);
+                }}
+                title="عرض وتكبير الصورة"
+                className="p-2 bg-white/20 hover:bg-emerald-600 text-white rounded-xl transition-colors shadow-sm"
+              >
+                <Maximize2 size={16} />
+              </button>
+            )}
             {photo && (
               <button
                 type="button"
@@ -363,37 +414,53 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
         )}
       </div>
 
-      {/* أزرار سريعة أسفل الصورة للإداريين فقط */}
-      {!disabled && (
-        <div className="flex items-center justify-center gap-2 mt-2.5">
+      {/* أزرار سريعة أسفل الصورة */}
+      <div className="flex items-center justify-center gap-2 mt-2.5">
+        {photo && allowPreview && (
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1 text-[10px] font-black bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
+            onClick={() => {
+              setIsPreviewOpen(true);
+              setPreviewZoom(1);
+            }}
+            className="flex items-center gap-1 text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
+            title="تكبير واستعراض الصورة"
           >
-            <Upload size={12} className="text-blue-700" />
-            <span>رفع صورة</span>
+            <Maximize2 size={12} className="text-orange-600" />
+            <span>تكبير</span>
           </button>
-          <button
-            type="button"
-            onClick={() => startCamera(facingMode)}
-            className="flex items-center gap-1 text-[10px] font-black bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
-          >
-            <Camera size={12} className="text-orange-600" />
-            <span>التقاط</span>
-          </button>
-          {photo && (
+        )}
+        {!disabled && (
+          <>
             <button
               type="button"
-              onClick={() => onPhotoChange(null)}
-              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-              title="حذف الصورة"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1 text-[10px] font-black bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
             >
-              <Trash2 size={13} />
+              <Upload size={12} className="text-blue-700" />
+              <span>رفع صورة</span>
             </button>
-          )}
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={() => startCamera(facingMode)}
+              className="flex items-center gap-1 text-[10px] font-black bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
+            >
+              <Camera size={12} className="text-orange-600" />
+              <span>التقاط</span>
+            </button>
+            {photo && (
+              <button
+                type="button"
+                onClick={() => onPhotoChange(null)}
+                className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                title="حذف الصورة"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {/* تنبيه حجم الصورة المضغوطة */}
       {savedBadge && (
@@ -651,6 +718,124 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
                 {isCompressing ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                 <span>اعتماد وحفظ الصورة</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 3. نافذة استعراض الصورة بحجم كبير وجودة فائقة (High-Res Preview Modal) */}
+      {/* ============================================================== */}
+      {isPreviewOpen && photo && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+          onClick={() => setIsPreviewOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-[2.5rem] max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* رأس النافذة */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center shadow-xs shrink-0">
+                  <User size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-blue-950 flex items-center gap-2">
+                    {name}
+                    {role && (
+                      <span className="text-[10px] font-black bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded-full">
+                        {role}
+                      </span>
+                    )}
+                    {number && (
+                      <span className="text-[10px] font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-mono">
+                        #{number}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-bold">
+                    الصورة الرسمية المعتمدة في نادي الكرامة الرياضي
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPreviewOpen(false)}
+                className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 flex items-center justify-center transition-colors"
+                title="إغلاق"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* مساحة عرض الصورة بالحجم الكبير والدقة العالية */}
+            <div className="relative aspect-square max-w-md w-full mx-auto bg-slate-950 rounded-3xl overflow-hidden border-4 border-slate-900 shadow-2xl flex items-center justify-center">
+              <img
+                src={photo}
+                alt={name}
+                style={{
+                  transform: `scale(${previewZoom})`,
+                  transition: 'transform 0.2s ease-out'
+                }}
+                className="w-full h-full object-cover select-none"
+              />
+              <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-xs text-white text-[10px] font-black px-3 py-1 rounded-xl pointer-events-none">
+                دقة فائقة • نادي الكرامة
+              </div>
+            </div>
+
+            {/* شريط التحكم بالتكبير والتنزيل */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setPreviewZoom(prev => Math.max(1, prev - 0.25))}
+                  className="p-2 hover:bg-white text-slate-700 rounded-xl transition-all shadow-2xs"
+                  title="تصغير"
+                >
+                  <ZoomOut size={16} />
+                </button>
+                <span className="font-mono text-xs font-black text-blue-950 px-2 min-w-[3.5rem] text-center">
+                  {(previewZoom * 100).toFixed(0)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewZoom(prev => Math.min(3, prev + 0.25))}
+                  className="p-2 hover:bg-white text-slate-700 rounded-xl transition-all shadow-2xs"
+                  title="تكبير"
+                >
+                  <ZoomIn size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewZoom(1)}
+                  className="p-2 hover:bg-white text-slate-500 rounded-xl transition-all"
+                  title="إعادة ضبط"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={photo}
+                  download={`${name.replace(/\s+/g, '_')}_photo.jpg`}
+                  className="flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black px-4 py-2.5 rounded-2xl transition-all shadow-md active:scale-95"
+                >
+                  <Download size={15} />
+                  <span>تحميل الصورة</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black px-5 py-2.5 rounded-2xl transition-all"
+                >
+                  إغلاق
+                </button>
+              </div>
             </div>
           </div>
         </div>

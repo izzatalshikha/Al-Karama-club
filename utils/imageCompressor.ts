@@ -98,15 +98,15 @@ export const compressDocumentImage = (
 
 /**
  * معالج ضغط وقص صور اللاعبين والكوادر الشخصية (Profile Photo Compressor)
- * يقوم بقص الصورة لمربع متناسق 1:1 مع أبعاد دقيقة (480x480) وضغط WebP/JPEG
- * ليصبح حجم الصورة فائق الخفة (~20-40 كيلوبايت فقط) مع بقاء تفاصيل الوجه واضحة جداً.
+ * يقوم بقص الصورة لمربع متناسق 1:1 مع أبعاد دقيقة (640x640) وضغط WebP/JPEG عالي الكفاءة
+ * ليصبح حجم الصورة فائق الخفة (~25-50 كيلوبايت فقط) مع بقاء تفاصيل الوجه والملامح والشعارات فائقة الوضوح والدقة.
  */
 export const compressProfilePhoto = (
   file: File | Blob,
   options: { targetSize?: number; quality?: number } = {}
 ): Promise<CompressionResult> => {
   return new Promise((resolve, reject) => {
-    const { targetSize = 480, quality = 0.78 } = options;
+    const { targetSize = 640, quality = 0.82 } = options;
     const originalSizeKB = Math.round(file.size / 1024);
 
     const reader = new FileReader();
@@ -140,7 +140,7 @@ export const compressProfilePhoto = (
         // رسم الصورة المربعة المقصوصة
         ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, targetSize, targetSize);
 
-        // استخراج بصيغة WebP أو JPEG
+        // استخراج بصيغة WebP أو JPEG بأعلى دقة مع ضغط فائق الكفاءة
         let compressedBase64 = canvas.toDataURL('image/webp', quality);
         if (!compressedBase64.startsWith('data:image/webp')) {
           compressedBase64 = canvas.toDataURL('image/jpeg', quality);

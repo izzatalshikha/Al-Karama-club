@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { AppState, Person } from '../types';
 import PlayerReport from './PlayerReport';
+import ErrorBoundary from './ErrorBoundary';
 import ClubLogo from './ClubLogo';
 import PlayerWelcomeSplash from './PlayerWelcomeSplash';
 import { 
-  LogOut, Calendar, Trophy, ClipboardCheck, ArrowRight, User, 
+  LogOut, Clock, Calendar, Trophy, ClipboardCheck, ArrowRight, User, 
   CreditCard, FileText, CheckCircle2, Save, Loader2, AlertCircle, FileCheck, ShieldCheck,
   Edit, UserCheck, Heart, Ruler, Scale, Phone, MapPin, Sparkles, Award
 } from 'lucide-react';
@@ -317,7 +318,7 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
           <div className="flex items-center gap-3">
             {player.photo ? (
               <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-orange-500 shadow-md shrink-0">
-                <img src={player.photo} alt={player.name} className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={player.photo} alt={player.name} className="w-full h-full object-cover" />
               </div>
             ) : (
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white flex items-center justify-center font-black text-xl border-2 border-orange-500/50 shadow-md shrink-0">
@@ -459,12 +460,14 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
               </button>
             </div>
 
-            <PlayerReport
-              player={player}
-              state={state}
-              setState={setState || (() => {})}
-              onBack={() => {}}
-            />
+            <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي للاعب">
+              <PlayerReport
+                player={player}
+                state={state}
+                setState={setState || (() => {})}
+                onBack={() => {}}
+              />
+            </ErrorBoundary>
           </div>
         ) : activeTab === 'edit-profile' ? (
           <div className="space-y-6 animate-in fade-in">
