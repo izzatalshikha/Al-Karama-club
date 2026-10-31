@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Medal, Briefcase,
-  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby, Bell, Edit2
+  Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby, Bell, Edit2,
+  Smartphone, Download
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification, Role } from './types';
@@ -28,6 +29,7 @@ import ParentPortal from './components/ParentPortal';
 import AdminNotifications from './components/AdminNotifications';
 import PlayerPortal from './components/PlayerPortal';
 import EditPersonModal from './components/EditPersonModal';
+import { PWAInstallModal, PWAFloatingPrompt } from './components/PWAInstallModal';
 import { safeSavePerson } from './utils/supabaseSanitizer';
 import { decodeMatchPitch, encodeMatchPitch } from './utils/tournamentHelpers';
 
@@ -64,6 +66,17 @@ const App: React.FC = () => {
   const [selectedPlayer, setSelectedPlayer] = useState<Person | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isPWAInstallOpen, setIsPWAInstallOpen] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('eagle_os_v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Boolean(parsed.currentUser && (!parsed.people || parsed.people.length === 0));
+      }
+    } catch {}
+    return false;
+  });
 
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('eagle_os_v3');
@@ -181,7 +194,7 @@ const App: React.FC = () => {
 
   const fetchAllData = useCallback(async (user: AppUser, silent: boolean = false) => {
     if (!user) return;
-    if (!silent) setSyncStatus('syncing');
+    setSyncStatus('syncing');
     try {
       const isManager = user.role === 'مدير';
       const isWarehouse = user.role === 'أمين مستودع' || user.role === 'مسؤول تجهيزات';
@@ -290,14 +303,28 @@ const App: React.FC = () => {
         }
       }
 
-      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq, tReportsReq] = await Promise.all([
-        peopleQ, matchesQ, sessionsQ, attendanceQ, warehouseQ, usersQ, injuriesQ, tacticalQ, categoriesQ,
-        tournamentsQ, tourStagesQ, tourTeamsQ, tourSTeamsQ, tourMatchesQ, servicesQ, technicalReportsQ
+      // دالة استعلام آمنة تمنع تعطل كامل البيانات في حال تعثر جدول فرعي
+      const safeFetch = async (query: any) => {
+        try {
+          const res = await query;
+          return res;
+        } catch (err) {
+          console.error('Fetch table error:', err);
+          return { data: [], error: err };
+        }
+      };
+
+      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq, tReportsReq, transfersReq] = await Promise.all([
+        safeFetch(peopleQ), safeFetch(matchesQ), safeFetch(sessionsQ), safeFetch(attendanceQ), 
+        safeFetch(warehouseQ), safeFetch(usersQ), safeFetch(injuriesQ), safeFetch(tacticalQ), 
+        safeFetch(categoriesQ), safeFetch(tournamentsQ), safeFetch(tourStagesQ), safeFetch(tourTeamsQ), 
+        safeFetch(tourSTeamsQ), safeFetch(tourMatchesQ), safeFetch(servicesQ), safeFetch(technicalReportsQ),
+        safeFetch(transfersQ)
       ]);
 
-      const playersCount = p.data?.filter(person => person.role === 'لاعب').length || 0;
+      const playersCount = p.data?.filter((person: any) => person.role === 'لاعب').length || 0;
       const staffCount = (p.data?.length || 0) - playersCount;
-      const fetchedCats = catsReq.data?.map(c => c.name) || [];
+      const fetchedCats = catsReq.data?.map((c: any) => c.name) || [];
 
       const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
 
@@ -349,14 +376,17 @@ const App: React.FC = () => {
           };
         }),
         servicesDirectory: dedupe(servicesReq.data),
-        technicalReports: dedupe(tReportsReq.data)
+        technicalReports: dedupe(tReportsReq.data),
+        transfers: dedupe(transfersReq.data)
       }));
       setSyncStatus('synced');
+      setIsInitialLoading(false);
       if (!silent) {
         addNotify(`تم التحديث: ${playersCount} لاعب، ${staffCount} كادر`, 'success');
       }
     } catch (e) {
       setSyncStatus('error');
+      setIsInitialLoading(false);
       if (!silent) addNotify('خطأ في استدعاء البيانات', 'error');
     }
   }, [addNotify]);
@@ -515,7 +545,11 @@ const App: React.FC = () => {
   // إضافة الجلب التلقائي عند بدء التشغيل إذا كان هناك مستخدم مسجل الدخول
   useEffect(() => {
     if (state.currentUser) {
-      fetchAllData(state.currentUser, true);
+      const isDataEmpty = !state.people || state.people.length === 0;
+      if (isDataEmpty) {
+        setIsInitialLoading(true);
+      }
+      fetchAllData(state.currentUser, isDataEmpty ? false : true);
     }
   }, [state.currentUser?.id, fetchAllData]);
 
@@ -524,23 +558,23 @@ const App: React.FC = () => {
       const timeoutId = setTimeout(() => {
         try {
           // حماية التخزين المحلي من QuotaExceededError وتسريع الأداء
+          // تجريد الصور الثقيلة والمستندات الكبيرة من نسخة التخزين المحلي لضمان عدم تجاوز السعة القصوى للمتصفح
           const safePeople = state.people.map(p => {
-            const hasHeavyId = p.idCardImage && p.idCardImage.length > 40000;
-            const hasHeavyBack = p.idCardBackImage && p.idCardBackImage.length > 40000;
-            const hasHeavyPassport = p.passportImage && p.passportImage.length > 40000;
-            if (hasHeavyId || hasHeavyBack || hasHeavyPassport) {
-              return {
-                ...p,
-                idCardImage: hasHeavyId ? undefined : p.idCardImage,
-                idCardBackImage: hasHeavyBack ? undefined : p.idCardBackImage,
-                passportImage: hasHeavyPassport ? undefined : p.passportImage,
-              };
-            }
-            return p;
+            return {
+              ...p,
+              photo: (p.photo && p.photo.length > 8000) ? undefined : p.photo,
+              idCardImage: undefined,
+              idCardBackImage: undefined,
+              passportImage: undefined,
+              certificates: Array.isArray(p.certificates) ? p.certificates.map(c => ({ ...c, image: undefined })) : []
+            };
           });
           localStorage.setItem('eagle_os_v3', JSON.stringify({ ...state, people: safePeople }));
         } catch (e) {
-          console.warn('تنبيه حفظ التخزين المحلي:', e);
+          console.warn('تنبيه حفظ التخزين المحلي، محاولة الحفظ الاحتياطي:', e);
+          try {
+            localStorage.setItem('eagle_os_v3', JSON.stringify({ ...state, people: [] }));
+          } catch {}
         }
       }, 500);
       return () => clearTimeout(timeoutId);
@@ -758,6 +792,17 @@ const App: React.FC = () => {
         </ErrorBoundary>
       );
     }
+
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white font-['IBM_Plex_Sans_Arabic']" dir="rtl">
+        <div className="relative flex flex-col items-center animate-in zoom-in-95 duration-300">
+          <ClubLogo size={80} className="animate-pulse mb-6" />
+          <Loader2 size={36} className="animate-spin text-orange-500 mb-4" />
+          <h2 className="text-xl font-bold">جاري تحميل ملفك الرياضي من السحابة...</h2>
+          <p className="text-slate-400 text-xs mt-2">يرجى الانتظار لحظات، يتم استرداد بياناتك تلقائياً</p>
+        </div>
+      </div>
+    );
   }
 
   
@@ -900,6 +945,15 @@ const App: React.FC = () => {
                </button>
              )}
           </div>
+          <button
+            type="button"
+            onClick={() => setIsPWAInstallOpen(true)}
+            className="w-full p-2.5 mb-2 rounded-xl text-white bg-white/10 hover:bg-orange-500 hover:text-white transition-all flex items-center justify-center gap-2 text-xs font-bold"
+            title="تثبيت التطبيق على أجهزة آيفون وأندرويد"
+          >
+            <Smartphone size={16} className="text-orange-400 group-hover:text-white shrink-0" />
+            {isSidebarOpen && <span>تثبيت التطبيق 📲</span>}
+          </button>
           <button onClick={() => { 
               setState({ currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'], people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [], attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [], });
               localStorage.clear();
@@ -926,9 +980,18 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
              <button
                type="button"
+               onClick={() => setIsPWAInstallOpen(true)}
+               title="تثبيت التطبيق على أجهزة آيفون وأندرويد"
+               className="p-2 md:px-3 md:py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+             >
+               <Smartphone size={14} />
+               <span className="hidden sm:inline">تثبيت التطبيق</span>
+             </button>
+             <button
+               type="button"
                onClick={handleOpenSelfProfile}
                title="تعديل ملفي الشخصي وبياناتي"
-               className="p-2 md:px-3 md:py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+               className="p-2 md:px-3 md:py-2 bg-slate-100 hover:bg-slate-200 text-blue-900 rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 border border-slate-200"
              >
                <Edit2 size={14} />
                <span className="hidden sm:inline">تعديل بياناتي</span>
@@ -942,7 +1005,7 @@ const App: React.FC = () => {
                  <option key={s} value={s}>موسم {s}</option>
                ))}
              </select>
-             <button onClick={() => state.currentUser && fetchAllData(state.currentUser)} className="p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white">
+             <button onClick={() => state.currentUser && fetchAllData(state.currentUser)} className="p-2.5 bg-slate-100 text-blue-900 rounded-xl hover:bg-orange-500 hover:text-white" title="تحديث السجلات">
                 <RefreshCw size={20} className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
              </button>
              <button onClick={() => window.print()} className="bg-blue-900 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2">
@@ -953,26 +1016,43 @@ const App: React.FC = () => {
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar print:p-0">
           <div className="max-w-6xl mx-auto space-y-8">
-            {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={derivedState} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
-            {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
-            {activeTab === 'notifications' && <AdminNotifications state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} />}
-            {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
-            {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
-            {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
-            {activeTab === 'transfers' && <TransfersManagement state={derivedState} setState={updateState as any} addLog={addNotify} />}
-            {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} />}
-            {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
-            {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
-            {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-            {activeTab === 'report' && (
-          <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي" onReset={() => setActiveTab(previousTab)}>
-            <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />
-          </ErrorBoundary>
-        )}
+            {isInitialLoading && state.people.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 border border-slate-200 shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in duration-500 my-8">
+                <div className="relative mb-6">
+                  <ClubLogo size={75} className="animate-pulse" />
+                  <div className="absolute inset-0 -m-3 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
+                </div>
+                <h3 className="text-xl font-black text-blue-900 tracking-tight">جاري استرجاع بيانات النادي ومزامنة السجلات...</h3>
+                <p className="text-slate-500 text-xs mt-2 max-w-md">يتم استدعاء بيانات اللاعبين والكوادر والمباريات تلقائياً من السحابة، يرجى الانتظار لحظات</p>
+                <div className="flex items-center gap-2 mt-6 text-orange-600 font-bold text-xs bg-orange-50 px-4 py-2 rounded-full border border-orange-200">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>مزامنة مباشرة مع السحابة...</span>
+                </div>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={derivedState} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
+                {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
+                {activeTab === 'notifications' && <AdminNotifications state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} />}
+                {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
+                {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
+                {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
+                {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
+                {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
+                {activeTab === 'transfers' && <TransfersManagement state={derivedState} setState={updateState as any} addLog={addNotify} />}
+                {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} />}
+                {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+                {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
+                {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
+                {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
+                {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+                {activeTab === 'report' && (
+                  <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي" onReset={() => setActiveTab(previousTab)}>
+                    <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />
+                  </ErrorBoundary>
+                )}
+              </>
+            )}
           </div>
         </main>
 
@@ -1013,6 +1093,9 @@ const App: React.FC = () => {
           isSelf={true}
         />
       )}
+
+      <PWAInstallModal isOpen={isPWAInstallOpen} onClose={() => setIsPWAInstallOpen(false)} />
+      <PWAFloatingPrompt onOpenModal={() => setIsPWAInstallOpen(true)} />
     </div>
   );
 };

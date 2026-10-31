@@ -7,11 +7,12 @@ import PlayerWelcomeSplash from './PlayerWelcomeSplash';
 import { 
   LogOut, Clock, Calendar, Trophy, ClipboardCheck, ArrowRight, User, 
   CreditCard, FileText, CheckCircle2, Save, Loader2, AlertCircle, FileCheck, ShieldCheck,
-  Edit, UserCheck, Heart, Ruler, Scale, Phone, MapPin, Sparkles, Award
+  Edit, UserCheck, Heart, Ruler, Scale, Phone, MapPin, Sparkles, Award, Smartphone
 } from 'lucide-react';
 import DocumentUploadCard from './DocumentUploadCard';
 import { supabase } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
+import { PWAInstallModal, PWAFloatingPrompt } from './PWAInstallModal';
 
 interface PlayerPortalProps {
   player: Person;
@@ -23,6 +24,7 @@ interface PlayerPortalProps {
 export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLogout, setState }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'edit-profile' | 'documents' | 'schedule'>('profile');
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   // Personal & Athletic info form state
   const [phone, setPhone] = useState(player.phone || '');
@@ -387,6 +389,15 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
                 المواعيد والجدول
               </button>
             </div>
+
+            <button
+              onClick={() => setShowInstallModal(true)}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black px-2.5 sm:px-3 py-2 rounded-xl text-[11px] sm:text-xs shadow-sm hover:shadow-md active:scale-95 transition-all"
+              title="تثبيت التطبيق على جهازك (آيفون وأندرويد)"
+            >
+              <Smartphone size={15} />
+              <span className="hidden xs:inline sm:inline">تثبيت التطبيق</span>
+            </button>
 
             <button
               onClick={onLogout}
@@ -997,6 +1008,8 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
           </div>
         )}
       </main>
+      <PWAFloatingPrompt onOpenModal={() => setShowInstallModal(true)} />
+      <PWAInstallModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
     </div>
   );
 };

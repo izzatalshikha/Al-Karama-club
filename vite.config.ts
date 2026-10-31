@@ -9,31 +9,50 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        hmr: false,
       },
       plugins: [
         react(),
         VitePWA({
           registerType: 'autoUpdate',
-          workbox: { maximumFileSizeToCacheInBytes: 5000000 },
+          includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+          workbox: { 
+            maximumFileSizeToCacheInBytes: 6000000 
+          },
           manifest: {
-            name: 'Eagle OS - نظام النسر الرياضي',
+            id: '/',
+            name: 'Eagle OS - نظام النسر لإدارة الأندية',
             short_name: 'Eagle OS',
-            description: 'نظام إدارة نادي الكرامة الرياضي - Eagle OS',
-            theme_color: '#001F3F',
-            background_color: '#ffffff',
+            description: 'النظام الإداري والرياضي المتكامل لمكتب كرة القدم - نادي الكرامة الرياضي.',
+            theme_color: '#1e3a8a',
+            background_color: '#f8fafc',
             display: 'standalone',
+            start_url: '/',
+            scope: '/',
             icons: [
               {
-                src: 'https://rbrkrntnjmwgtspmhbau.supabase.co/storage/v1/object/public/courts/LOGO.jpeg',
+                src: '/pwa-192x192.png',
                 sizes: '192x192',
-                type: 'image/jpeg'
+                type: 'image/png',
+                purpose: 'any'
               },
               {
-                src: 'https://rbrkrntnjmwgtspmhbau.supabase.co/storage/v1/object/public/courts/LOGO.jpeg',
+                src: '/pwa-512x512.png',
                 sizes: '512x512',
-                type: 'image/jpeg'
+                type: 'image/png',
+                purpose: 'any'
+              },
+              {
+                src: '/pwa-512x512.png',
+                sizes: '512x512',
+                type: 'image/png',
+                purpose: 'maskable'
               }
             ]
+          },
+          devOptions: {
+            enabled: true,
+            type: 'module'
           }
         })
       ],

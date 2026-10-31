@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, Loader2, ShieldCheck, ChevronLeft, Award, Sparkles } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, Loader2, ShieldCheck, ChevronLeft, Award, Sparkles, Smartphone, Download } from 'lucide-react';
 import { AppUser } from '../types';
 import ClubLogo from './ClubLogo';
+import { PWAInstallModal, PWAFloatingPrompt } from './PWAInstallModal';
 
 interface LoginProps {
   onLoginAttempt: (username: string, password: string, isPlayerLogin?: boolean) => Promise<AppUser | null>;
@@ -16,6 +16,7 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +81,7 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
             <ClubLogo size={80} />
           </div>
           <h2 className="text-blue-900 font-black text-2xl sm:text-3xl tracking-tight">Eagle OS</h2>
-          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em] mt-1">نظام إدارة النادي الرياضي</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em] mt-1">نظام إدارة نادي الكرامة الرياضي</p>
 
           {/* Toggle between Admin/Staff and Player Portal */}
           <div className="mt-6 flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80">
@@ -215,10 +216,38 @@ const Login: React.FC<LoginProps> = ({ onLoginAttempt }) => {
           )}
         </form>
         
-        <div className="pb-8 text-center">
+        {/* PWA Install Shortcut Banner */}
+        <div className="px-6 sm:px-8 pb-4">
+          <button
+            type="button"
+            onClick={() => setShowInstallModal(true)}
+            className="w-full p-3.5 bg-gradient-to-r from-blue-50 via-slate-50 to-orange-50/70 hover:from-blue-100/80 hover:to-orange-100/80 border border-blue-200/80 rounded-2xl flex items-center justify-between text-right transition-all group shadow-sm active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                <Smartphone size={20} />
+              </div>
+              <div>
+                <p className="text-xs font-black text-blue-950 flex items-center gap-1.5">
+                  <span>تثبيت التطبيق على هاتفك</span>
+                  <span className="text-[9px] bg-blue-900 text-white px-1.5 py-0.5 rounded-md font-bold">آيفون وأندرويد</span>
+                </p>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">افتح التطبيق مباشرة من الشاشة الرئيسية بدون متصفح</p>
+              </div>
+            </div>
+            <div className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 group-hover:text-orange-600 group-hover:border-orange-300 transition-colors shrink-0 mr-2">
+              <Download size={16} />
+            </div>
+          </button>
+        </div>
+
+        <div className="pb-6 text-center">
           <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Eagle Operating System v3.2</p>
         </div>
       </div>
+
+      <PWAFloatingPrompt onOpenModal={() => setShowInstallModal(true)} />
+      <PWAInstallModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
     </div>
   );
 };
