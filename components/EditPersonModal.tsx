@@ -111,13 +111,33 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 rounded-xl transition-all"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-4 sm:px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-black text-xs shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              <span>حفظ التعديلات</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="px-3.5 sm:px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95"
+            >
+              إلغاء
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 rounded-xl transition-all"
+              title="إغلاق"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* رسائل التنبيه */}

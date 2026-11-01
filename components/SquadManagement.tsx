@@ -473,9 +473,28 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
         <div className="fixed inset-0 z-[110] flex items-center justify-center lg:p-4">
           <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full h-full lg:h-auto lg:max-w-5xl lg:max-h-[90vh] lg:rounded-[2.5rem] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="p-5 md:p-6 border-b border-slate-100 bg-white flex justify-between items-center">
+            <div className="p-4 sm:p-6 border-b border-slate-100 bg-white flex justify-between items-center gap-3">
               <h3 className="text-base md:text-xl font-black text-blue-900 flex items-center gap-2 md:gap-3 italic uppercase"><UserPlus className="text-orange-500 w-5 h-5 md:w-6 md:h-6" /> {editingId ? 'تعديل السجل' : 'إضافة سجل جديد'}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-2.5 bg-slate-100 hover:bg-red-500 text-slate-600 hover:text-white rounded-xl transition-all shadow-sm"><X size={20}/></button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="px-4 sm:px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-black text-xs shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  <span>{editingId ? 'حفظ التعديلات' : 'حفظ وإضافة'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isSaving}
+                  className="px-3.5 sm:px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95"
+                >
+                  إلغاء
+                </button>
+                <button onClick={() => setIsModalOpen(false)} className="p-2.5 bg-slate-100 hover:bg-red-500 text-slate-600 hover:text-white rounded-xl transition-all shadow-sm"><X size={20}/></button>
+              </div>
             </div>
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 md:p-10 space-y-4 custom-scrollbar bg-slate-50 text-right pb-32 lg:pb-10" dir="rtl">
@@ -782,7 +801,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 items-center justify-between">
                     <div className="flex-1 w-full h-[350px] relative">
                       <h4 className="text-center font-bold text-slate-700 mb-4">المقارنة الفنية والبدنية (Radar)</h4>
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
                         <RadarChart data={radarData} margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
                           <PolarGrid stroke="#e2e8f0" />
                           <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 12, fontWeight: 'bold' }} />
@@ -1001,7 +1020,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                           <td className="p-6 border-l border-slate-100" colSpan={3}>
                             <h4 className="text-center font-bold text-slate-700 mb-4">التطور البدني خلال الموسم</h4>
                             <div className="h-48 w-full" dir="ltr">
-                              <ResponsiveContainer width="100%" height="100%">
+                              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={150}>
                                 <LineChart data={progressionData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />

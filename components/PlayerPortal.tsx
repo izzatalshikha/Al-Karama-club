@@ -259,12 +259,8 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
         passportImage: passportImage || null
       };
 
-      const { error } = await supabase
-        .from('people')
-        .update(updates)
-        .eq('id', player.id);
-
-      if (error) throw error;
+      const saveRes = await safeSavePerson(updates, 'update', player.id);
+      if (!saveRes.success) throw saveRes.error;
 
       // Update local state in parent
       setState?.(prev => ({
@@ -502,6 +498,32 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
                 <span>{personalSuccessMsg}</span>
               </div>
             )}
+
+            {/* شريط الإجراءات العلوي الثابت لتعديل البيانات الشخصية */}
+            <div className="sticky top-20 z-20 bg-white/95 backdrop-blur-md p-4 rounded-2xl border border-slate-200 shadow-md flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse"></span>
+                <span className="text-xs font-black text-slate-800">تعديل الملف الشخصي والرياضي</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSavePersonalInfo}
+                  disabled={isSavingPersonal}
+                  className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-black text-xs rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  {isSavingPersonal ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  <span>حفظ التعديلات</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('profile')}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
 
             <form onSubmit={handleSavePersonalInfo} className="space-y-6">
               {/* القسم الأول: بيانات التواصل والمعلومات المدنية */}
@@ -774,6 +796,32 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
                 <span>{saveSuccessMsg}</span>
               </div>
             )}
+
+            {/* شريط الإجراءات العلوي الثابت للوثائق */}
+            <div className="sticky top-20 z-20 bg-white/95 backdrop-blur-md p-4 rounded-2xl border border-slate-200 shadow-md flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+                <span className="text-xs font-black text-slate-800">بيانات جواز السفر والوثائق</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveDocuments}
+                  disabled={isSavingDocs}
+                  className="px-5 py-2.5 bg-blue-900 hover:bg-blue-800 active:scale-95 text-white font-black text-xs rounded-xl shadow-md shadow-blue-900/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  {isSavingDocs ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  <span>حفظ وتثبيت الوثائق</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('profile')}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
 
             <form onSubmit={handleSaveDocuments} className="space-y-6">
               {/* بيانات جواز السفر */}

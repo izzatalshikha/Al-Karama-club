@@ -220,6 +220,7 @@ const App: React.FC = () => {
       let transfersQ = supabase.from('transfers').select('*');
 
       const isPlayer = user.role === 'لاعب';
+      const isParent = user.role === 'ولي أمر';
 
       if (isManager) {
         // المدير يرى كل شيء
@@ -229,10 +230,30 @@ const App: React.FC = () => {
           peopleQ = peopleQ.eq('id', user.relatedPersonId);
           attendanceQ = attendanceQ.eq('personId', user.relatedPersonId);
           injuriesQ = injuriesQ.eq('personId', user.relatedPersonId);
+          technicalReportsQ = technicalReportsQ.eq('member_id', user.relatedPersonId);
         } else {
           peopleQ = peopleQ.limit(0);
           attendanceQ = attendanceQ.limit(0);
           injuriesQ = injuriesQ.limit(0);
+        }
+        warehouseQ = warehouseQ.limit(0);
+        usersQ = usersQ.limit(0);
+        tacticalQ = tacticalQ.limit(0);
+        servicesQ = servicesQ.limit(0);
+        transfersQ = transfersQ.limit(0);
+        tourStagesQ = tourStagesQ.limit(0);
+        tourTeamsQ = tourTeamsQ.limit(0);
+        tourSTeamsQ = tourSTeamsQ.limit(0);
+        tourMatchesQ = tourMatchesQ.limit(0);
+      } else if (isParent) {
+        // ولي الأمر يرى ملف ابنه وسجلاته وتقاريره
+        if (user.relatedPersonId) {
+          peopleQ = peopleQ.eq('id', user.relatedPersonId);
+          attendanceQ = attendanceQ.eq('personId', user.relatedPersonId);
+          injuriesQ = injuriesQ.eq('personId', user.relatedPersonId);
+          technicalReportsQ = technicalReportsQ.eq('member_id', user.relatedPersonId);
+        } else if (user.username) {
+          peopleQ = peopleQ.eq('phone', user.username);
         }
         warehouseQ = warehouseQ.limit(0);
         usersQ = usersQ.limit(0);
@@ -273,30 +294,27 @@ const App: React.FC = () => {
       }
       
       if (cat && !isManager) {
-        // --- التعديل الجوهري هنا لدعم تعدد الفئات ---
+        // --- دعم الفئات المقيدة للكوادر والمدربين ---
         const categoriesArray = cat.split(',').filter(Boolean);
         
-        if (!isWarehouse && !isMedic && !isPlayer) {
+        if (!isWarehouse && !isMedic && !isPlayer && !isParent) {
           peopleQ = peopleQ.in('category', categoriesArray);
           matchesQ = matchesQ.in('category', categoriesArray);
           sessionsQ = sessionsQ.in('category', categoriesArray);
           tacticalQ = tacticalQ.in('category', categoriesArray);
           tournamentsQ = tournamentsQ.in('category', categoriesArray);
           technicalReportsQ = technicalReportsQ.in('category', categoriesArray);
-        } else if (isPlayer) {
+        } else if (isPlayer || isParent) {
           matchesQ = matchesQ.in('category', categoriesArray);
           sessionsQ = sessionsQ.in('category', categoriesArray);
-          if (user.relatedPersonId) {
-            technicalReportsQ = technicalReportsQ.eq('targetId', user.relatedPersonId);
-          }
         }
 
-        if (isMedic || (!isWarehouse && !isMedic)) {
+        if (isMedic || (!isWarehouse && !isMedic && !isPlayer && !isParent)) {
            peopleQ = peopleQ.in('category', categoriesArray);
            injuriesQ = injuriesQ.in('category', categoriesArray);
         }
         
-        if (isWarehouse || (!isWarehouse && !isMedic)) {
+        if (isWarehouse || (!isWarehouse && !isMedic && !isPlayer && !isParent)) {
           // المستودع يرى فئاته + المخزن العام
           const warehouseAllowed = [...categoriesArray, 'المخزن العام'];
           warehouseQ = warehouseQ.in('category', warehouseAllowed);
@@ -345,7 +363,14 @@ const App: React.FC = () => {
             isAcademyPlayer: false, // جميع اللاعبين والكوادر هم لاعبو/كوادر نادي
             seasons: finalSeasons,
             season: latestSeason,
-            receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
+            receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true'),
+            passportNumber: person.passportNumber || person.passport_number || null,
+            passportIssueDate: person.passportIssueDate || person.passport_issue_date || null,
+            passportExpiryDate: person.passportExpiryDate || person.passport_expiry_date || null,
+            idCardImage: person.idCardImage || person.id_card_image || null,
+            idCardBackImage: person.idCardBackImage || person.id_card_back_image || null,
+            passportImage: person.passportImage || person.passport_image || null,
+            photo: person.photo || person.monthlyReports?._photo || null,
           };
         }),
         matches: dedupe(m.data).map((match: any) => ({
@@ -376,7 +401,19 @@ const App: React.FC = () => {
           };
         }),
         servicesDirectory: dedupe(servicesReq.data),
-        technicalReports: dedupe(tReportsReq.data),
+        technicalReports: dedupe(tReportsReq.data).map((r: any) => {
+          const radar = r.radar_data || {};
+          return {
+            id: r.id,
+            targetId: radar.targetId || r.member_id || r.targetId,
+            type: radar.type || (r.eval_type || 'parent_message'),
+            category: radar.category || '',
+            author: radar.author || 'ولي أمر',
+            date: radar.date || r.month_name || (r.created_at ? r.created_at.split('T')[0] : ''),
+            rating: radar.rating !== undefined ? Number(radar.rating) : (r.stars !== undefined ? Number(r.stars) : 0),
+            content: radar.content || r.notes || ''
+          };
+        }),
         transfers: dedupe(transfersReq.data)
       }));
       setSyncStatus('synced');
@@ -439,8 +476,36 @@ const App: React.FC = () => {
         } catch (err: any) {
           setSyncStatus('error');
           addNotify(`خطأ مزامنة المباريات: ${err.message}`, 'error');
-          return false;
         }
+      }
+      if (table === 'technical_reports') {
+        const reports = Array.isArray(data) ? data : [data];
+        for (const report of reports) {
+          const reportId = (report.id && report.id.length === 36) ? report.id : generateUUID();
+          const memberId = report.targetId || report.member_id;
+          const dbPayload: any = {
+            id: reportId,
+            member_id: memberId,
+            eval_type: (report.type === 'match' || report.type === 'month') ? report.type : null,
+            stars: report.rating !== undefined ? Number(report.rating) : 0,
+            notes: report.content || report.notes || '',
+            month_name: report.date || new Date().toISOString().split('T')[0],
+            radar_data: {
+              id: reportId,
+              targetId: memberId,
+              type: report.type || 'parent_message',
+              category: report.category || '',
+              author: report.author || 'ولي أمر',
+              date: report.date || new Date().toISOString().split('T')[0],
+              rating: report.rating !== undefined ? Number(report.rating) : 0,
+              content: report.content || report.notes || ''
+            }
+          };
+          const { error } = await supabase.from('technical_reports').upsert(dbPayload);
+          if (error) throw error;
+        }
+        setSyncStatus('synced');
+        return true;
       }
       const { error } = await supabase.from(table).upsert(data);
       if (error) throw error;
@@ -470,9 +535,13 @@ const App: React.FC = () => {
         const tableMap: Record<string, keyof AppState> = {
           'people': 'people',
           'matches': 'matches',
+          'sessions': 'sessions',
           'training_sessions': 'sessions',
+          'attendance': 'attendance',
           'attendance_records': 'attendance',
+          'warehouse': 'warehouse',
           'warehouse_items': 'warehouse',
+          'injuries': 'injuries',
           'injury_records': 'injuries',
           'tactical_plans': 'tacticalPlans',
           'tournaments': 'tournaments',
@@ -557,24 +626,63 @@ const App: React.FC = () => {
     if (state.currentUser) {
       const timeoutId = setTimeout(() => {
         try {
-          // حماية التخزين المحلي من QuotaExceededError وتسريع الأداء
-          // تجريد الصور الثقيلة والمستندات الكبيرة من نسخة التخزين المحلي لضمان عدم تجاوز السعة القصوى للمتصفح
+          // تجريد أي بيانات Base64 أو صور أو مستندات ثقيلة من نسخة الـ LocalStorage لمنع QuotaExceededError نهائياً
           const safePeople = state.people.map(p => {
+            const cleanMonthly = p.monthlyReports ? { ...p.monthlyReports } : undefined;
+            if (cleanMonthly) {
+              delete cleanMonthly._photo;
+              delete cleanMonthly._certificates;
+              delete cleanMonthly._experiences;
+              delete cleanMonthly._weightHistory;
+            }
+
             return {
               ...p,
-              photo: (p.photo && p.photo.length > 8000) ? undefined : p.photo,
+              photo: (p.photo && !p.photo.startsWith('data:') && p.photo.length < 500) ? p.photo : undefined,
               idCardImage: undefined,
               idCardBackImage: undefined,
               passportImage: undefined,
-              certificates: Array.isArray(p.certificates) ? p.certificates.map(c => ({ ...c, image: undefined })) : []
+              id_card_image: undefined,
+              id_card_back_image: undefined,
+              passport_image: undefined,
+              certificates: Array.isArray(p.certificates) ? p.certificates.map(c => ({ ...c, image: undefined })) : [],
+              monthlyReports: cleanMonthly
             };
           });
-          localStorage.setItem('eagle_os_v3', JSON.stringify({ ...state, people: safePeople }));
-        } catch (e) {
-          console.warn('تنبيه حفظ التخزين المحلي، محاولة الحفظ الاحتياطي:', e);
+
+          const safeTactical = (state.tacticalPlans || []).map(t => ({
+            ...t,
+            drawing: (t.drawing && t.drawing.length > 500) ? undefined : t.drawing
+          }));
+
+          const lightweightState = {
+            ...state,
+            people: safePeople,
+            tacticalPlans: safeTactical
+          };
+
+          localStorage.setItem('eagle_os_v3', JSON.stringify(lightweightState));
+        } catch (e: any) {
+          // في حال حدوث تجاوز للسعة، نقوم بحفظ الحد الأدنى الضروري للجلسة بدون صور أو ملفات
           try {
-            localStorage.setItem('eagle_os_v3', JSON.stringify({ ...state, people: [] }));
-          } catch {}
+            const minimalState = {
+              currentUser: state.currentUser,
+              activeSeason: state.activeSeason,
+              categories: state.categories,
+              people: state.people.map(p => ({
+                id: p.id,
+                name: p.name,
+                role: p.role,
+                category: p.category,
+                phone: p.phone,
+                seasons: p.seasons,
+                season: p.season
+              }))
+            };
+            localStorage.setItem('eagle_os_v3', JSON.stringify(minimalState));
+          } catch (innerErr) {
+            try { localStorage.removeItem('eagle_os_v3'); } catch {}
+          }
         }
       }, 500);
       return () => clearTimeout(timeoutId);
@@ -626,7 +734,7 @@ const App: React.FC = () => {
               relatedPersonId: found.id,
               restrictedCategory: found.category
             };
-            await fetchAllData(playerUser);
+            fetchAllData(playerUser, false);
             return playerUser;
           }
         }
@@ -637,13 +745,13 @@ const App: React.FC = () => {
 
     if ((inputU === 'عزت' || inputU.toUpperCase() === 'IZZAT') && p === '123') {
       const rootUser: AppUser = { id: 'root', username: 'عزت عامر الشيخة', role: 'مدير' };
-      await fetchAllData(rootUser);
+      fetchAllData(rootUser, false);
       return rootUser;
     }
     try {
       const { data } = await supabase.from('app_users').select('*').eq('username', inputU).eq('password', p).maybeSingle();
       if (data) {
-        await fetchAllData(data);
+        fetchAllData(data, false);
         return data;
       }
 
@@ -677,7 +785,7 @@ const App: React.FC = () => {
             relatedPersonId: foundStaff.id,
             restrictedCategory: foundStaff.category
           };
-          await fetchAllData(staffUser);
+          fetchAllData(staffUser, false);
           return staffUser;
         }
       }
@@ -694,7 +802,7 @@ const App: React.FC = () => {
             relatedPersonId: parentRecord.id,
             restrictedCategory: parentRecord.category
           };
-          await fetchAllData(parentUser);
+          fetchAllData(parentUser, false);
           return parentUser;
         }
       }
@@ -980,15 +1088,6 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
              <button
                type="button"
-               onClick={() => setIsPWAInstallOpen(true)}
-               title="تثبيت التطبيق على أجهزة آيفون وأندرويد"
-               className="p-2 md:px-3 md:py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-             >
-               <Smartphone size={14} />
-               <span className="hidden sm:inline">تثبيت التطبيق</span>
-             </button>
-             <button
-               type="button"
                onClick={handleOpenSelfProfile}
                title="تعديل ملفي الشخصي وبياناتي"
                className="p-2 md:px-3 md:py-2 bg-slate-100 hover:bg-slate-200 text-blue-900 rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 border border-slate-200"
@@ -1031,7 +1130,7 @@ const App: React.FC = () => {
               </div>
             ) : (
               <>
-                {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={derivedState} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
+                {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={state} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
                 {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
                 {activeTab === 'notifications' && <AdminNotifications state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} />}
                 {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}

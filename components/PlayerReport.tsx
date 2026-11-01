@@ -771,7 +771,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                 <div className="pt-3 border-t border-slate-100">
                   <h4 className="text-[10px] font-black text-slate-600 mb-2 text-center">منحنى الالتزام الشهري في التمارين</h4>
                   <div className="h-32 w-full" dir="ltr">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
                       <LineChart data={attendanceStats.monthlyTrend}>
                         <XAxis dataKey="name" tick={{fontSize: 8}} tickLine={false} axisLine={false} />
                         <YAxis hide domain={[0, 100]} />
@@ -1196,7 +1196,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                   </div>
 
                   <div className="h-56 w-full" dir="ltr">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={150}>
                       <LineChart data={weightHistory} margin={{ top: 15, right: 20, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                         <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={{ stroke: '#CBD5E1' }} />

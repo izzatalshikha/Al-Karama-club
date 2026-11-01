@@ -601,7 +601,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
              </div>
            </div>
            <div className="h-80 w-full" dir="ltr">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
                  <BarChart data={monthlyFinancialData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
@@ -623,7 +623,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                تحليل الأداء الموسمي
             </h3>
             <div className="h-80 w-full" dir="ltr">
-               <ResponsiveContainer width="100%" height="100%">
+               <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
                   <BarChart data={seasonalPerformance} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                      <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
@@ -648,7 +648,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
                  نسب ومعدلات الحضور
               </h3>
               <div className="h-80 w-full" dir="ltr">
-                 <ResponsiveContainer width="100%" height="100%">
+                 <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
                     <BarChart data={attendanceStats} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                        <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />

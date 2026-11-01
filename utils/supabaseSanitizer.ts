@@ -2,46 +2,61 @@ import { supabase } from '../App';
 import { Person } from '../types';
 
 /**
- * دالة مساعدة لتنظيف ومعالجة بيانات الأشخاص قبل إرسالها إلى Supabase
- * تمنع الأخطاء الشائعة:
- * 1. invalid input syntax for type numeric: "false" (إذا كان عمود receivedKit لا يزال numeric)
- * 2. invalid input syntax for type numeric: "" (للحقول الرقمية التي تأتي كنص فارغ)
- * 3. column does not exist (إذا لم يقم المستخدم بتنفيذ سكربت SQL بعد)
+ * دالة مساعدة موثوقة لتنظيف وتأمين حفظ بيانات الأفراد (اللاعبين والكوادر) في Supabase
+ * تمنع تراجع البيانات، وتمنع حذف المواسم عند التعديلات الجزئية، وتدعم أسماء الأعمدة بنمطيها camelCase و snake_case
  */
 export async function safeSavePerson(
   personData: Partial<Person>,
   action: 'upsert' | 'update' = 'upsert',
   personId?: string
 ): Promise<{ success: boolean; data: any; error: any }> {
-  // الكائن الكامل الذي سيبقى في واجهة المستخدم والتخزين المحلي
+  const isPartialUpdate = action === 'update';
   const cleanData: any = { ...personData };
 
-  // 1. تحويل أي نص فارغ ("") أو قيمة غير محددة (undefined) إلى null في كافة الخانات
-  // هذا يسمح للمستخدم بترك أي خانة فارغة دون حدوث أخطاء في أنواع الحقول في السحابة
+  // 1. تنظيف الحقول غير المحددة والنصوص الفارغة
   for (const k of Object.keys(cleanData)) {
-    if (k !== 'name' && (cleanData[k] === '' || cleanData[k] === undefined)) {
+    if (cleanData[k] === undefined) {
+      if (isPartialUpdate) {
+        delete cleanData[k]; // لا نرسل الحقل عند التعديل الجزئي حتى لا نمسحه في السحابة
+      } else if (k !== 'name') {
+        cleanData[k] = null;
+      }
+    } else if (cleanData[k] === '' && k !== 'name') {
       cleanData[k] = null;
     }
   }
 
   // معالجة رقم القميص إذا كان غير صالح
-  if (typeof cleanData.number === 'number' && Number.isNaN(cleanData.number)) {
-    cleanData.number = null;
+  if ('number' in cleanData) {
+    if (typeof cleanData.number === 'number' && Number.isNaN(cleanData.number)) {
+      cleanData.number = null;
+    }
   }
 
-  // ضمان سلامة القيم المنطقية (boolean) وتأكيد تصنيفهم كلاعبي/كوادر نادي وليس أكاديمية
-  cleanData.receivedKit = cleanData.receivedKit === true || String(cleanData.receivedKit) === 'true';
-  cleanData.isAcademyPlayer = false; // دائماً لاعب نادي أو كادر نادي
+  // معالجة المواسم: فقط إذا تم تمريرها صراحة أو كان upsert كاملاً
+  if ('seasons' in cleanData || 'season' in cleanData || !isPartialUpdate) {
+    const rawSeasons: string[] = [
+      ...(Array.isArray(cleanData.seasons) ? cleanData.seasons : []),
+      ...(typeof cleanData.season === 'string' ? cleanData.season.split(',') : [])
+    ].map(s => String(s || '').trim()).filter(Boolean);
+    const deduplicatedSeasons = Array.from(new Set(rawSeasons));
+    
+    if (deduplicatedSeasons.length > 0) {
+      cleanData.seasons = deduplicatedSeasons;
+      cleanData.season = deduplicatedSeasons[deduplicatedSeasons.length - 1];
+    } else if (!isPartialUpdate) {
+      cleanData.seasons = ['2025/2026'];
+      cleanData.season = '2025/2026';
+    }
+  }
 
-  // ضمان سلامة مصفوفة المواسم وقيد الموسم بدون تكرار
-  const rawSeasons: string[] = [
-    ...(Array.isArray(cleanData.seasons) ? cleanData.seasons : []),
-    ...(typeof cleanData.season === 'string' ? cleanData.season.split(',') : [])
-  ].map(s => String(s || '').trim()).filter(Boolean);
-  const deduplicatedSeasons = Array.from(new Set(rawSeasons));
-  const validSeasons = deduplicatedSeasons.length > 0 ? deduplicatedSeasons : ['2025/2026'];
-  cleanData.seasons = validSeasons;
-  cleanData.season = validSeasons[validSeasons.length - 1] || '2025/2026';
+  // معالجة تصنيف الأكاديمية واستلام الطقم فقط إذا تم تمريرهما أو عند الإنشاء الكامل
+  if ('receivedKit' in cleanData || !isPartialUpdate) {
+    cleanData.receivedKit = cleanData.receivedKit === true || String(cleanData.receivedKit) === 'true';
+  }
+  if ('isAcademyPlayer' in cleanData || !isPartialUpdate) {
+    cleanData.isAcademyPlayer = Boolean(cleanData.isAcademyPlayer);
+  }
 
   // ضمان حفظ سجل الوزن بشكل مرن (سواء في عمود مستقل أو داخل monthlyReports)
   if (Array.isArray(cleanData.weightHistory)) {
@@ -49,25 +64,23 @@ export async function safeSavePerson(
       ...(cleanData.monthlyReports || {}),
       _weightHistory: JSON.stringify(cleanData.weightHistory)
     };
-  } else if (cleanData.monthlyReports?._weightHistory) {
+  } else if (cleanData.monthlyReports?._weightHistory && !cleanData.weightHistory) {
     try {
       cleanData.weightHistory = JSON.parse(cleanData.monthlyReports._weightHistory);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
-  // ضمان حفظ واسترجاع الصورة الشخصية بشكل فوري حتى قبل تشغيل كود SQL
+  // مزامنة الصور الشخصية في كائن التقرير الشهري أيضاً لضمان استرجاعها دائماً
   if (cleanData.photo) {
     cleanData.monthlyReports = {
       ...(cleanData.monthlyReports || {}),
       _photo: cleanData.photo
     };
-  } else if (cleanData.monthlyReports?._photo) {
+  } else if (cleanData.monthlyReports?._photo && !cleanData.photo) {
     cleanData.photo = cleanData.monthlyReports._photo;
   }
 
-  // ضمان حفظ واسترجاع الشهادات التدريبية للكوادر بشكل فوري
+  // مزامنة الشهادات التدريبية للكوادر
   if (Array.isArray(cleanData.certificates) && cleanData.certificates.length > 0) {
     cleanData.monthlyReports = {
       ...(cleanData.monthlyReports || {}),
@@ -76,12 +89,10 @@ export async function safeSavePerson(
   } else if ((!cleanData.certificates || cleanData.certificates.length === 0) && cleanData.monthlyReports?._certificates) {
     try {
       cleanData.certificates = JSON.parse(cleanData.monthlyReports._certificates);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
-  // ضمان حفظ واسترجاع الخبرات السابقة للكوادر
+  // مزامنة الخبرات السابقة للكوادر
   if (Array.isArray(cleanData.experiences) && cleanData.experiences.length > 0) {
     cleanData.monthlyReports = {
       ...(cleanData.monthlyReports || {}),
@@ -90,54 +101,71 @@ export async function safeSavePerson(
   } else if ((!cleanData.experiences || cleanData.experiences.length === 0) && cleanData.monthlyReports?._experiences) {
     try {
       cleanData.experiences = JSON.parse(cleanData.monthlyReports._experiences);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
-  // 2. تجهيز حمولة السحابة:
+  // 2. تجهيز حمولة السحابة ودعم نمطي التسمية camelCase و snake_case بالتوازي لضمان الحفظ
   const cloudPayload: any = { ...cleanData };
-  cloudPayload.seasons = validSeasons;
-  cloudPayload.season = cleanData.season;
-  cloudPayload.isAcademyPlayer = false;
+
+  if ('passportNumber' in cleanData) cloudPayload.passport_number = cleanData.passportNumber;
+  if ('passport_number' in cleanData) cloudPayload.passportNumber = cleanData.passport_number;
+
+  if ('passportIssueDate' in cleanData) cloudPayload.passport_issue_date = cleanData.passportIssueDate;
+  if ('passport_issue_date' in cleanData) cloudPayload.passportIssueDate = cleanData.passport_issue_date;
+
+  if ('passportExpiryDate' in cleanData) cloudPayload.passport_expiry_date = cleanData.passportExpiryDate;
+  if ('passport_expiry_date' in cleanData) cloudPayload.passportExpiryDate = cleanData.passport_expiry_date;
+
+  if ('idCardImage' in cleanData) cloudPayload.id_card_image = cleanData.idCardImage;
+  if ('id_card_image' in cleanData) cloudPayload.idCardImage = cleanData.id_card_image;
+
+  if ('idCardBackImage' in cleanData) cloudPayload.id_card_back_image = cleanData.idCardBackImage;
+  if ('id_card_back_image' in cleanData) cloudPayload.idCardBackImage = cleanData.id_card_back_image;
+
+  if ('passportImage' in cleanData) cloudPayload.passport_image = cleanData.passportImage;
+  if ('passport_image' in cleanData) cloudPayload.passportImage = cleanData.passport_image;
+
   if (Array.isArray(cleanData.weightHistory)) {
     cloudPayload.weight_history = cleanData.weightHistory;
     cloudPayload.weightHistory = cleanData.weightHistory;
   }
 
-  // المحاولة الأولى: حفظ البيانات المنظفة في السحابة
+  // المحاولة الأولى: حفظ البيانات في Supabase
   let res: any;
   const targetId = personId || cleanData.id;
   try {
     if (action === 'update' && targetId) {
-      res = await supabase.from('people').update(cloudPayload).eq('id', targetId);
+      res = await supabase.from('people').update(cloudPayload).eq('id', targetId).select();
     } else {
-      res = await supabase.from('people').upsert(cloudPayload);
+      res = await supabase.from('people').upsert(cloudPayload).select();
     }
   } catch (err: any) {
     res = { error: err };
   }
 
   // إذا نجح الحفظ مباشرة
-  if (!res?.error) {
+  if (!res?.error && (!res?.data || res?.data?.length > 0)) {
     return { success: true, data: cleanData, error: null };
   }
 
-  let lastError = res.error;
+  let lastError = res?.error || new Error('تعذر تحديث السجل في السحابة');
 
-  // معالجة أخطاء الأنواع الرقمية (numeric) في حال وجود حقول قديمة
+  // محاولة ثانية: معالجة أخطاء الأنواع الرقمية (numeric)
   if (lastError?.message?.includes('numeric')) {
     const safeNumericData = { ...cloudPayload };
-    safeNumericData.receivedKit = safeNumericData.receivedKit ? 1 : 0;
-    safeNumericData.isAcademyPlayer = safeNumericData.isAcademyPlayer ? 1 : 0;
+    if ('receivedKit' in safeNumericData) {
+      safeNumericData.receivedKit = safeNumericData.receivedKit ? 1 : 0;
+    }
+    if ('isAcademyPlayer' in safeNumericData) {
+      safeNumericData.isAcademyPlayer = safeNumericData.isAcademyPlayer ? 1 : 0;
+    }
     
-    // تصفير أي حقول نصية قد تعامل كـ numeric في السحابة القديمة
     const potentialNumeric = [
       'subscriptionMonth', 'height', 'weight', 'contractDuration', 
       'subscriptionAmount', 'kitAmount', 'number', 'contractValue'
     ];
     potentialNumeric.forEach(k => {
-      if (typeof safeNumericData[k] !== 'number' || safeNumericData[k] === null) {
+      if (k in safeNumericData && (typeof safeNumericData[k] !== 'number' || safeNumericData[k] === null)) {
         safeNumericData[k] = null;
       }
     });
@@ -145,9 +173,9 @@ export async function safeSavePerson(
     try {
       let retryRes: any;
       if (action === 'update' && targetId) {
-        retryRes = await supabase.from('people').update(safeNumericData).eq('id', targetId);
+        retryRes = await supabase.from('people').update(safeNumericData).eq('id', targetId).select();
       } else {
-        retryRes = await supabase.from('people').upsert(safeNumericData);
+        retryRes = await supabase.from('people').upsert(safeNumericData).select();
       }
 
       if (!retryRes?.error) {
@@ -159,7 +187,7 @@ export async function safeSavePerson(
     }
   }
 
-  // معالجة خطأ الأعمدة غير الموجودة (column does not exist)
+  // محاولة ثالثة: معالجة خطأ الأعمدة غير الموجودة (column does not exist)
   if (lastError?.message?.includes('column') && lastError?.message?.includes('does not exist')) {
     const fallbackData = { ...cloudPayload };
     const newColumns = [
@@ -167,16 +195,18 @@ export async function safeSavePerson(
       'emergencyPhone', 'isAcademyPlayer', 'registrationDate', 
       'subscriptionMonth', 'contractDuration', 'jobTitle',
       'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history', 'photo',
-      'certificates', 'experiences', 'academicDegree', 'coachingCertificate'
+      'certificates', 'experiences', 'academicDegree', 'coachingCertificate',
+      'passport_number', 'passport_issue_date', 'passport_expiry_date',
+      'id_card_image', 'id_card_back_image', 'passport_image'
     ];
     newColumns.forEach(c => delete fallbackData[c]);
 
     try {
       let fallbackRes: any;
       if (action === 'update' && targetId) {
-        fallbackRes = await supabase.from('people').update(fallbackData).eq('id', targetId);
+        fallbackRes = await supabase.from('people').update(fallbackData).eq('id', targetId).select();
       } else {
-        fallbackRes = await supabase.from('people').upsert(fallbackData);
+        fallbackRes = await supabase.from('people').upsert(fallbackData).select();
       }
 
       if (!fallbackRes?.error) {
@@ -188,8 +218,6 @@ export async function safeSavePerson(
     }
   }
 
-  // لضمان استمرارية عمل المستخدم وعدم ظهور رسالة "خطأ في السحابة":
-  // يتم حفظ وتثبيت السجل محلياً بنجاح في الواجهة والتخزين المحلي
-  console.warn('تنبيه مزامنة السحابة (تم الحفظ محلياً):', lastError?.message || lastError);
-  return { success: true, data: cleanData, error: null };
+  console.error('خطأ مزامنة مع Supabase:', lastError?.message || lastError);
+  return { success: false, data: cleanData, error: lastError };
 }
