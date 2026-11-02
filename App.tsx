@@ -46,6 +46,20 @@ export const supabase = createClient(
   'sb_publishable_O2vR2yKUG-FVeaydD4z6Lg_tjFcKDic'
 );
 
+// قائمة الحقول الخفيفة للأفراد لاستبعاد أعمدة الصور ومستندات Base64 الثقيلة
+// هذا الإجراء يمنع استهلاك ميزانية Disk IO في Supabase ويحمي المشروع من الإيقاف والتجميد
+export const PEOPLE_LIGHTWEIGHT_SELECT = [
+  'id', 'name', 'fatherName', 'motherName', 'birthDate', 'birthPlace', 'khana',
+  'nationalId', 'federalNumber', 'internationalId', 'address', 'category', 'role',
+  'number', 'phone', 'joinDate', 'height', 'weight', 'position', 'contractStart',
+  'contractEnd', 'contractValue', 'subscriptionAmount', 'subscriptionMonth',
+  'registrationDate', 'receivedKit', 'kitAmount', 'isAcademyPlayer', 'medicalHistory',
+  'injuries', 'penalties', 'notes', 'coachingCertificate', 'academicDegree',
+  'passportNumber', 'passportIssueDate', 'passportExpiryDate', 'season', 'seasons',
+  'preferredFoot', 'bloodType', 'shoeSize', 'clothesSize', 'emergencyPhone',
+  'contractDuration', 'jobTitle', 'created_at', 'weightHistory'
+].join(',');
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('squad');
@@ -78,16 +92,42 @@ const App: React.FC = () => {
     return false;
   });
 
+  const defaultEmptyState: AppState = {
+    currentUser: null,
+    categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
+    activeSeason: '2025/2026',
+    seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
+    people: [],
+    sessions: [],
+    matches: [],
+    warehouse: [],
+    technicalReports: [],
+    tournaments: [],
+    tournamentStages: [],
+    tournamentTeams: [],
+    tournamentStageTeams: [],
+    tournamentMatches: [],
+    attendance: [],
+    injuries: [],
+    tacticalPlans: [],
+    users: [],
+    notifications: [],
+    servicesDirectory: [],
+    transfers: [],
+    globalCategoryFilter: 'الكل'
+  };
+
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('eagle_os_v3');
     if (saved) { 
         try { 
-           const parsed = JSON.parse(saved); 
+           const rawParsed = JSON.parse(saved);
+           const parsed: AppState = { ...defaultEmptyState, ...rawParsed };
            parsed.seasons = ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'];
            if (!parsed.activeSeason || !parsed.seasons.includes(parsed.activeSeason)) parsed.activeSeason = '2025/2026';
            
            const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
-           parsed.people = dedupe(parsed.people).map((person: any) => {
+           parsed.people = dedupe(parsed.people || []).map((person: any) => {
              let seasonsList: string[] = [];
              if (Array.isArray(person.seasons) && person.seasons.length > 0) {
                seasonsList = person.seasons;
@@ -106,34 +146,31 @@ const App: React.FC = () => {
                receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
              };
            });
-           parsed.matches = dedupe(parsed.matches).map((match: any) => ({
+           parsed.matches = dedupe(parsed.matches || []).map((match: any) => ({
              ...match,
              isCompleted: Boolean(match.isCompleted === true || String(match.isCompleted) === 'true'),
              isFinal: Boolean(match.isFinal === true || String(match.isFinal) === 'true')
            }));
-           parsed.sessions = dedupe(parsed.sessions);
-           parsed.attendance = dedupe(parsed.attendance);
-           parsed.warehouse = dedupe(parsed.warehouse);
-           parsed.tournaments = dedupe(parsed.tournaments);
-           parsed.tournamentStages = dedupe(parsed.tournamentStages);
-           parsed.tournamentTeams = dedupe(parsed.tournamentTeams);
-           parsed.tournamentStageTeams = dedupe(parsed.tournamentStageTeams);
-           parsed.tournamentMatches = dedupe(parsed.tournamentMatches);
-           parsed.tacticalPlans = dedupe(parsed.tacticalPlans);
-           parsed.injuries = dedupe(parsed.injuries);
-           parsed.users = dedupe(parsed.users);
+           parsed.sessions = dedupe(parsed.sessions || []);
+           parsed.attendance = dedupe(parsed.attendance || []);
+           parsed.warehouse = dedupe(parsed.warehouse || []);
+           parsed.tournaments = dedupe(parsed.tournaments || []);
+           parsed.tournamentStages = dedupe(parsed.tournamentStages || []);
+           parsed.tournamentTeams = dedupe(parsed.tournamentTeams || []);
+           parsed.tournamentStageTeams = dedupe(parsed.tournamentStageTeams || []);
+           parsed.tournamentMatches = dedupe(parsed.tournamentMatches || []);
+           parsed.tacticalPlans = dedupe(parsed.tacticalPlans || []);
+           parsed.injuries = dedupe(parsed.injuries || []);
+           parsed.users = dedupe(parsed.users || []);
+           parsed.technicalReports = dedupe(parsed.technicalReports || []);
+           parsed.servicesDirectory = dedupe(parsed.servicesDirectory || []);
            parsed.transfers = dedupe(parsed.transfers || []);
+           parsed.notifications = dedupe(parsed.notifications || []);
 
            return parsed; 
         } catch (e) {} 
     }
-    return {
-      currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
-      activeSeason: '2025/2026', seasons: ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'],
-      people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [],
-      attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [],
-      globalCategoryFilter: 'الكل'
-    };
+    return defaultEmptyState;
   });
 
   useEffect(() => {
@@ -152,7 +189,8 @@ const App: React.FC = () => {
     const isAcademyCat = (c: string) => c.includes('أكاديمية') || c.includes('الأكاديمية');
     const filterFn = appMode === 'academy' ? isAcademyCat : (c: string) => !isAcademyCat(c);
 
-    const filteredCategories = state.categories.filter(filterFn);
+    const categoriesList = state.categories || ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'];
+    const filteredCategories = categoriesList.filter(filterFn);
     
     // فلترة الأفراد حسب الموسم النشط
     // دمج مصفوفة المواسم وحقل الموسم النصي بدون أي تكرار لضمان ظهور العضو في كافة مواسمه المقيد بها
@@ -175,14 +213,25 @@ const App: React.FC = () => {
       ...state,
       appMode,
       categories: filteredCategories,
-      people: state.people
+      people: (state.people || [])
         .filter(p => !p.category || p.category.split(',').some(c => filterFn(c.trim())))
         .filter(personBelongsToActiveSeason),
-      sessions: state.sessions.filter(s => filterFn(s.category)),
-      matches: state.matches.filter(m => filterFn(m.category)),
-      warehouse: state.warehouse.filter(w => !w.category || w.category === 'المخزن العام' || filterFn(w.category)),
-      tacticalPlans: state.tacticalPlans.filter(t => filterFn(t.category)),
-      tournaments: state.tournaments.filter(t => filterFn(t.category)),
+      sessions: (state.sessions || []).filter(s => filterFn(s.category)),
+      matches: (state.matches || []).filter(m => filterFn(m.category)),
+      warehouse: (state.warehouse || []).filter(w => !w.category || w.category === 'المخزن العام' || filterFn(w.category)),
+      tacticalPlans: (state.tacticalPlans || []).filter(t => filterFn(t.category)),
+      tournaments: (state.tournaments || []).filter(t => filterFn(t.category)),
+      technicalReports: state.technicalReports || [],
+      servicesDirectory: state.servicesDirectory || [],
+      transfers: state.transfers || [],
+      notifications: state.notifications || [],
+      attendance: state.attendance || [],
+      injuries: state.injuries || [],
+      users: state.users || [],
+      tournamentStages: state.tournamentStages || [],
+      tournamentTeams: state.tournamentTeams || [],
+      tournamentStageTeams: state.tournamentStageTeams || [],
+      tournamentMatches: state.tournamentMatches || [],
     };
   }, [state, appMode]);
 
@@ -201,7 +250,7 @@ const App: React.FC = () => {
       const isMedic = user.role === 'معالج';
       const cat = user.restrictedCategory;
 
-      let peopleQ = supabase.from('people').select('*');
+      let peopleQ = supabase.from('people').select(PEOPLE_LIGHTWEIGHT_SELECT);
       let matchesQ = supabase.from('matches').select('*');
       let sessionsQ = supabase.from('sessions').select('*');
       let attendanceQ = supabase.from('attendance').select('*');
@@ -321,13 +370,16 @@ const App: React.FC = () => {
         }
       }
 
-      // دالة استعلام آمنة تمنع تعطل كامل البيانات في حال تعثر جدول فرعي
-      const safeFetch = async (query: any) => {
+      // دالة استعلام آمنة مع مهلة زمنية (Timeout 8 ثوانٍ) تمنع تعليق التطبيق وتجميده نهائياً
+      const safeFetch = async (query: any, timeoutMs = 8000) => {
         try {
-          const res = await query;
+          const timeoutPromise = new Promise<{ data: any[]; error: any }>((_, reject) =>
+            setTimeout(() => reject(new Error('Supabase query timeout')), timeoutMs)
+          );
+          const res = await Promise.race([query, timeoutPromise]);
           return res;
         } catch (err) {
-          console.error('Fetch table error:', err);
+          console.warn('Fetch table error or timeout:', err);
           return { data: [], error: err };
         }
       };
@@ -367,10 +419,10 @@ const App: React.FC = () => {
             passportNumber: person.passportNumber || person.passport_number || null,
             passportIssueDate: person.passportIssueDate || person.passport_issue_date || null,
             passportExpiryDate: person.passportExpiryDate || person.passport_expiry_date || null,
-            idCardImage: person.idCardImage || person.id_card_image || null,
-            idCardBackImage: person.idCardBackImage || person.id_card_back_image || null,
-            passportImage: person.passportImage || person.passport_image || null,
-            photo: person.photo || person.monthlyReports?._photo || null,
+            idCardImage: null, // إيقاف تحميل وعرض صور الهوية مؤقتاً لحماية ميزانية السحابة
+            idCardBackImage: null,
+            passportImage: null,
+            photo: null, // إيقاف تحميل وعرض الصور مؤقتاً لحماية Supabase Disk IO ومنع التجميد والشاشة البيضاء
           };
         }),
         matches: dedupe(m.data).map((match: any) => ({
@@ -417,14 +469,15 @@ const App: React.FC = () => {
         transfers: dedupe(transfersReq.data)
       }));
       setSyncStatus('synced');
-      setIsInitialLoading(false);
       if (!silent) {
         addNotify(`تم التحديث: ${playersCount} لاعب، ${staffCount} كادر`, 'success');
       }
     } catch (e) {
+      console.error('Fetch all data error:', e);
       setSyncStatus('error');
-      setIsInitialLoading(false);
       if (!silent) addNotify('خطأ في استدعاء البيانات', 'error');
+    } finally {
+      setIsInitialLoading(false);
     }
   }, [addNotify]);
 
@@ -706,7 +759,7 @@ const App: React.FC = () => {
         // Query people with role = 'لاعب' and matching name
         const { data: matchedPlayers, error: playerErr } = await supabase
           .from('people')
-          .select('*')
+          .select(PEOPLE_LIGHTWEIGHT_SELECT)
           .eq('role', 'لاعب')
           .ilike('name', `%${inputU}%`);
 
@@ -758,7 +811,7 @@ const App: React.FC = () => {
       // Check if user is a coach / staff member in people table (by name and last 6 digits of nationalId or phone)
       const { data: matchedStaff } = await supabase
         .from('people')
-        .select('*')
+        .select(PEOPLE_LIGHTWEIGHT_SELECT)
         .neq('role', 'لاعب')
         .ilike('name', `%${inputU}%`);
 
@@ -791,7 +844,7 @@ const App: React.FC = () => {
       }
 
       // Check if user is a parent in people table
-      const { data: parentData } = await supabase.from('people').select('*').eq('phone', inputU).limit(1);
+      const { data: parentData } = await supabase.from('people').select(PEOPLE_LIGHTWEIGHT_SELECT).eq('phone', inputU).limit(1);
       if (parentData && parentData.length > 0) {
         const parentRecord = parentData[0];
         if (parentRecord.birthDate && parentRecord.birthDate.substring(0, 4) === p.trim()) {
@@ -978,7 +1031,7 @@ const App: React.FC = () => {
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map(item => {
              const isNotifications = item.id === 'notifications';
-             const pendingCount = isNotifications ? state.technicalReports.filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
+             const pendingCount = isNotifications ? (state.technicalReports || []).filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
              
              if (item.isGroup) {
                 const isExpanded = expandedNav[item.id];
@@ -1115,43 +1168,45 @@ const App: React.FC = () => {
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar print:p-0">
           <div className="max-w-6xl mx-auto space-y-8">
-            {isInitialLoading && state.people.length === 0 ? (
-              <div className="bg-white rounded-3xl p-12 border border-slate-200 shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in duration-500 my-8">
-                <div className="relative mb-6">
-                  <ClubLogo size={75} className="animate-pulse" />
-                  <div className="absolute inset-0 -m-3 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
+            <ErrorBoundary fallbackTitle="عفواً، حدث تنبيه أثناء عرض هذا القسم">
+              {isInitialLoading && state.people.length === 0 ? (
+                <div className="bg-white rounded-3xl p-12 border border-slate-200 shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in duration-500 my-8">
+                  <div className="relative mb-6">
+                    <ClubLogo size={75} className="animate-pulse" />
+                    <div className="absolute inset-0 -m-3 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
+                  </div>
+                  <h3 className="text-xl font-black text-blue-900 tracking-tight">جاري استرجاع بيانات النادي ومزامنة السجلات...</h3>
+                  <p className="text-slate-500 text-xs mt-2 max-w-md">يتم استدعاء بيانات اللاعبين والكوادر والمباريات تلقائياً من السحابة، يرجى الانتظار لحظات</p>
+                  <div className="flex items-center gap-2 mt-6 text-orange-600 font-bold text-xs bg-orange-50 px-4 py-2 rounded-full border border-orange-200">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>مزامنة مباشرة مع السحابة...</span>
+                  </div>
                 </div>
-                <h3 className="text-xl font-black text-blue-900 tracking-tight">جاري استرجاع بيانات النادي ومزامنة السجلات...</h3>
-                <p className="text-slate-500 text-xs mt-2 max-w-md">يتم استدعاء بيانات اللاعبين والكوادر والمباريات تلقائياً من السحابة، يرجى الانتظار لحظات</p>
-                <div className="flex items-center gap-2 mt-6 text-orange-600 font-bold text-xs bg-orange-50 px-4 py-2 rounded-full border border-orange-200">
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>مزامنة مباشرة مع السحابة...</span>
-                </div>
-              </div>
-            ) : (
-              <>
-                {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={state} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
-                {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
-                {activeTab === 'notifications' && <AdminNotifications state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} />}
-                {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
-                {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
-                {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
-                {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
-                {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
-                {activeTab === 'transfers' && <TransfersManagement state={derivedState} setState={updateState as any} addLog={addNotify} />}
-                {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} />}
-                {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-                {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
-                {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
-                {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
-                {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
-                {activeTab === 'report' && (
-                  <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي" onReset={() => setActiveTab(previousTab)}>
-                    <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />
-                  </ErrorBoundary>
-                )}
-              </>
-            )}
+              ) : (
+                <>
+                  {activeTab === 'parent-portal' && state.currentUser && <ParentPortal state={state} setState={updateState as any} user={state.currentUser} syncToCloud={syncToCloud} />}
+                  {activeTab === 'dashboard' && <Dashboard state={derivedState} setState={updateState as any} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} onSessionClick={() => setActiveTab('attendance')} />}
+                  {activeTab === 'notifications' && <AdminNotifications state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} />}
+                  {activeTab === 'squad' && <SquadManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
+                  {activeTab === 'staff' && <StaffManagement state={derivedState} setState={updateState} onOpenReport={p => { setSelectedPlayer(p); setPreviousTab(activeTab); setActiveTab('report'); }} addLog={addNotify} />}
+                  {activeTab === 'training' && <TrainingPlanner state={derivedState} setState={updateState as any} addLog={addNotify} />}
+                  {activeTab === 'attendance' && <AttendanceTracker state={derivedState} setState={updateState as any} addLog={addNotify} />}
+                  {activeTab === 'medical' && <MedicalCenter state={derivedState} setState={updateState} syncToCloud={syncToCloud} />}
+                  {activeTab === 'transfers' && <TransfersManagement state={derivedState} setState={updateState as any} addLog={addNotify} />}
+                  {activeTab === 'tournaments' && <TournamentsView state={derivedState} setState={updateState as any} syncToCloud={syncToCloud} addLog={addNotify} onMatchClick={(id) => { setSelectedMatchId(id); setPreviousTab(activeTab); setActiveTab('matches'); }} />}
+                  {activeTab === 'services' && <ServicesView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+                  {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
+                  {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
+                  {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
+                  {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+                  {activeTab === 'report' && (
+                    <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي" onReset={() => setActiveTab(previousTab)}>
+                      <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />
+                    </ErrorBoundary>
+                  )}
+                </>
+              )}
+            </ErrorBoundary>
           </div>
         </main>
 
@@ -1162,7 +1217,7 @@ const App: React.FC = () => {
              { id: 'menu', icon: isSidebarOpen ? X : Menu, label: 'القائمة', onClick: () => setSidebarOpen(!isSidebarOpen) },
            ].map(item => {
                const isNotifications = item.id === 'notifications';
-               const pendingCount = isNotifications ? state.technicalReports.filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
+               const pendingCount = isNotifications ? (state.technicalReports || []).filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
                const isActive = item.id === 'menu' ? isSidebarOpen : activeTab === item.id;
                return (
              <button key={item.id} onClick={item.onClick || (() => { setActiveTab(item.id); setSidebarOpen(false); })} className={`flex shrink-0 w-16 flex-col items-center gap-1.5 relative ${isActive ? 'text-orange-500' : 'text-slate-400'}`}>

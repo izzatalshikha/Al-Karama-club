@@ -116,28 +116,30 @@ export async function safeSavePerson(
   if ('passportExpiryDate' in cleanData) cloudPayload.passport_expiry_date = cleanData.passportExpiryDate;
   if ('passport_expiry_date' in cleanData) cloudPayload.passportExpiryDate = cleanData.passport_expiry_date;
 
-  if ('idCardImage' in cleanData) cloudPayload.id_card_image = cleanData.idCardImage;
-  if ('id_card_image' in cleanData) cloudPayload.idCardImage = cleanData.id_card_image;
-
-  if ('idCardBackImage' in cleanData) cloudPayload.id_card_back_image = cleanData.idCardBackImage;
-  if ('id_card_back_image' in cleanData) cloudPayload.idCardBackImage = cleanData.id_card_back_image;
-
-  if ('passportImage' in cleanData) cloudPayload.passport_image = cleanData.passportImage;
-  if ('passport_image' in cleanData) cloudPayload.passportImage = cleanData.passport_image;
-
-  if (Array.isArray(cleanData.weightHistory)) {
-    cloudPayload.weight_history = cleanData.weightHistory;
-    cloudPayload.weightHistory = cleanData.weightHistory;
+  // حماية ميزانية Disk IO في Supabase: استبعاد الصور الثقيلة من الحفظ في قاعدة البيانات مؤقتاً
+  // لمنع استهلاك Disk IO Budget وتجنب إيقاف مشروع Supabase
+  delete cloudPayload.photo;
+  delete cloudPayload.idCardImage;
+  delete cloudPayload.idCardBackImage;
+  delete cloudPayload.passportImage;
+  delete cloudPayload.id_card_image;
+  delete cloudPayload.id_card_back_image;
+  delete cloudPayload.passport_image;
+  if (cloudPayload.monthlyReports) {
+    const cleanMonthly = { ...cloudPayload.monthlyReports };
+    delete cleanMonthly._photo;
+    delete cleanMonthly._certificates;
+    cloudPayload.monthlyReports = cleanMonthly;
   }
 
-  // المحاولة الأولى: حفظ البيانات في Supabase
+  // المحاولة الأولى: حفظ البيانات في Supabase واسترجاع المعرف فقط (لتجنب استدعاء أعمدة TOAST الثقيلة)
   let res: any;
   const targetId = personId || cleanData.id;
   try {
     if (action === 'update' && targetId) {
-      res = await supabase.from('people').update(cloudPayload).eq('id', targetId).select();
+      res = await supabase.from('people').update(cloudPayload).eq('id', targetId).select('id');
     } else {
-      res = await supabase.from('people').upsert(cloudPayload).select();
+      res = await supabase.from('people').upsert(cloudPayload).select('id');
     }
   } catch (err: any) {
     res = { error: err };
@@ -173,9 +175,9 @@ export async function safeSavePerson(
     try {
       let retryRes: any;
       if (action === 'update' && targetId) {
-        retryRes = await supabase.from('people').update(safeNumericData).eq('id', targetId).select();
+        retryRes = await supabase.from('people').update(safeNumericData).eq('id', targetId).select('id');
       } else {
-        retryRes = await supabase.from('people').upsert(safeNumericData).select();
+        retryRes = await supabase.from('people').upsert(safeNumericData).select('id');
       }
 
       if (!retryRes?.error) {
@@ -204,9 +206,9 @@ export async function safeSavePerson(
     try {
       let fallbackRes: any;
       if (action === 'update' && targetId) {
-        fallbackRes = await supabase.from('people').update(fallbackData).eq('id', targetId).select();
+        fallbackRes = await supabase.from('people').update(fallbackData).eq('id', targetId).select('id');
       } else {
-        fallbackRes = await supabase.from('people').upsert(fallbackData).select();
+        fallbackRes = await supabase.from('people').upsert(fallbackData).select('id');
       }
 
       if (!fallbackRes?.error) {

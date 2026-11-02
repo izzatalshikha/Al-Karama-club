@@ -30,10 +30,8 @@ export const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileProcess = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      alert('يرجى اختيار ملف صورة صالح (JPG, PNG, WebP)');
-      return;
-    }
+    alert('تنبيه: تم إيقاف رفع وتعديل صور الوثائق مؤقتاً بناءً على إشعار استهلاك موارد السحابة، وذلك لضمان سرعة واستقرار التطبيق لحين تجهيز التخزين السحابي البديل.');
+    return;
 
     try {
       setIsCompressing(true);

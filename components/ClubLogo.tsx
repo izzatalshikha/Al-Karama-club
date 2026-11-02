@@ -18,6 +18,9 @@ const ClubLogo: React.FC<ClubLogoProps> = ({ size = 100, className = "" }) => {
         alt="Club Logo"
         className="w-full h-full object-contain p-1"
         crossOrigin="anonymous"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = '/icon-192.png';
+        }}
       />
     </div>
   );

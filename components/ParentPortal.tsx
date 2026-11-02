@@ -106,12 +106,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ state, setState, user, sync
   }
 
   // Filter attendance, sessions, and reports for this child
-  const childAttendance = state.attendance.filter(a => a.personId === child.id);
-  const childReports = state.technicalReports.filter(r => r.targetId === child.id);
+  const childAttendance = (state.attendance || []).filter(a => a.personId === child.id);
+  const childReports = (state.technicalReports || []).filter(r => r.targetId === child.id);
   
   // Recent sessions
-  const recentSessions = state.sessions
-    .filter(s => s.category.includes(child.category))
+  const recentSessions = (state.sessions || [])
+    .filter(s => (s.category || '').includes(child.category))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 

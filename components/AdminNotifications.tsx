@@ -14,7 +14,7 @@ const AdminNotifications: React.FC<AdminNotificationsProps> = ({ state, setState
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'resolved'>('all');
 
   const notifications = useMemo(() => {
-    return state.technicalReports
+    return (state.technicalReports || [])
       .filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type))
       .filter(r => {
          if (filterType !== 'all' && r.type !== filterType) return false;
