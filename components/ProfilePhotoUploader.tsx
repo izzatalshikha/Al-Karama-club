@@ -5,6 +5,7 @@ import {
   Maximize2, Eye, Download
 } from 'lucide-react';
 import { compressProfilePhoto } from '../utils/imageCompressor';
+import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 
 interface ProfilePhotoUploaderProps {
   photo?: string | null;
@@ -233,16 +234,23 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
         renderH * factor
       );
 
-      // ضغط الصورة إلى WebP أو JPEG بحجم خفيف جداً (~30-50 ك.ب) ونقاء عالي الدقة
+      // رفع الصورة مباشرة إلى Cloudinary والحصول على رابط CDN فائق السرعة والخفة
       canvas.toBlob(async (blob) => {
         if (!blob) throw new Error('فشل تصدير الصورة');
-        const compressed = await compressProfilePhoto(blob, { targetSize: 640, quality: 0.82 });
-        onPhotoChange(compressed.base64);
-        setSavedBadge(`تم الحفظ بنقاء عالي (${compressed.compressedSizeKB} ك.ب)`);
-        setTimeout(() => setSavedBadge(null), 4000);
-        setIsEditorOpen(false);
-        setRawImageSrc(null);
-        setIsCompressing(false);
+        setIsCompressing(true);
+        try {
+          const cloudinaryUrl = await uploadToCloudinary(blob, 'avatars');
+          onPhotoChange(cloudinaryUrl);
+          setSavedBadge('تم الرفع والحفظ سحابياً بنجاح ☁️');
+          setTimeout(() => setSavedBadge(null), 4000);
+          setIsEditorOpen(false);
+          setRawImageSrc(null);
+        } catch (uploadErr: any) {
+          console.error('Cloudinary upload error:', uploadErr);
+          alert('خطأ أثناء الرفع إلى Cloudinary: ' + (uploadErr.message || uploadErr));
+        } finally {
+          setIsCompressing(false);
+        }
       }, 'image/jpeg', 0.90);
     } catch (err: any) {
       alert('خطأ أثناء حفظ ومعالجة الصورة: ' + err.message);
@@ -373,17 +381,17 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
           >
             <button
               type="button"
-              onClick={() => alert('تنبيه: تم إيقاف رفع وعرض الصور مؤقتاً بناءً على إشعار استهلاك موارد قاعدة البيانات، وذلك لضمان سرعة واستقرار التطبيق لحين تجهيز التخزين السحابي البديل.')}
-              title="رفع صورة (معطل مؤقتاً)"
-              className="p-2 bg-white/20 hover:bg-orange-500 text-white rounded-xl transition-colors shadow-sm opacity-75"
+              onClick={() => fileInputRef.current?.click()}
+              title="رفع صورة من الجهاز"
+              className="p-2 bg-white/20 hover:bg-orange-500 text-white rounded-xl transition-colors shadow-sm"
             >
               <Upload size={16} />
             </button>
             <button
               type="button"
-              onClick={() => alert('تنبيه: تم إيقاف رفع وعرض الصور مؤقتاً بناءً على إشعار استهلاك موارد قاعدة البيانات، وذلك لضمان سرعة واستقرار التطبيق لحين تجهيز التخزين السحابي البديل.')}
-              title="التقاط بالكاميرا (معطل مؤقتاً)"
-              className="p-2 bg-white/20 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-sm opacity-75"
+              onClick={() => startCamera(facingMode)}
+              title="التقاط بالكاميرا"
+              className="p-2 bg-white/20 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-sm"
             >
               <Camera size={16} />
             </button>
@@ -416,25 +424,36 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
 
       {/* أزرار سريعة أسفل الصورة */}
       <div className="flex flex-col items-center justify-center gap-1.5 mt-2">
-        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full text-center">
-          ⏸️ تحميل الصور معطل مؤقتاً لحماية السحابة
-        </span>
         {!disabled && (
           <div className="flex items-center justify-center gap-2">
+            {photo && allowPreview && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewOpen(true);
+                  setPreviewZoom(1);
+                }}
+                className="flex items-center gap-1 text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
+                title="تكبير واستعراض الصورة"
+              >
+                <Maximize2 size={12} className="text-orange-600" />
+                <span>تكبير</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => alert('تنبيه: تم إيقاف رفع وعرض الصور مؤقتاً بناءً على إشعار استهلاك موارد قاعدة البيانات، وذلك لضمان سرعة واستقرار التطبيق لحين تجهيز التخزين السحابي البديل.')}
-              className="flex items-center gap-1 text-[10px] font-black bg-blue-50/70 hover:bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors opacity-75"
-              title="رفع صورة"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1 text-[10px] font-black bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs cursor-pointer active:scale-95"
+              title="رفع صورة من جهازك"
             >
               <Upload size={12} className="text-blue-700" />
               <span>رفع صورة</span>
             </button>
             <button
               type="button"
-              onClick={() => alert('تنبيه: تم إيقاف رفع وعرض الصور مؤقتاً بناءً على إشعار استهلاك موارد قاعدة البيانات، وذلك لضمان سرعة واستقرار التطبيق لحين تجهيز التخزين السحابي البديل.')}
-              className="flex items-center gap-1 text-[10px] font-black bg-orange-50/70 hover:bg-orange-100 text-orange-800 border border-orange-200 px-2.5 py-1 rounded-lg transition-colors opacity-75"
-              title="التقاط بالكاميرا"
+              onClick={() => startCamera(facingMode)}
+              className="flex items-center gap-1 text-[10px] font-black bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs cursor-pointer active:scale-95"
+              title="التقاط صورة بالكاميرا"
             >
               <Camera size={12} className="text-orange-600" />
               <span>التقاط</span>

@@ -116,19 +116,55 @@ export async function safeSavePerson(
   if ('passportExpiryDate' in cleanData) cloudPayload.passport_expiry_date = cleanData.passportExpiryDate;
   if ('passport_expiry_date' in cleanData) cloudPayload.passportExpiryDate = cleanData.passport_expiry_date;
 
-  // حماية ميزانية Disk IO في Supabase: استبعاد الصور الثقيلة من الحفظ في قاعدة البيانات مؤقتاً
-  // لمنع استهلاك Disk IO Budget وتجنب إيقاف مشروع Supabase
-  delete cloudPayload.photo;
-  delete cloudPayload.idCardImage;
-  delete cloudPayload.idCardBackImage;
-  delete cloudPayload.passportImage;
-  delete cloudPayload.id_card_image;
-  delete cloudPayload.id_card_back_image;
-  delete cloudPayload.passport_image;
+  // السماح بروابط الصور السحابية السريعة (Cloudinary URLs) وحظر نصوص Base64 الثقيلة لحماية السحابة
+  const isSafeUrl = (val: any) => typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://')) && val.length < 1500;
+
+  if (isSafeUrl(cleanData.photo)) {
+    cloudPayload.photo = cleanData.photo;
+  } else {
+    delete cloudPayload.photo;
+  }
+
+  if (isSafeUrl(cleanData.idCardImage)) {
+    cloudPayload.id_card_image = cleanData.idCardImage;
+    cloudPayload.idCardImage = cleanData.idCardImage;
+  } else {
+    delete cloudPayload.idCardImage;
+    delete cloudPayload.id_card_image;
+  }
+
+  if (isSafeUrl(cleanData.idCardBackImage)) {
+    cloudPayload.id_card_back_image = cleanData.idCardBackImage;
+    cloudPayload.idCardBackImage = cleanData.idCardBackImage;
+  } else {
+    delete cloudPayload.idCardBackImage;
+    delete cloudPayload.id_card_back_image;
+  }
+
+  if (isSafeUrl(cleanData.passportImage)) {
+    cloudPayload.passport_image = cleanData.passportImage;
+    cloudPayload.passportImage = cleanData.passportImage;
+  } else {
+    delete cloudPayload.passportImage;
+    delete cloudPayload.passport_image;
+  }
+
+  // تنظيف الشهادات للتأكد من عدم تمرير أي Base64 وحفظ روابط Cloudinary السريعة فقط
+  if (Array.isArray(cleanData.certificates)) {
+    const safeCerts = cleanData.certificates.map((cert: any) => ({
+      ...cert,
+      image: isSafeUrl(cert?.image) ? cert.image : (typeof cert?.image === 'string' && cert.image.startsWith('data:') ? undefined : cert?.image)
+    }));
+    cloudPayload.certificates = safeCerts;
+    cleanData.certificates = safeCerts;
+  }
+
   if (cloudPayload.monthlyReports) {
     const cleanMonthly = { ...cloudPayload.monthlyReports };
     delete cleanMonthly._photo;
-    delete cleanMonthly._certificates;
+    if (cleanData.certificates && Array.isArray(cleanData.certificates)) {
+      cleanMonthly._certificates = JSON.stringify(cleanData.certificates);
+    }
     cloudPayload.monthlyReports = cleanMonthly;
   }
 

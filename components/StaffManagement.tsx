@@ -11,6 +11,7 @@ import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
 import { compressDocumentImage } from '../utils/imageCompressor';
+import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 
 interface StaffManagementProps {
   state: AppState;
@@ -782,9 +783,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                                       const f = e.target.files?.[0];
                                       if (f) {
                                         try {
-                                          const res = await compressDocumentImage(f, { maxWidth: 1400, maxHeight: 1400, quality: 0.78 });
+                                          const url = await uploadToCloudinary(f, 'certificates');
                                           const newCerts = [...(formData.certificates || [])];
-                                          newCerts[index].image = res.base64;
+                                          newCerts[index].image = url;
                                           setFormData({...formData, certificates: newCerts});
                                         } catch (err: any) {
                                           alert('خطأ أثناء معالجة الصورة: ' + err.message);
@@ -823,9 +824,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                                 const f = e.target.files?.[0];
                                 if (f) {
                                   try {
-                                    const res = await compressDocumentImage(f, { maxWidth: 1400, maxHeight: 1400, quality: 0.78 });
+                                    const url = await uploadToCloudinary(f, 'certificates');
                                     const newCerts = [...(formData.certificates || [])];
-                                    newCerts[index].image = res.base64;
+                                    newCerts[index].image = url;
                                     setFormData({...formData, certificates: newCerts});
                                   } catch (err: any) {
                                     alert('خطأ أثناء معالجة الصورة: ' + err.message);

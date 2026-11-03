@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { RefreshCw, Plus, Save, Trash2, Edit2, X, Paperclip, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { RefreshCw, Plus, Save, Trash2, Edit2, X, Paperclip, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { AppState, TransferRequest } from '../types';
 import { generateUUID } from '../App';
+import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 
 interface TransfersManagementProps {
   state: AppState;
@@ -71,14 +72,20 @@ const TransfersManagement: React.FC<TransfersManagementProps> = ({ state, setSta
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, documentUrl: reader.result as string });
-      };
-      reader.readAsDataURL(file);
+      try {
+        setIsUploadingDoc(true);
+        const url = await uploadToCloudinary(file, 'documents');
+        setFormData(prev => ({ ...prev, documentUrl: url }));
+      } catch (err: any) {
+        alert('خطأ أثناء رفع المستند إلى السحابة: ' + (err.message || err));
+      } finally {
+        setIsUploadingDoc(false);
+      }
     }
   };
 
@@ -254,12 +261,18 @@ const TransfersManagement: React.FC<TransfersManagementProps> = ({ state, setSta
                   <input
                     type="file"
                     accept="image/*,.pdf"
+                    disabled={isUploadingDoc}
                     onChange={handleImageUpload}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 focus:ring-2 focus:ring-orange-500/20 outline-none"
                   />
-                  {formData.documentUrl && (
+                  {isUploadingDoc && (
+                    <div className="mt-2 text-sm text-orange-600 font-bold flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" /> جاري رفع المستند وحفظه سحابياً...
+                    </div>
+                  )}
+                  {formData.documentUrl && !isUploadingDoc && (
                     <div className="mt-2 text-sm text-emerald-600 font-bold flex items-center gap-2">
-                      <CheckCircle2 size={16} /> تم إرفاق المستند
+                      <CheckCircle2 size={16} /> تم رفع وحفظ المستند سحابياً بنجاح
                     </div>
                   )}
                 </div>

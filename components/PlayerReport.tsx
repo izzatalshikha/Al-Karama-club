@@ -19,6 +19,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import DocumentUploadCard from './DocumentUploadCard';
 import { compressDocumentImage } from '../utils/imageCompressor';
+import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 import EditPersonModal from './EditPersonModal';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
 
@@ -117,9 +118,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   const handleCertificateImageUpdate = async (index: number, file: File) => {
     if (!player || !canEditPerson) return;
     try {
-      const compressed = await compressDocumentImage(file, { maxWidth: 1400, maxHeight: 1400, quality: 0.78 });
+      const cloudinaryUrl = await uploadToCloudinary(file, 'certificates');
       const newCerts = [...cadreCertificates];
-      newCerts[index] = { ...newCerts[index], image: compressed.base64 };
+      newCerts[index] = { ...newCerts[index], image: cloudinaryUrl };
       const updated = { ...player, certificates: newCerts };
       const res = await safeSavePerson(updated, 'update', player.id);
       if (!res.success) throw res.error;
@@ -128,9 +129,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         people: prev.people.map(p => p.id === player.id ? updated : p)
       }));
       Object.assign(player, { certificates: newCerts });
-      addLog?.('تم تحديث وثيقة الشهادة بنجاح', 'success');
+      addLog?.('تم تحديث وثيقة الشهادة سحابياً بنجاح', 'success');
     } catch (err: any) {
-      alert('خطأ أثناء معالجة وحفظ صورة الشهادة: ' + err.message);
+      alert('خطأ أثناء رفع وحفظ صورة الشهادة: ' + (err.message || err));
     }
   };
 

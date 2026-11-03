@@ -57,7 +57,9 @@ export const PEOPLE_LIGHTWEIGHT_SELECT = [
   'injuries', 'penalties', 'notes', 'coachingCertificate', 'academicDegree',
   'passportNumber', 'passportIssueDate', 'passportExpiryDate', 'season', 'seasons',
   'preferredFoot', 'bloodType', 'shoeSize', 'clothesSize', 'emergencyPhone',
-  'contractDuration', 'jobTitle', 'created_at', 'weightHistory'
+  'contractDuration', 'jobTitle', 'created_at', 'weightHistory',
+  'photo', 'idCardImage', 'idCardBackImage', 'passportImage',
+  'certificates', 'experiences'
 ].join(',');
 
 const App: React.FC = () => {
@@ -195,7 +197,12 @@ const App: React.FC = () => {
     // فلترة الأفراد حسب الموسم النشط
     // دمج مصفوفة المواسم وحقل الموسم النصي بدون أي تكرار لضمان ظهور العضو في كافة مواسمه المقيد بها
     const personBelongsToActiveSeason = (p: Person) => {
+      // الكوادر والمدربون يظهرون دائماً في كافة المواسم
+      if (p.role !== 'لاعب') return true;
+
       const targetSeason = state.activeSeason || '2025/2026';
+      if (targetSeason === 'الكل') return true;
+
       const allSeasons = new Set<string>();
       if (Array.isArray(p.seasons)) {
         p.seasons.forEach(s => s && allSeasons.add(String(s).trim()));
@@ -370,8 +377,8 @@ const App: React.FC = () => {
         }
       }
 
-      // دالة استعلام آمنة مع مهلة زمنية (Timeout 8 ثوانٍ) تمنع تعليق التطبيق وتجميده نهائياً
-      const safeFetch = async (query: any, timeoutMs = 8000) => {
+      // دالة استعلام آمنة مع مهلة زمنية كافية (Timeout 25 ثانية) تمنع فقدان البيانات عند تباطؤ الشبكة
+      const safeFetch = async (query: any, timeoutMs = 25000) => {
         try {
           const timeoutPromise = new Promise<{ data: any[]; error: any }>((_, reject) =>
             setTimeout(() => reject(new Error('Supabase query timeout')), timeoutMs)
@@ -398,10 +405,12 @@ const App: React.FC = () => {
 
       const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
 
-      setState(prev => ({
+      setState(prev => {
+        const rawPeopleList = (Array.isArray(p.data) && p.data.length > 0) ? p.data : (prev.people || []);
+        return {
         ...prev,
         currentUser: user,
-        people: dedupe(p.data).map((person: any) => {
+        people: dedupe(rawPeopleList).map((person: any) => {
           const rawSeasons: string[] = [
             ...(Array.isArray(person.seasons) ? person.seasons : []),
             ...(typeof person.season === 'string' ? person.season.split(',') : [])
@@ -419,10 +428,10 @@ const App: React.FC = () => {
             passportNumber: person.passportNumber || person.passport_number || null,
             passportIssueDate: person.passportIssueDate || person.passport_issue_date || null,
             passportExpiryDate: person.passportExpiryDate || person.passport_expiry_date || null,
-            idCardImage: null, // إيقاف تحميل وعرض صور الهوية مؤقتاً لحماية ميزانية السحابة
-            idCardBackImage: null,
-            passportImage: null,
-            photo: null, // إيقاف تحميل وعرض الصور مؤقتاً لحماية Supabase Disk IO ومنع التجميد والشاشة البيضاء
+            idCardImage: person.idCardImage || person.id_card_image || null,
+            idCardBackImage: person.idCardBackImage || person.id_card_back_image || null,
+            passportImage: person.passportImage || person.passport_image || null,
+            photo: person.photo || null,
           };
         }),
         matches: dedupe(m.data).map((match: any) => ({
@@ -467,7 +476,7 @@ const App: React.FC = () => {
           };
         }),
         transfers: dedupe(transfersReq.data)
-      }));
+      }; });
       setSyncStatus('synced');
       if (!silent) {
         addNotify(`تم التحديث: ${playersCount} لاعب، ${staffCount} كادر`, 'success');
@@ -1153,6 +1162,7 @@ const App: React.FC = () => {
                value={state.activeSeason || '2025/2026'}
                onChange={(e) => setState({ ...state, activeSeason: e.target.value })}
              >
+               <option value="الكل">جميع المواسم (الكل)</option>
                {state.seasons?.map(s => (
                  <option key={s} value={s}>موسم {s}</option>
                ))}

@@ -8,6 +8,7 @@ import { supabase, generateUUID } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 import { compressDocumentImage } from '../utils/imageCompressor';
+import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
 
 interface EditPersonModalProps {
@@ -607,12 +608,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                               const file = e.target.files?.[0];
                               if (file) {
                                 try {
-                                  const compressed = await compressDocumentImage(file);
+                                  const url = await uploadToCloudinary(file, 'certificates');
                                   const arr = [...(formData.certificates || [])];
-                                  arr[cIdx] = { ...arr[cIdx], image: compressed };
+                                  arr[cIdx] = { ...arr[cIdx], image: url };
                                   setFormData({ ...formData, certificates: arr });
                                 } catch (err: any) {
-                                  alert('خطأ أثناء معالجة الصورة: ' + err.message);
+                                  alert('خطأ أثناء رفع صورة الشهادة إلى السحابة: ' + (err.message || err));
                                 }
                               }
                             }}
