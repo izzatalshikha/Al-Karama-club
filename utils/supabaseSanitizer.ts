@@ -26,11 +26,25 @@ export async function safeSavePerson(
     }
   }
 
-  // معالجة رقم القميص إذا كان غير صالح
+  // معالجة رقم القميص وضمان تحويله لقيمة صحيحة (integer) أو null لتجنب خطأ 22P02 في PostgreSQL
   if ('number' in cleanData) {
-    if (typeof cleanData.number === 'number' && Number.isNaN(cleanData.number)) {
+    if (cleanData.number === '' || cleanData.number === null || cleanData.number === undefined) {
       cleanData.number = null;
+    } else {
+      const parsedNum = parseInt(String(cleanData.number).trim(), 10);
+      cleanData.number = Number.isNaN(parsedNum) ? null : parsedNum;
     }
+  }
+
+  // توحيد هاتف الطوارئ والتأكد من استخدام اسم العمود الفعلي في قاعدة البيانات (emergencyPhone)
+  if ('emergencyContact' in cleanData || 'emergency_phone' in cleanData || 'emergency_contact' in cleanData || 'emergencyPhone' in cleanData) {
+    const rawEm = cleanData.emergencyPhone ?? cleanData.emergencyContact ?? cleanData.emergency_phone ?? cleanData.emergency_contact;
+    if (rawEm !== undefined) {
+      cleanData.emergencyPhone = rawEm ? String(rawEm).trim() : null;
+    }
+    delete cleanData.emergencyContact;
+    delete cleanData.emergency_phone;
+    delete cleanData.emergency_contact;
   }
 
   // معالجة المواسم: فقط إذا تم تمريرها صراحة أو كان upsert كاملاً
@@ -107,6 +121,31 @@ export async function safeSavePerson(
   // 2. تجهيز حمولة السحابة ودعم نمطي التسمية camelCase و snake_case بالتوازي لضمان الحفظ
   const cloudPayload: any = { ...cleanData };
 
+  // إزالة أي مسميات غير موجودة في قاعدة بيانات people منعاً لخطأ PGRST204
+  delete cloudPayload.emergencyContact;
+  delete cloudPayload.emergency_contact;
+  delete cloudPayload.emergency_phone;
+
+  // تنظيف الحقول العددية من النصوص الفارغة منعاً لخطأ 22P02
+  if ('number' in cloudPayload) {
+    if (cloudPayload.number === '' || cloudPayload.number === null || cloudPayload.number === undefined) {
+      cloudPayload.number = null;
+    } else {
+      const p = parseInt(String(cloudPayload.number).trim(), 10);
+      cloudPayload.number = Number.isNaN(p) ? null : p;
+    }
+  }
+
+  const numericEmptyCheck = [
+    'height', 'weight', 'subscriptionMonth', 'contractDuration', 
+    'subscriptionAmount', 'kitAmount', 'contractValue'
+  ];
+  numericEmptyCheck.forEach(k => {
+    if (k in cloudPayload && cloudPayload[k] === '') {
+      cloudPayload[k] = null;
+    }
+  });
+
   if ('passportNumber' in cleanData) cloudPayload.passport_number = cleanData.passportNumber;
   if ('passport_number' in cleanData) cloudPayload.passportNumber = cleanData.passport_number;
 
@@ -168,69 +207,89 @@ export async function safeSavePerson(
     cloudPayload.monthlyReports = cleanMonthly;
   }
 
-  // المحاولة الأولى: حفظ البيانات في Supabase واسترجاع المعرف فقط (لتجنب استدعاء أعمدة TOAST الثقيلة)
-  let res: any;
+  // تنفيذ الحفظ مع نظام استعادة ذكي متعدد المراحل
   const targetId = personId || cleanData.id;
-  try {
+  const currentPayload = { ...cloudPayload };
+
+  const executeSave = async (payloadToSave: any) => {
     if (action === 'update' && targetId) {
-      res = await supabase.from('people').update(cloudPayload).eq('id', targetId).select('id');
+      return await supabase.from('people').update(payloadToSave).eq('id', targetId).select('id');
     } else {
-      res = await supabase.from('people').upsert(cloudPayload).select('id');
+      return await supabase.from('people').upsert(payloadToSave).select('id');
     }
-  } catch (err: any) {
-    res = { error: err };
-  }
+  };
 
-  // إذا نجح الحفظ مباشرة
-  if (!res?.error && (!res?.data || res?.data?.length > 0)) {
-    return { success: true, data: cleanData, error: null };
-  }
+  let res: any;
+  let lastError: any = null;
 
-  let lastError = res?.error || new Error('تعذر تحديث السجل في السحابة');
-
-  // محاولة ثانية: معالجة أخطاء الأنواع الرقمية (numeric)
-  if (lastError?.message?.includes('numeric')) {
-    const safeNumericData = { ...cloudPayload };
-    if ('receivedKit' in safeNumericData) {
-      safeNumericData.receivedKit = safeNumericData.receivedKit ? 1 : 0;
-    }
-    if ('isAcademyPlayer' in safeNumericData) {
-      safeNumericData.isAcademyPlayer = safeNumericData.isAcademyPlayer ? 1 : 0;
-    }
-    
-    const potentialNumeric = [
-      'subscriptionMonth', 'height', 'weight', 'contractDuration', 
-      'subscriptionAmount', 'kitAmount', 'number', 'contractValue'
-    ];
-    potentialNumeric.forEach(k => {
-      if (k in safeNumericData && (typeof safeNumericData[k] !== 'number' || safeNumericData[k] === null)) {
-        safeNumericData[k] = null;
-      }
-    });
-
+  // حلقة محاولات ذكية تستخرج أي عمود مفقود وتستبعده تلقائياً وتكرر الحفظ (تتعامل مع أخطاء PGRST204)
+  for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      let retryRes: any;
-      if (action === 'update' && targetId) {
-        retryRes = await supabase.from('people').update(safeNumericData).eq('id', targetId).select('id');
-      } else {
-        retryRes = await supabase.from('people').upsert(safeNumericData).select('id');
-      }
-
-      if (!retryRes?.error) {
+      res = await executeSave(currentPayload);
+      if (!res?.error && (!res?.data || res?.data?.length > 0)) {
         return { success: true, data: cleanData, error: null };
       }
-      lastError = retryRes.error;
-    } catch (e: any) {
-      lastError = e;
+      lastError = res?.error;
+    } catch (err: any) {
+      lastError = err;
     }
+
+    const errMsg = String(lastError?.message || '');
+    const errCode = String(lastError?.code || '');
+
+    // 1. فحص خطأ العمود غير الموجود في مخطط قاعدة البيانات (PGRST204 أو column does not exist)
+    const isMissingColumn = 
+      errCode === 'PGRST204' ||
+      errMsg.includes('schema cache') ||
+      errMsg.includes('Could not find') ||
+      (errMsg.includes('column') && errMsg.includes('does not exist'));
+
+    if (isMissingColumn) {
+      const match = errMsg.match(/Could not find the '([^']+)' column/i)
+        || errMsg.match(/column ['"]?([^'"]+)['"]? of relation ['"]?people['"]? does not exist/i)
+        || errMsg.match(/column ['"]?([^'"]+)['"]? does not exist/i);
+
+      if (match && match[1]) {
+        const colToRemove = match[1];
+        delete currentPayload[colToRemove];
+        delete cleanData[colToRemove];
+        continue;
+      }
+    }
+
+    // 2. فحص أخطاء تحويل الأنواع الرقمية (numeric / integer / 22P02)
+    if (errMsg.includes('numeric') || errMsg.includes('integer') || errCode === '22P02') {
+      if ('receivedKit' in currentPayload) {
+        currentPayload.receivedKit = currentPayload.receivedKit ? true : false;
+      }
+      if ('isAcademyPlayer' in currentPayload) {
+        currentPayload.isAcademyPlayer = Boolean(currentPayload.isAcademyPlayer);
+      }
+      if ('number' in currentPayload) {
+        currentPayload.number = null;
+      }
+      const potentialNumeric = [
+        'subscriptionMonth', 'height', 'weight', 'contractDuration', 
+        'subscriptionAmount', 'kitAmount', 'contractValue'
+      ];
+      potentialNumeric.forEach(k => {
+        if (k in currentPayload && (typeof currentPayload[k] !== 'number' || currentPayload[k] === null || currentPayload[k] === '')) {
+          currentPayload[k] = null;
+        }
+      });
+      continue;
+    }
+
+    // إذا كان الخطأ غير معتاد، نكسر الحلقة لنجرب خطة الطوارئ النهائية
+    break;
   }
 
-  // محاولة ثالثة: معالجة خطأ الأعمدة غير الموجودة (column does not exist)
-  if (lastError?.message?.includes('column') && lastError?.message?.includes('does not exist')) {
-    const fallbackData = { ...cloudPayload };
+  // خطة الطوارئ النهائية: إزالة كافة الأعمدة الثانوية الحديثة لضمان حفظ البيانات الأساسية دون فشل
+  if (lastError) {
+    const fallbackData = { ...currentPayload };
     const newColumns = [
       'bloodType', 'shoeSize', 'clothesSize', 'preferredFoot', 
-      'emergencyPhone', 'isAcademyPlayer', 'registrationDate', 
+      'isAcademyPlayer', 'registrationDate', 
       'subscriptionMonth', 'contractDuration', 'jobTitle',
       'season', 'seasons', 'kitAmount', 'receivedKit', 'weightHistory', 'weight_history', 'photo',
       'certificates', 'experiences', 'academicDegree', 'coachingCertificate',
@@ -240,13 +299,7 @@ export async function safeSavePerson(
     newColumns.forEach(c => delete fallbackData[c]);
 
     try {
-      let fallbackRes: any;
-      if (action === 'update' && targetId) {
-        fallbackRes = await supabase.from('people').update(fallbackData).eq('id', targetId).select('id');
-      } else {
-        fallbackRes = await supabase.from('people').upsert(fallbackData).select('id');
-      }
-
+      const fallbackRes = await executeSave(fallbackData);
       if (!fallbackRes?.error) {
         return { success: true, data: cleanData, error: null };
       }

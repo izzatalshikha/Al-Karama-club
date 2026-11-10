@@ -29,7 +29,7 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
   // Personal & Athletic info form state
   const [phone, setPhone] = useState(player.phone || '');
   const [address, setAddress] = useState(player.address || '');
-  const [emergencyContact, setEmergencyContact] = useState(player.emergencyContact || '');
+  const [emergencyContact, setEmergencyContact] = useState(player.emergencyPhone || (player as any).emergencyContact || '');
   const [fatherName, setFatherName] = useState(player.fatherName || '');
   const [motherName, setMotherName] = useState(player.motherName || '');
   const [birthDate, setBirthDate] = useState(player.birthDate || '');
@@ -42,7 +42,7 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
   const [bloodType, setBloodType] = useState(player.bloodType || '');
   const [shoeSize, setShoeSize] = useState(player.shoeSize || '');
   const [clothesSize, setClothesSize] = useState(player.clothesSize || '');
-  const [number, setNumber] = useState(player.number || '');
+  const [number, setNumber] = useState(player.number !== undefined && player.number !== null ? String(player.number) : '');
   const [isSavingPersonal, setIsSavingPersonal] = useState(false);
   const [personalSuccessMsg, setPersonalSuccessMsg] = useState('');
 
@@ -63,6 +63,10 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
     setPersonalSuccessMsg('');
 
     try {
+      const parsedNumber = typeof number === 'string' && number.trim() !== ''
+        ? (parseInt(number.trim(), 10) || null)
+        : (typeof number === 'number' && !Number.isNaN(number) ? number : null);
+
       const updates: any = {
         phone: phone.trim() || null,
         address: address.trim() || null,
@@ -79,7 +83,7 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
         bloodType: bloodType || null,
         shoeSize: shoeSize || null,
         clothesSize: clothesSize || null,
-        number: number.trim() || null,
+        number: parsedNumber,
       };
 
       const saveRes = await safeSavePerson(updates, 'update', player.id);

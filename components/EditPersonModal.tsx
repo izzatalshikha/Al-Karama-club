@@ -37,6 +37,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
   const [formData, setFormData] = useState<Partial<Person>>({
     ...person,
+    emergencyPhone: person.emergencyPhone || (person as any).emergencyContact || '',
     isAcademyPlayer: false, // تأكيد كعضو نادي رسمي وليس أكاديمية
     season: finalDefaultSeasons[finalDefaultSeasons.length - 1],
     seasons: finalDefaultSeasons,
@@ -65,13 +66,16 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       const finalSeasons = Array.from(new Set(rawSeasons));
       const validSeasons = finalSeasons.length > 0 ? finalSeasons : ['2025/2026'];
 
+      const rawEmergency = formData.emergencyPhone ?? (formData as any).emergencyContact;
       const cleanData: any = {
         ...formData,
+        emergencyPhone: rawEmergency ? String(rawEmergency).trim() : null,
         isAcademyPlayer: false, // تأكيد كلاعب/كادر نادي دائماً
         name: formData.name?.trim() || person.name,
         seasons: validSeasons,
         season: validSeasons[validSeasons.length - 1] || '2025/2026'
       };
+      delete cleanData.emergencyContact;
 
       const saveRes = await safeSavePerson(cleanData, 'update', person.id);
       if (!saveRes.success) throw saveRes.error;
@@ -309,8 +313,8 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   <input
                     type="tel"
                     placeholder="09xxxxxxxx"
-                    value={formData.emergencyContact || ''}
-                    onChange={e => setFormData({ ...formData, emergencyContact: e.target.value })}
+                    value={formData.emergencyPhone || (formData as any).emergencyContact || ''}
+                    onChange={e => setFormData({ ...formData, emergencyPhone: e.target.value, emergencyContact: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
                   />
                 </div>
@@ -416,8 +420,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   <label className="text-[11px] font-black text-slate-600 block">رقم القميص</label>
                   <input
                     type="text"
-                    value={formData.number || ''}
-                    onChange={e => setFormData({ ...formData, number: e.target.value })}
+                    value={formData.number !== undefined && formData.number !== null ? String(formData.number) : ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const parsed = val.trim() === '' ? undefined : parseInt(val, 10);
+                      setFormData({ ...formData, number: Number.isNaN(parsed) ? (val as any) : parsed });
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
                   />
                 </div>
