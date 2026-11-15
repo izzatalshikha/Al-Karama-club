@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Calendar, ClipboardCheck, LayoutDashboard, Settings, LogOut, Menu, X, Trophy, Medal, Briefcase,
   Activity, HeartPulse, PenTool, Package, Printer, Loader2, CheckCircle2, AlertCircle, RefreshCw, Compass, MapPin, ChevronDown, ChevronLeft, Baby, Bell, Edit2,
-  Smartphone, Download
+  Smartphone, Download, History
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { AppUser, AppState, Person, AppNotification, Role } from './types';
@@ -32,6 +32,10 @@ import EditPersonModal from './components/EditPersonModal';
 import { PWAInstallModal, PWAFloatingPrompt } from './components/PWAInstallModal';
 import { safeSavePerson } from './utils/supabaseSanitizer';
 import { decodeMatchPitch, encodeMatchPitch } from './utils/tournamentHelpers';
+import { decodeInjuryRecord, encodeInjuryToDbPayload, getPlayerMedicalCard } from './utils/medicalHelpers';
+import AuditLogView from './components/AuditLogView';
+import { getMergedAuditLogs, getLocalWarehouseEditors, saveLocalWarehouseEditor, recordAuditLog } from './utils/auditLogger';
+import { canEditSelfProfile, isAnyWarehouseRole, isMedicRole } from './utils/permissions';
 
 export const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -53,7 +57,7 @@ export const PEOPLE_LIGHTWEIGHT_SELECT = [
   'nationalId', 'federalNumber', 'internationalId', 'address', 'category', 'role',
   'number', 'phone', 'joinDate', 'height', 'weight', 'position', 'contractStart',
   'contractEnd', 'contractValue', 'subscriptionAmount', 'subscriptionMonth',
-  'registrationDate', 'receivedKit', 'kitAmount', 'isAcademyPlayer', 'medicalHistory',
+  'registrationDate', 'receivedKit', 'kitAmount', 'medicalHistory',
   'injuries', 'penalties', 'notes', 'coachingCertificate', 'academicDegree',
   'passportNumber', 'passportIssueDate', 'passportExpiryDate', 'season', 'seasons',
   'preferredFoot', 'bloodType', 'shoeSize', 'clothesSize', 'emergencyPhone',
@@ -65,16 +69,15 @@ export const PEOPLE_LIGHTWEIGHT_SELECT = [
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('squad');
-  const [appMode, setAppMode] = useState<'club'|'academy'>(() => (localStorage.getItem('eagle_os_v3_mode') as 'club'|'academy') || 'club');
   
   const mainRef = React.useRef<HTMLElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('eagle_os_v3_mode', appMode);
+    try { localStorage.removeItem('eagle_os_v3_mode'); } catch {}
     if (mainRef.current) {
       mainRef.current.scrollTop = 0;
     }
-  }, [activeTab, appMode]);
+  }, [activeTab]);
 
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [expandedNav, setExpandedNav] = useState<Record<string, boolean>>({});
@@ -116,6 +119,7 @@ const App: React.FC = () => {
     notifications: [],
     servicesDirectory: [],
     transfers: [],
+    auditLogs: [],
     globalCategoryFilter: 'الكل'
   };
 
@@ -126,7 +130,7 @@ const App: React.FC = () => {
            const rawParsed = JSON.parse(saved);
            const parsed: AppState = { ...defaultEmptyState, ...rawParsed };
            parsed.seasons = ['2025/2026', '2026/2027', '2027/2028', '2028/2029', '2029/2030'];
-           if (!parsed.activeSeason || !parsed.seasons.includes(parsed.activeSeason)) parsed.activeSeason = '2025/2026';
+           if (!parsed.activeSeason || (parsed.activeSeason !== 'الكل' && !parsed.seasons.includes(parsed.activeSeason))) parsed.activeSeason = '2025/2026';
            
            const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
            parsed.people = dedupe(parsed.people || []).map((person: any) => {
@@ -142,7 +146,6 @@ const App: React.FC = () => {
 
              return {
                ...person,
-               isAcademyPlayer: false, // وضع جميع اللاعبين والكوادر كأعضاء نادي رسمي
                seasons: seasonsList,
                season: person.season || seasonsList[seasonsList.length - 1] || '2025/2026',
                receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true')
@@ -168,6 +171,7 @@ const App: React.FC = () => {
            parsed.servicesDirectory = dedupe(parsed.servicesDirectory || []);
            parsed.transfers = dedupe(parsed.transfers || []);
            parsed.notifications = dedupe(parsed.notifications || []);
+           parsed.auditLogs = dedupe(parsed.auditLogs || []);
 
            return parsed; 
         } catch (e) {} 
@@ -188,11 +192,10 @@ const App: React.FC = () => {
   }, [state.people.length, selectedPlayer]);
 
   const derivedState = React.useMemo(() => {
-    const isAcademyCat = (c: string) => c.includes('أكاديمية') || c.includes('الأكاديمية');
-    const filterFn = appMode === 'academy' ? isAcademyCat : (c: string) => !isAcademyCat(c);
+    const isClubCat = (c?: string) => !(c || '').includes('أكاديمية') && !(c || '').includes('الأكاديمية');
 
     const categoriesList = state.categories || ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'];
-    const filteredCategories = categoriesList.filter(filterFn);
+    const filteredCategories = categoriesList.filter(isClubCat);
     
     // فلترة الأفراد حسب الموسم النشط
     // دمج مصفوفة المواسم وحقل الموسم النصي بدون أي تكرار لضمان ظهور العضو في كافة مواسمه المقيد بها
@@ -218,16 +221,15 @@ const App: React.FC = () => {
 
     return {
       ...state,
-      appMode,
       categories: filteredCategories,
       people: (state.people || [])
-        .filter(p => !p.category || p.category.split(',').some(c => filterFn(c.trim())))
+        .filter(p => !p.category || p.category.split(',').some(c => isClubCat(c.trim())))
         .filter(personBelongsToActiveSeason),
-      sessions: (state.sessions || []).filter(s => filterFn(s.category)),
-      matches: (state.matches || []).filter(m => filterFn(m.category)),
-      warehouse: (state.warehouse || []).filter(w => !w.category || w.category === 'المخزن العام' || filterFn(w.category)),
-      tacticalPlans: (state.tacticalPlans || []).filter(t => filterFn(t.category)),
-      tournaments: (state.tournaments || []).filter(t => filterFn(t.category)),
+      sessions: (state.sessions || []).filter(s => isClubCat(s.category)),
+      matches: (state.matches || []).filter(m => isClubCat(m.category)),
+      warehouse: (state.warehouse || []).filter(w => !w.category || w.category === 'المخزن العام' || isClubCat(w.category)),
+      tacticalPlans: (state.tacticalPlans || []).filter(t => isClubCat(t.category)),
+      tournaments: (state.tournaments || []).filter(t => isClubCat(t.category)),
       technicalReports: state.technicalReports || [],
       servicesDirectory: state.servicesDirectory || [],
       transfers: state.transfers || [],
@@ -239,8 +241,9 @@ const App: React.FC = () => {
       tournamentTeams: state.tournamentTeams || [],
       tournamentStageTeams: state.tournamentStageTeams || [],
       tournamentMatches: state.tournamentMatches || [],
+      auditLogs: state.auditLogs || [],
     };
-  }, [state, appMode]);
+  }, [state]);
 
   const addNotify = useCallback((message: string, type: AppNotification['type'] = 'info') => {
     const id = generateUUID();
@@ -254,6 +257,7 @@ const App: React.FC = () => {
     try {
       const isManager = user.role === 'مدير';
       const isWarehouse = user.role === 'أمين مستودع' || user.role === 'مسؤول تجهيزات';
+      const isEquipmentOfficer = user.role === 'مسؤول تجهيزات';
       const isMedic = user.role === 'معالج';
       const cat = user.restrictedCategory;
 
@@ -262,7 +266,9 @@ const App: React.FC = () => {
       let sessionsQ = supabase.from('sessions').select('*');
       let attendanceQ = supabase.from('attendance').select('*');
       let warehouseQ = supabase.from('warehouse').select('*');
-      let usersQ = supabase.from('app_users').select('*');
+      let usersQ = isManager 
+        ? supabase.from('app_users').select('id, username, role, restrictedCategory, created_at')
+        : supabase.from('app_users').select('id, username, role, restrictedCategory').limit(0);
       let injuriesQ = supabase.from('injuries').select('*');
       let tacticalQ = supabase.from('tactical_plans').select('*');
       let categoriesQ = supabase.from('categories').select('*');
@@ -370,8 +376,11 @@ const App: React.FC = () => {
            injuriesQ = injuriesQ.in('category', categoriesArray);
         }
         
-        if (isWarehouse || (!isWarehouse && !isMedic && !isPlayer && !isParent)) {
-          // المستودع يرى فئاته + المخزن العام
+        if (isWarehouse && isEquipmentOfficer) {
+          // مسؤول التجهيزات يرى فئاته المحددة فقط
+          warehouseQ = warehouseQ.in('category', categoriesArray);
+        } else if (!isWarehouse && !isMedic && !isPlayer && !isParent) {
+          // باقي الأدوار المقيدة بفئة ترى فئتها + المخزن العام
           const warehouseAllowed = [...categoriesArray, 'المخزن العام'];
           warehouseQ = warehouseQ.in('category', warehouseAllowed);
         }
@@ -391,12 +400,29 @@ const App: React.FC = () => {
         }
       };
 
-      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq, tReportsReq, transfersReq] = await Promise.all([
+      const safeAuditFetch = async () => {
+        if (!isManager) return { data: [], error: null };
+        try {
+          const res = await safeFetch(
+            supabase.from('audit_logs').select('*').order('createdAt', { ascending: false }).limit(500)
+          );
+          if (res?.error) {
+            const retry = await safeFetch(supabase.from('audit_logs').select('*').limit(500));
+            if (retry?.error) return { data: [], error: null };
+            return retry;
+          }
+          return res;
+        } catch {
+          return { data: [], error: null };
+        }
+      };
+
+      const [p, m, s, a, w, u, inj, tac, catsReq, toursReq, tStagesReq, tTeamsReq, tSTeamsReq, tMatchesReq, servicesReq, tReportsReq, transfersReq, auditReq] = await Promise.all([
         safeFetch(peopleQ), safeFetch(matchesQ), safeFetch(sessionsQ), safeFetch(attendanceQ), 
         safeFetch(warehouseQ), safeFetch(usersQ), safeFetch(injuriesQ), safeFetch(tacticalQ), 
         safeFetch(categoriesQ), safeFetch(tournamentsQ), safeFetch(tourStagesQ), safeFetch(tourTeamsQ), 
         safeFetch(tourSTeamsQ), safeFetch(tourMatchesQ), safeFetch(servicesQ), safeFetch(technicalReportsQ),
-        safeFetch(transfersQ)
+        safeFetch(transfersQ), safeAuditFetch()
       ]);
 
       const playersCount = p.data?.filter((person: any) => person.role === 'لاعب').length || 0;
@@ -404,11 +430,17 @@ const App: React.FC = () => {
       const fetchedCats = catsReq.data?.map((c: any) => c.name) || [];
 
       const dedupe = (arr: any[]) => arr ? Array.from(new Map(arr.map(item => [item.id, item])).values()) : [];
+      const localEditors = getLocalWarehouseEditors();
 
       setState(prev => {
         const rawPeopleList = (Array.isArray(p.data) && p.data.length > 0) ? p.data : (prev.people || []);
+        const safeMatchesList = (!m.error && Array.isArray(m.data)) ? m.data : (prev.matches || []);
+        const safeSessionsList = (!s.error && Array.isArray(s.data)) ? s.data : (prev.sessions || []);
+        const safeAttendanceList = (!a.error && Array.isArray(a.data)) ? a.data : (prev.attendance || []);
         return {
         ...prev,
+        seasons: (prev.seasons && prev.seasons.length > 0) ? prev.seasons : defaultEmptyState.seasons,
+        activeSeason: prev.activeSeason || '2025/2026',
         currentUser: user,
         people: dedupe(rawPeopleList).map((person: any) => {
           const rawSeasons: string[] = [
@@ -421,7 +453,6 @@ const App: React.FC = () => {
 
           return {
             ...person,
-            isAcademyPlayer: false, // جميع اللاعبين والكوادر هم لاعبو/كوادر نادي
             seasons: finalSeasons,
             season: latestSeason,
             receivedKit: Boolean(person.receivedKit === true || String(person.receivedKit) === 'true'),
@@ -432,18 +463,24 @@ const App: React.FC = () => {
             idCardBackImage: person.idCardBackImage || person.id_card_back_image || null,
             passportImage: person.passportImage || person.passport_image || null,
             photo: person.photo || null,
+            medicalCard: getPlayerMedicalCard(person),
+            availabilityStatus: person.availabilityStatus || getPlayerMedicalCard(person).availabilityStatus || 'available'
           };
         }),
-        matches: dedupe(m.data).map((match: any) => ({
+        matches: dedupe(safeMatchesList).map((match: any) => ({
           ...match,
           isCompleted: Boolean(match.isCompleted === true || String(match.isCompleted) === 'true'),
           isFinal: Boolean(match.isFinal === true || String(match.isFinal) === 'true')
         })),
-        sessions: dedupe(s.data),
-        attendance: dedupe(a.data),
-        warehouse: dedupe(w.data),
+        sessions: dedupe(safeSessionsList),
+        attendance: dedupe(safeAttendanceList),
+        warehouse: dedupe(w.data).map((item: any) => ({
+          ...item,
+          lastModifiedBy: item.lastModifiedBy || localEditors[item.id]?.lastModifiedBy || undefined,
+          lastUpdated: item.lastUpdated || localEditors[item.id]?.lastUpdated || undefined
+        })),
         users: dedupe(u.data),
-        injuries: dedupe(inj.data),
+        injuries: dedupe(inj.data).map(decodeInjuryRecord),
         tacticalPlans: dedupe(tac.data),
         categories: fetchedCats.length > 0 ? fetchedCats : prev.categories,
         // اختيار أول فئة فقط للفلتر الافتراضي في الواجهة
@@ -475,10 +512,13 @@ const App: React.FC = () => {
             content: radar.content || r.notes || ''
           };
         }),
-        transfers: dedupe(transfersReq.data)
+        transfers: dedupe(transfersReq.data),
+        auditLogs: isManager ? getMergedAuditLogs(!auditReq?.error ? auditReq.data : []) : []
       }; });
-      setSyncStatus('synced');
-      if (!silent) {
+      setSyncStatus((m.error || s.error) ? 'error' : 'synced');
+      if (m.error || s.error) {
+        addNotify('تعذر مزامنة بعض سجلات المباريات أو التدريبات من السحابة', 'error');
+      } else if (!silent) {
         addNotify(`تم التحديث: ${playersCount} لاعب، ${staffCount} كادر`, 'success');
       }
     } catch (e) {
@@ -506,6 +546,15 @@ const App: React.FC = () => {
           setSyncStatus('synced');
           return true;
         }
+      }
+      if (table === 'injuries') {
+        const items = Array.isArray(data) ? data : [data];
+        const prepared = items.map(encodeInjuryToDbPayload);
+        const payload = Array.isArray(data) ? prepared : prepared[0];
+        const { error } = await supabase.from(table).upsert(payload);
+        if (error) throw error;
+        setSyncStatus('synced');
+        return true;
       }
       if (table === 'tournament_matches') {
         const items = Array.isArray(data) ? data : [data];
@@ -569,13 +618,39 @@ const App: React.FC = () => {
         setSyncStatus('synced');
         return true;
       }
+      if (table === 'warehouse') {
+        const items = Array.isArray(data) ? data : [data];
+        items.forEach((it: any) => {
+          if (it?.id && it?.lastModifiedBy) {
+            saveLocalWarehouseEditor(it.id, it.lastModifiedBy, it.lastUpdated || new Date().toISOString());
+          }
+        });
+        const { error } = await supabase.from(table).upsert(data);
+        if (error) {
+          if (error.message?.includes('column') || error.code === 'PGRST204') {
+            const stripped = items.map((it: any) => {
+              const c = { ...it };
+              delete c.lastModifiedBy;
+              return c;
+            });
+            const retryPayload = Array.isArray(data) ? stripped : stripped[0];
+            const { error: retryErr } = await supabase.from(table).upsert(retryPayload);
+            if (retryErr) throw retryErr;
+            setSyncStatus('synced');
+            return true;
+          }
+          throw error;
+        }
+        setSyncStatus('synced');
+        return true;
+      }
       const { error } = await supabase.from(table).upsert(data);
       if (error) throw error;
       setSyncStatus('synced');
       return true;
     } catch (e: any) {
       setSyncStatus('error');
-      addNotify(`خطأ مزامنة: ${e.message}`, 'error');
+      addNotify(`خطأ مزامنة: ${e?.message || 'خطأ غير متوقع'}`, 'error');
       return false;
     }
   }, [addNotify]);
@@ -613,7 +688,8 @@ const App: React.FC = () => {
           'tournament_matches': 'tournamentMatches',
           'services_directory': 'servicesDirectory',
           'transfers': 'transfers',
-          'technical_reports': 'technicalReports'
+          'technical_reports': 'technicalReports',
+          'audit_logs': 'auditLogs'
         };
 
         const stateKey = tableMap[table];
@@ -625,9 +701,21 @@ const App: React.FC = () => {
           
           const isManager = user.role === 'مدير';
           const isWarehouse = user.role === 'أمين مستودع' || user.role === 'مسؤول تجهيزات';
+          const isEquipmentOfficer = user.role === 'مسؤول تجهيزات';
           const isMedic = user.role === 'معالج';
           const cat = user.restrictedCategory;
-          const allowedCategories = cat ? String(cat).split(',').filter(Boolean) : null;
+          const allowedCategories = cat ? String(cat).split(',').map(c => c.trim()).filter(Boolean) : null;
+
+          if (table === 'audit_logs') {
+            if (!isManager) return prev;
+            if (payload.eventType === 'INSERT') {
+              const newItem = payload.new as any;
+              const currentList = prev.auditLogs || [];
+              if (currentList.some(item => item.id === newItem.id)) return prev;
+              return { ...prev, auditLogs: [newItem, ...currentList].slice(0, 500) };
+            }
+            return prev;
+          }
 
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newItem = payload.new as any;
@@ -635,16 +723,15 @@ const App: React.FC = () => {
             // فلترة الصلاحيات
             if (!isManager) {
               if (isWarehouse) {
-                if (table !== 'warehouse_items' && table !== 'app_users' && table !== 'categories') return prev;
-                if (allowedCategories && table === 'warehouse_items') {
-                  const warehouseAllowed = [...allowedCategories, 'المخزن العام'];
-                  if (!warehouseAllowed.includes(newItem.category)) return prev;
+                if (table !== 'warehouse' && table !== 'warehouse_items' && table !== 'app_users' && table !== 'categories') return prev;
+                if (isEquipmentOfficer && allowedCategories && (table === 'warehouse' || table === 'warehouse_items')) {
+                  if (!allowedCategories.includes(newItem.category)) return prev;
                 }
               } else if (isMedic) {
-                if (table !== 'injury_records' && table !== 'people') return prev;
+                if (table !== 'injuries' && table !== 'injury_records' && table !== 'people') return prev;
                 if (allowedCategories && newItem.category && !allowedCategories.includes(newItem.category)) return prev;
               } else {
-                if (table === 'warehouse_items' || table === 'app_users') return prev;
+                if (table === 'warehouse' || table === 'warehouse_items' || table === 'app_users') return prev;
                 if (allowedCategories && newItem.category && !allowedCategories.includes(newItem.category)) return prev;
               }
             }
@@ -730,6 +817,7 @@ const App: React.FC = () => {
             const minimalState = {
               currentUser: state.currentUser,
               activeSeason: state.activeSeason,
+              seasons: (state.seasons && state.seasons.length > 0) ? state.seasons : defaultEmptyState.seasons,
               categories: state.categories,
               people: state.people.map(p => ({
                 id: p.id,
@@ -762,7 +850,33 @@ const App: React.FC = () => {
     const inputU = u.trim();
     const inputP = p.trim();
 
-    // 1. If player login mode selected OR explicit check
+    // 1. استدعاء مسار المصادقة المحمي على الخادم (محمي بـ Rate Limiting وبدون كشف كلمات السر)
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: inputU, password: inputP, isPlayerLogin })
+      });
+
+      if (resp.status === 429) {
+        const errData = await resp.json().catch(() => ({}));
+        addNotify(errData.error || 'تم تجاوز الحد المسموح لمحاولات تسجيل الدخول. يرجى الانتظار 5 دقائق.', 'error');
+        setSyncStatus('error');
+        return null;
+      }
+
+      if (resp.ok) {
+        const resData = await resp.json();
+        if (resData.success && resData.user) {
+          fetchAllData(resData.user, false);
+          return resData.user;
+        }
+      }
+    } catch (netErr) {
+      console.warn('Backend login route unavailable, falling back to direct client check:', netErr);
+    }
+
+    // 2. التحقق الاحتياطي للعميل في حال تعذر الاتصال بالخادم
     if (isPlayerLogin) {
       try {
         // Query people with role = 'لاعب' and matching name
@@ -805,13 +919,14 @@ const App: React.FC = () => {
       return null;
     }
 
-    if ((inputU === 'عزت' || inputU.toUpperCase() === 'IZZAT') && p === '123') {
-      const rootUser: AppUser = { id: 'root', username: 'عزت عامر الشيخة', role: 'مدير' };
-      fetchAllData(rootUser, false);
-      return rootUser;
-    }
     try {
-      const { data } = await supabase.from('app_users').select('*').eq('username', inputU).eq('password', p).maybeSingle();
+      const { data } = await supabase
+        .from('app_users')
+        .select('id, username, role, restrictedCategory')
+        .eq('username', inputU)
+        .eq('password', inputP)
+        .maybeSingle();
+
       if (data) {
         fetchAllData(data, false);
         return data;
@@ -856,7 +971,7 @@ const App: React.FC = () => {
       const { data: parentData } = await supabase.from('people').select(PEOPLE_LIGHTWEIGHT_SELECT).eq('phone', inputU).limit(1);
       if (parentData && parentData.length > 0) {
         const parentRecord = parentData[0];
-        if (parentRecord.birthDate && parentRecord.birthDate.substring(0, 4) === p.trim()) {
+        if (parentRecord.birthDate && parentRecord.birthDate.substring(0, 4) === inputP) {
           const parentUser: AppUser = {
             id: parentRecord.id,
             username: parentRecord.phone,
@@ -933,6 +1048,8 @@ const App: React.FC = () => {
     const handlePlayerLogout = () => {
       setState({
         currentUser: null,
+        activeSeason: '2025/2026',
+        seasons: defaultEmptyState.seasons,
         categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'],
         people: [],
         sessions: [],
@@ -951,6 +1068,7 @@ const App: React.FC = () => {
         notifications: [],
         servicesDirectory: [],
         transfers: [],
+        auditLogs: [],
       });
       localStorage.clear();
     };
@@ -981,45 +1099,62 @@ const App: React.FC = () => {
     if (!isSidebarOpen) setSidebarOpen(true);
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
-    { id: 'notifications', label: 'إشعارات الأهالي', icon: Bell },
-    { id: 'parent-portal', label: 'بوابة الأهل', icon: LayoutDashboard },
-    { 
-      id: 'personnel', label: 'شؤون الأفراد', icon: Users, isGroup: true,
-      items: [
-        { id: 'squad', label: 'اللاعبين', icon: Users },
-        { id: 'staff', label: 'المدربين والكوادر', icon: Briefcase },
-      ]
-    },
-    {
-      id: 'sports_activity', label: 'النشاط الرياضي', icon: Trophy, isGroup: true,
-      items: [
-        { id: 'training', label: 'التدريبات', icon: Calendar },
-        { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
-        { id: 'matches', label: 'المباريات', icon: Trophy },
-        { id: 'baraaem-matches', label: 'مباريات البراعم', icon: Baby },
-        { id: 'tournaments', label: 'البطولات', icon: Medal },
-      ]
-    },
-    {
-      id: 'logistics', label: 'اللوجستيات والطبابة', icon: Package, isGroup: true,
-      items: [
-        { id: 'medical', label: 'الطبابة', icon: HeartPulse },
-        { id: 'transfers', label: 'الانتقالات والإعارة', icon: RefreshCw },
-        { id: 'services', label: 'خدمات', icon: MapPin },
+  const navItems = (state.currentUser?.role === 'أمين مستودع' || state.currentUser?.role === 'مسؤول تجهيزات')
+    ? [
+        { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
         { id: 'warehouse', label: 'المستودع', icon: Package },
       ]
-    },
-    { id: 'settings', label: 'الإعدادات', icon: Settings },
-  ].filter(item => {
-    const role = state.currentUser?.role;
-    if (role === 'مدير') return item.id !== 'parent-portal';
-    if (role === 'ولي أمر') return ['parent-portal'].includes(item.id);
-    if (role === 'مسؤول تجهيزات') return ['warehouse', 'dashboard'].includes(item.id);
-    if (item.isGroup) return true;
-    return item.id !== 'parent-portal' && item.id !== 'settings';
-  });
+    : [
+        { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
+        { id: 'notifications', label: 'إشعارات الأهالي', icon: Bell },
+        { id: 'parent-portal', label: 'بوابة الأهل', icon: LayoutDashboard },
+        { 
+          id: 'personnel', label: 'شؤون الأفراد', icon: Users, isGroup: true,
+          items: [
+            { id: 'squad', label: 'اللاعبين', icon: Users },
+            { id: 'staff', label: 'المدربين والكوادر', icon: Briefcase },
+          ]
+        },
+        {
+          id: 'sports_activity', label: 'النشاط الرياضي', icon: Trophy, isGroup: true,
+          items: [
+            { id: 'training', label: 'التدريبات', icon: Calendar },
+            { id: 'attendance', label: 'الحضور', icon: ClipboardCheck },
+            { id: 'matches', label: 'المباريات', icon: Trophy },
+            { id: 'baraaem-matches', label: 'مباريات البراعم', icon: Baby },
+            { id: 'tournaments', label: 'البطولات', icon: Medal },
+          ]
+        },
+        {
+          id: 'logistics', label: 'اللوجستيات والطبابة', icon: Package, isGroup: true,
+          items: [
+            { id: 'medical', label: 'الطبابة', icon: HeartPulse },
+            { id: 'transfers', label: 'الانتقالات والإعارة', icon: RefreshCw },
+            { id: 'services', label: 'خدمات', icon: MapPin },
+            { id: 'warehouse', label: 'المستودع', icon: Package },
+          ]
+        },
+        { id: 'audit-log', label: 'سجل التعديلات والحسابات', icon: History },
+        { id: 'settings', label: 'الإعدادات', icon: Settings },
+      ].filter(item => {
+        const role = state.currentUser?.role;
+        if (role === 'مدير') return item.id !== 'parent-portal';
+        if (role === 'ولي أمر') return ['parent-portal'].includes(item.id);
+        if (item.isGroup) return true;
+        return item.id !== 'parent-portal' && item.id !== 'settings' && item.id !== 'audit-log';
+      });
+
+  const activeTabTitle = (() => {
+    for (const n of navItems as any[]) {
+      if (n.id === activeTab) return n.label;
+      if (n.items) {
+        const sub = n.items.find((s: any) => s.id === activeTab);
+        if (sub) return sub.label;
+      }
+    }
+    if (activeTab === 'report') return 'الملف الفني والسجل الرقمي';
+    return '';
+  })();
   return (
     <div className="flex h-[100dvh] bg-slate-50 text-slate-900 font-['IBM_Plex_Sans_Arabic'] overflow-hidden print:h-auto print:block print:overflow-visible" dir="rtl">
       <aside className={`${isSidebarOpen ? 'translate-x-0 w-72' : 'translate-x-full lg:translate-x-0 w-72 lg:w-24'} bg-blue-900 border-l border-blue-800 transition-all duration-300 flex flex-col z-[100] shadow-2xl fixed inset-y-0 right-0 lg:static h-full overflow-hidden print:hidden`}>
@@ -1027,15 +1162,6 @@ const App: React.FC = () => {
            <ClubLogo size={45} />
            {isSidebarOpen && <span className="text-xl font-black text-white tracking-tight whitespace-nowrap">EAGLE OS</span>}
         </div>
-        
-        {isSidebarOpen && (
-          <div className="px-4 mb-4 shrink-0 animate-in fade-in">
-            <div className="flex bg-blue-950/50 rounded-xl p-1 text-[11px] font-bold">
-              <button onClick={() => { setAppMode('club'); setActiveTab('dashboard'); }} className={`flex-1 rounded-lg py-2 transition-all ${appMode === 'club' ? 'bg-orange-500 text-white shadow-lg' : 'text-blue-200 hover:text-white hover:bg-white/5'}`}>النادي</button>
-              <button onClick={() => { setAppMode('academy'); setActiveTab('dashboard'); }} className={`flex-1 rounded-lg py-2 transition-all ${appMode === 'academy' ? 'bg-orange-500 text-white shadow-lg' : 'text-blue-200 hover:text-white hover:bg-white/5'}`}>الأكاديمية الصيفية</button>
-            </div>
-          </div>
-        )}
 
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map(item => {
@@ -1103,7 +1229,7 @@ const App: React.FC = () => {
                  </div>
                )}
              </div>
-             {isSidebarOpen && (
+             {isSidebarOpen && canEditSelfProfile(state.currentUser) && (
                <button
                  type="button"
                  onClick={handleOpenSelfProfile}
@@ -1125,7 +1251,7 @@ const App: React.FC = () => {
             {isSidebarOpen && <span>تثبيت التطبيق 📲</span>}
           </button>
           <button onClick={() => { 
-              setState({ currentUser: null, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'], people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [], attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [], });
+              setState({ currentUser: null, activeSeason: '2025/2026', seasons: defaultEmptyState.seasons, categories: ['الرجال', 'الشباب', 'الناشئين', 'الأشبال', 'البراعم'], people: [], sessions: [], matches: [], warehouse: [], technicalReports: [], tournaments: [], tournamentStages: [], tournamentTeams: [], tournamentStageTeams: [], tournamentMatches: [], attendance: [], injuries: [], tacticalPlans: [], users: [], notifications: [], servicesDirectory: [], transfers: [], auditLogs: [], });
               localStorage.clear();
             }} 
             className="w-full p-3 rounded-xl text-white bg-red-600/30 hover:bg-red-600 transition-all flex items-center justify-center gap-3">
@@ -1144,26 +1270,28 @@ const App: React.FC = () => {
              </button>
              <div className="flex items-center gap-3">
                <ClubLogo size={40} className="" />
-               <h1 className="text-sm md:text-xl font-bold text-blue-900 border-r-2 border-slate-200 pr-3 md:pr-4 mx-2 md:mx-0">{navItems.find(n => n.id === activeTab)?.label}</h1>
+               <h1 className="text-sm md:text-xl font-bold text-blue-900 border-r-2 border-slate-200 pr-3 md:pr-4 mx-2 md:mx-0">{activeTabTitle}</h1>
              </div>
           </div>
           <div className="flex items-center gap-2">
-             <button
-               type="button"
-               onClick={handleOpenSelfProfile}
-               title="تعديل ملفي الشخصي وبياناتي"
-               className="p-2 md:px-3 md:py-2 bg-slate-100 hover:bg-slate-200 text-blue-900 rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 border border-slate-200"
-             >
-               <Edit2 size={14} />
-               <span className="hidden sm:inline">تعديل بياناتي</span>
-             </button>
+             {canEditSelfProfile(state.currentUser) && (
+               <button
+                 type="button"
+                 onClick={handleOpenSelfProfile}
+                 title="تعديل ملفي الشخصي وبياناتي"
+                 className="p-2 md:px-3 md:py-2 bg-slate-100 hover:bg-slate-200 text-blue-900 rounded-xl font-bold text-[10px] md:text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 border border-slate-200"
+               >
+                 <Edit2 size={14} />
+                 <span className="hidden sm:inline">تعديل بياناتي</span>
+               </button>
+             )}
              <select
                className="bg-slate-100 text-blue-900 px-2 md:px-3 py-2 md:py-2.5 rounded-xl font-bold text-[10px] md:text-xs outline-none border border-slate-200"
                value={state.activeSeason || '2025/2026'}
-               onChange={(e) => setState({ ...state, activeSeason: e.target.value })}
+               onChange={(e) => setState(prev => ({ ...prev, activeSeason: e.target.value }))}
              >
                <option value="الكل">جميع المواسم (الكل)</option>
-               {state.seasons?.map(s => (
+               {(state.seasons && state.seasons.length > 0 ? state.seasons : defaultEmptyState.seasons).map(s => (
                  <option key={s} value={s}>موسم {s}</option>
                ))}
              </select>
@@ -1208,7 +1336,8 @@ const App: React.FC = () => {
                   {activeTab === 'matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="regular" />}
                   {activeTab === 'baraaem-matches' && <MatchPlanner state={derivedState} setState={updateState as any} defaultSelectedId={selectedMatchId} getSuspension={getPlayerSuspension} addLog={addNotify} viewMode="baraaem" />}
                   {activeTab === 'warehouse' && <WarehouseManagement state={derivedState} setState={updateState} addLog={addNotify} syncToCloud={syncToCloud} />}
-                  {activeTab === 'settings' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
+                  {activeTab === 'audit-log' && state.currentUser.role === 'مدير' && <AuditLogView state={state} />}
+                  {activeTab === 'settings' && state.currentUser.role === 'مدير' && <SettingsView state={derivedState} setState={updateState as any} addLog={addNotify} syncToCloud={syncToCloud} />}
                   {activeTab === 'report' && (
                     <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي" onReset={() => setActiveTab(previousTab)}>
                       <PlayerReport player={selectedPlayer} state={derivedState} setState={updateState} onBack={() => setActiveTab(previousTab)} addLog={addNotify} />
@@ -1223,9 +1352,11 @@ const App: React.FC = () => {
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-[72px] bg-white border-t border-slate-200 flex items-center justify-around px-2 z-[80] shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
            {[
              { id: 'dashboard', icon: LayoutDashboard, label: 'الرئيسية' },
-             { id: 'notifications', icon: Bell, label: 'إشعارات' },
+             ...((!isAnyWarehouseRole(state.currentUser) && !isMedicRole(state.currentUser))
+               ? [{ id: 'notifications', icon: Bell, label: 'إشعارات' }]
+               : (isAnyWarehouseRole(state.currentUser) ? [{ id: 'warehouse', icon: Package, label: 'المستودع' }] : [])),
              { id: 'menu', icon: isSidebarOpen ? X : Menu, label: 'القائمة', onClick: () => setSidebarOpen(!isSidebarOpen) },
-           ].map(item => {
+           ].map((item: any) => {
                const isNotifications = item.id === 'notifications';
                const pendingCount = isNotifications ? (state.technicalReports || []).filter(r => ['parent_message', 'pickup_permission', 'absence_request'].includes(r.type) && r.rating === 0).length : 0;
                const isActive = item.id === 'menu' ? isSidebarOpen : activeTab === item.id;
@@ -1245,6 +1376,7 @@ const App: React.FC = () => {
           person={editingSelfPerson}
           isOpen={Boolean(editingSelfPerson)}
           onClose={() => setEditingSelfPerson(null)}
+          currentUserRole={state.currentUser.role}
           onSaved={(updated) => {
             setState(prev => ({
               ...prev,
@@ -1252,6 +1384,14 @@ const App: React.FC = () => {
                 ? prev.people.map(p => p.id === updated.id ? updated : p)
                 : [updated, ...prev.people]
             }));
+            recordAuditLog({
+              user: state.currentUser,
+              actionType: 'تعديل',
+              section: 'الملف الشخصي',
+              targetName: updated.name,
+              details: 'تحديث البيانات الشخصية',
+              setState: updateState
+            });
             addNotify('تم حفظ وتحديث بياناتك الشخصية بنجاح!', 'success');
           }}
           isSelf={true}

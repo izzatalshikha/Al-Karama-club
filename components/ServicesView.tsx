@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { AppState, DirectoryService, ServiceCategory } from '../types';
 import { generateUUID } from '../App';
 import { MapPin, Phone, Info, Star, Plus, Trash2, Building, Utensils, Hospital, Edit3 } from 'lucide-react';
+import { canDeleteRecords, canEditSportsData } from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface ServicesViewProps {
   state: AppState;
@@ -30,9 +32,11 @@ const ServicesView: React.FC<ServicesViewProps> = ({ state, setState, addLog, sy
     name: '', address: '', phone: '', description: '', features: ''
   });
 
-  const canEdit = state.currentUser?.role === 'مدير' || state.currentUser?.role === 'مدرب';
+  const canEdit = canEditSportsData(state.currentUser);
+  const canDelete = canDeleteRecords(state.currentUser);
 
   const handleSave = async () => {
+    if (!canEdit) return;
     if (!formData.name?.trim() || !formData.address?.trim()) {
       addLog('الرجاء إدخال اسم وعنوان المكان على الأقل', 'error');
       return;
@@ -45,6 +49,14 @@ const ServicesView: React.FC<ServicesViewProps> = ({ state, setState, addLog, sy
         ...prev,
         servicesDirectory: (prev.servicesDirectory || []).map(s => s.id === editingId ? updatedSvc : s)
       }));
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'تعديل',
+        section: 'دليل الخدمات والمرافق',
+        targetName: updatedSvc.name,
+        details: `${updatedSvc.category} • ${updatedSvc.governorate}`,
+        setState: setState as any
+      });
       setEditingId(null);
       addLog('تم تحديث الخدمة بنجاح', 'success');
     } else {
@@ -64,6 +76,14 @@ const ServicesView: React.FC<ServicesViewProps> = ({ state, setState, addLog, sy
         ...prev,
         servicesDirectory: [...(prev.servicesDirectory || []), newSvc]
       }));
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'إضافة',
+        section: 'دليل الخدمات والمرافق',
+        targetName: newSvc.name,
+        details: `${newSvc.category} • ${newSvc.governorate}`,
+        setState: setState as any
+      });
       addLog('تمت إضافة الخدمة بنجاح', 'success');
     }
 
@@ -72,6 +92,7 @@ const ServicesView: React.FC<ServicesViewProps> = ({ state, setState, addLog, sy
   };
 
   const handleDelete = async (id: string, name: string) => {
+    if (!canDelete) return;
     if (!confirm(`هل أنت متأكد من حذف ${name}؟`)) return;
     
     // In a real app we might call syncToCloud to delete, but for now we'll just remove from state
@@ -204,7 +225,9 @@ const ServicesView: React.FC<ServicesViewProps> = ({ state, setState, addLog, sy
                   {canEdit && (
                     <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => openEdit(svc)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Edit3 size={16} /></button>
-                      <button onClick={() => handleDelete(svc.id, svc.name)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={16} /></button>
+                      {canDelete && (
+                        <button onClick={() => handleDelete(svc.id, svc.name)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={16} /></button>
+                      )}
                     </div>
                   )}
                 </div>

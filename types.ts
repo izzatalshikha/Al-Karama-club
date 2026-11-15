@@ -51,6 +51,31 @@ export interface TournamentMatch {
   leg?: 'ذهاب' | 'إياب'; // مرحلة الذهاب أو مرحلة الإياب
 }
 
+export type RTPStage = 'clinic' | 'gym' | 'pitch' | 'partial' | 'cleared';
+export type InjuryMechanism = 'contact' | 'non_contact';
+
+export interface TreatmentSession {
+  id: string;
+  date: string;
+  treatment: string;
+  medicName: string;
+  notes?: string;
+}
+
+export interface PlayerMedicalCard {
+  bloodType?: string;
+  allergies?: string;
+  chronicConditions?: string;
+  cardioScreeningDate?: string;
+  cardioStatus?: 'سليم' | 'يحتاج متابعة' | 'غير مفحوص';
+  tueDetails?: string;
+  ecgReportUrl?: string;
+  bloodPressure?: string;
+  restingHeartRate?: string;
+  availabilityStatus?: 'available' | 'modified' | 'unavailable';
+  availabilityNotes?: string;
+}
+
 export interface InjuryRecord {
   id: string;
   personId: string;
@@ -61,6 +86,13 @@ export interface InjuryRecord {
   expectedReturn: string;
   status: 'تأهيل' | 'علاج مكثف' | 'تعافى';
   notes: string;
+  rtpStage?: RTPStage;
+  mechanism?: InjuryMechanism;
+  imagingUrls?: string[];
+  imagingType?: 'MRI' | 'Ultrasound' | 'X-Ray' | 'تخطيط قلب' | 'أخرى';
+  doctorNotesToCoach?: string;
+  bodyZone?: string;
+  treatmentsLog?: TreatmentSession[];
 }
 
 export interface TacticalPlan {
@@ -140,7 +172,6 @@ export interface Person {
   registrationDate?: string;
   receivedKit?: boolean;
   kitAmount?: string;
-  isAcademyPlayer?: boolean;
   medicalHistory?: string;
   injuries?: string;
   penalties?: string;
@@ -167,6 +198,8 @@ export interface Person {
   jobTitle?: string;
   weightHistory?: WeightEntry[];
   photo?: string;
+  medicalCard?: PlayerMedicalCard;
+  availabilityStatus?: 'available' | 'modified' | 'unavailable';
 }
 
 export interface WeightEntry {
@@ -266,7 +299,20 @@ export interface WarehouseItem {
   unit: 'قطعة' | 'طقم' | 'كرة' | 'حذاء' | 'أخرى';
   condition: 'جديد' | 'مستعمل' | 'تالف';
   lastUpdated: string;
+  lastModifiedBy?: string;
   notes?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole | string;
+  actionType: 'إضافة' | 'تعديل';
+  section: string;
+  targetName: string;
+  details?: string;
+  createdAt: string;
 }
 
 export interface AppUser {
@@ -305,7 +351,6 @@ export interface TransferRequest {
 }
 
 export interface AppState {
-  appMode?: 'club' | 'academy';
   activeSeason: string;
   seasons: string[];
   people: Person[];
@@ -328,4 +373,5 @@ export interface AppState {
   tournamentMatches: TournamentMatch[];
   servicesDirectory: DirectoryService[];
   transfers: TransferRequest[];
+  auditLogs?: AuditLogEntry[];
 }

@@ -6,6 +6,13 @@ import {
 import { AppState, Tournament, TournamentStage, TournamentTeam, TournamentMatch, TournamentStageTeam } from '../types';
 import { supabase } from '../App';
 import { encodeMatchPitch, decodeMatchPitch } from '../utils/tournamentHelpers';
+import {
+  canDeleteRecords,
+  canEditSportsData,
+  hasCategoryAccess,
+  isManagerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface TournamentsViewProps {
   state: AppState;
@@ -30,16 +37,17 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
   const [newTourType, setNewTourType] = useState('دوري');
 
   const currentUser = state.currentUser;
-  const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
+  const isViewer = !canEditSportsData(currentUser);
   const safeTournaments = state.tournaments || [];
   const filteredTournaments = safeTournaments.filter(t => 
-    state.globalCategoryFilter === 'الكل' || t.category === state.globalCategoryFilter
+    hasCategoryAccess(currentUser, t.category) &&
+    (state.globalCategoryFilter === 'الكل' || t.category === state.globalCategoryFilter)
   );
 
   const activeTour = safeTournaments.find(t => t.id === activeTournamentId);
 
   const handleCreateTournament = async () => {
-    if (!newTourName.trim()) return;
+    if (isViewer || !newTourName.trim()) return;
     const newId = generateId();
     
     // Determine category
@@ -79,6 +87,14 @@ const TournamentsView: React.FC<TournamentsViewProps> = ({ state, setState, sync
         tournaments: [...prev.tournaments, newT],
         tournamentTeams: [...(prev.tournamentTeams || []), newTeam]
       }));
+      await recordAuditLog({
+        user: currentUser,
+        actionType: 'إضافة',
+        section: 'إدارة البطولات',
+        targetName: newT.name,
+        details: `إنشاء بطولة (${newT.type}) لفئة ${newT.category}`,
+        setState: setState as any
+      });
       setNewTourName('');
       setNewTourCategory('');
       setIsCreating(false);
@@ -187,12 +203,14 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
   const teams = (state.tournamentTeams || []).filter(t => t.tournamentId === tour.id);
   const matches = (state.tournamentMatches || []).filter(m => m.tournamentId === tour.id);
 
-  const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
-  const canDelete = state.currentUser?.role === 'مدير' || state.currentUser?.role === 'إداري';
+  const isManager = isManagerRole(state.currentUser);
+  const isViewer = !canEditSportsData(state.currentUser, tour.category);
+  const canDelete = canDeleteRecords(state.currentUser);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleDeleteTournament = async () => {
+    if (!canDelete) return;
     const { error } = await supabase.from('tournaments').delete().eq('id', tour.id);
     if (error) {
       addLog('خطأ في حذف البطولة: ' + error.message, 'error');
@@ -217,22 +235,38 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
   const [newStageIsGroup, setNewStageIsGroup] = useState(true);
 
   const handleAddTeam = async () => {
-    if(!newTeamName.trim()) return;
+    if(isViewer || !newTeamName.trim()) return;
     const nt: TournamentTeam = { id: generateId(), tournamentId: tour.id, name: newTeamName, isOurTeam: newTeamIsOur };
     const success = await syncToCloud('tournament_teams', nt);
     if(success) {
       setState(prev => ({ ...prev, tournamentTeams: [...prev.tournamentTeams, nt] }));
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'إضافة',
+        section: 'إدارة البطولات',
+        targetName: tour.name,
+        details: `إضافة فريق: ${nt.name}`,
+        setState: setState as any
+      });
       setNewTeamName('');
       setNewTeamIsOur(false);
     }
   };
 
   const handleAddStage = async () => {
-    if(!newStageName.trim()) return;
+    if(isViewer || !newStageName.trim()) return;
     const ns: TournamentStage = { id: generateId(), tournamentId: tour.id, name: newStageName, isGroupStage: newStageIsGroup };
     const success = await syncToCloud('tournament_stages', ns);
     if(success) {
       setState(prev => ({ ...prev, tournamentStages: [...prev.tournamentStages, ns] }));
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'إضافة',
+        section: 'إدارة البطولات',
+        targetName: tour.name,
+        details: `إضافة مرحلة/مجموعة: ${ns.name}`,
+        setState: setState as any
+      });
       setNewStageName('');
     }
   };
@@ -346,7 +380,9 @@ const TournamentDetails = ({ tour, state, setState, syncToCloud, addLog, onBack,
 };
 
 const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, addLog, onMatchClick }: any) => {
-  const isViewer = state.currentUser?.role === 'مشاهد' || state.currentUser?.role === 'معالج';
+  const isManager = isManagerRole(state.currentUser);
+  const isViewer = !canEditSportsData(state.currentUser, tour.category);
+  const canDeleteMatch = canDeleteRecords(state.currentUser);
   const canEdit = !isViewer;
 
   // فلاتر التصفية
@@ -462,6 +498,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
 
   // إضافة مباراة جديدة (أو مباراتي ذهاب وإياب معاً)
   const handleAddMatch = async () => {
+    if (isViewer) return;
     if (!t1 || !t2 || t1 === t2) { addLog('يرجى اختيار فريقين مختلفين', 'error'); return; }
     
     const t1Obj = teams.find((tz: any) => tz.id === t1);
@@ -574,6 +611,14 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
       }
 
       setState((prev: any) => ({ ...prev, tournamentMatches: [...prev.tournamentMatches, ...addedMatches] }));
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'إضافة',
+        section: 'مباريات البطولات',
+        targetName: `${tour.name} - ${stage.name}`,
+        details: `${t1Obj?.name || ''} × ${t2Obj?.name || ''} (${isHomeAway ? 'ذهاب وإياب' : matchLeg})`,
+        setState: setState as any
+      });
       setIsAddingMatch(false);
       setT1(''); setT2('');
       setPitch('');
@@ -590,8 +635,13 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
 
   // تسجيل وحفظ النتيجة
   const setScore = async (matchId: string, s1: number, s2: number) => {
+    if (isViewer) return;
     const mm = matches.find((m: any) => m.id === matchId);
     if (!mm) return;
+    if (mm.status === 'ملعوبة' && !isManager) {
+      addLog('تم اعتماد نتيجة هذه المباراة مسبقاً — التعديل متاح للمدير فقط', 'error');
+      return;
+    }
     
     const updatedM = { ...mm, status: 'ملعوبة', team1Score: s1, team2Score: s2 };
     await syncToCloud('tournament_matches', updatedM);
@@ -610,12 +660,27 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
          setState((prev: any) => ({ ...prev, matches: prev.matches.map((mx: any) => mx.id === linkedMatch.id ? upLinked : mx) }));
        }
     }
+    const t1Name = teams.find((tz: any) => tz.id === mm.team1Id)?.name || 'فريق 1';
+    const t2Name = teams.find((tz: any) => tz.id === mm.team2Id)?.name || 'فريق 2';
+    await recordAuditLog({
+      user: state.currentUser,
+      actionType: 'تعديل',
+      section: 'مباريات البطولات',
+      targetName: `${t1Name} × ${t2Name} (${tour.name})`,
+      details: `تثبيت نتيجة المباراة: ${s1} - ${s2}`,
+      setState: setState as any
+    });
     addLog('تم تحديث نتيجة المباراة بنجاح', 'success');
   };
 
   // تعديل بيانات مباراة
   const handleSaveEditMatch = async () => {
-    if (!editingMatch) return;
+    if (!editingMatch || isViewer) return;
+    const original = matches.find((m: any) => m.id === editingMatch.id);
+    if (original?.status === 'ملعوبة' && !isManager) {
+      addLog('تم لعب المباراة واعتمادها — التعديل متاح للمدير فقط', 'error');
+      return;
+    }
     const payload = { ...editingMatch };
     const success = await syncToCloud('tournament_matches', payload);
     if (success) {
@@ -623,6 +688,16 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
         ...prev,
         tournamentMatches: prev.tournamentMatches.map((mx: any) => mx.id === editingMatch.id ? editingMatch : mx)
       }));
+      const t1Name = teams.find((tz: any) => tz.id === editingMatch.team1Id)?.name || 'فريق 1';
+      const t2Name = teams.find((tz: any) => tz.id === editingMatch.team2Id)?.name || 'فريق 2';
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'تعديل',
+        section: 'مباريات البطولات',
+        targetName: `${t1Name} × ${t2Name} (${tour.name})`,
+        details: `تحديث بيانات/نتيجة المباراة (${editingMatch.status})`,
+        setState: setState as any
+      });
       setEditingMatch(null);
       addLog('تم تعديل بيانات المباراة بنجاح', 'success');
     }
@@ -630,6 +705,7 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
 
   // حذف مباراة
   const handleDeleteMatch = async (matchId: string) => {
+    if (!canDeleteMatch) return;
     if (!window.confirm('هل أنت متأكد من حذف هذه المباراة نهائياً؟')) return;
     const mm = matches.find((m: any) => m.id === matchId);
     const { error } = await supabase.from('tournament_matches').delete().eq('id', matchId);
@@ -1237,6 +1313,10 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
                                             <div className="bg-blue-900 text-white px-3.5 py-1 rounded-full text-base font-black tracking-widest shadow-sm">
                                               {t1Score} - {t2Score}
                                             </div>
+                                         ) : isViewer ? (
+                                            <div className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-black">
+                                              قادمة
+                                            </div>
                                          ) : m.linkedMatchId ? (
                                             <button 
                                               onClick={() => onMatchClick && onMatchClick(m.linkedMatchId)} 
@@ -1289,23 +1369,23 @@ const StageView = ({ stage, tour, teams, matches, state, setState, syncToCloud, 
                                                تقرير المباراة
                                             </button>
                                           )}
-                                          {!isViewer && (
-                                            <>
-                                              <button 
-                                                onClick={() => setEditingMatch(m)} 
-                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="تعديل المباراة"
-                                              >
-                                                <Edit2 size={13} />
-                                              </button>
-                                              <button 
-                                                onClick={() => handleDeleteMatch(m.id)} 
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="حذف المباراة"
-                                              >
-                                                <Trash2 size={13} />
-                                              </button>
-                                            </>
+                                          {!isViewer && (isManager || !isPlayed) && (
+                                            <button 
+                                              onClick={() => setEditingMatch(m)} 
+                                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                              title="تعديل المباراة"
+                                            >
+                                              <Edit2 size={13} />
+                                            </button>
+                                          )}
+                                          {canDeleteMatch && (
+                                            <button 
+                                              onClick={() => handleDeleteMatch(m.id)} 
+                                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                              title="حذف المباراة"
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
                                           )}
                                        </div>
                                     </div>

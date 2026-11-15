@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ShieldCheck, CloudUpload, Trash2, Key, Info, UserPlus, X, Edit2, ShieldAlert, Layers, Plus, Database, Lock, Eye, EyeOff } from 'lucide-react';
 import { AppState, AppUser, UserRole, Category } from '../types';
 import { generateUUID, supabase } from '../App';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface SettingsProps {
   state: AppState;
@@ -28,20 +29,38 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
   });
 
   const roles: UserRole[] = ['مدير', 'إداري فئة', 'مشاهد', 'أمين مستودع', 'مسؤول تجهيزات', 'معالج', 'مدرب', 'مساعد مدرب', 'مدرب حراس'];
-  const rolesWithCategory: string[] = ['إداري فئة', 'مشاهد', 'معالج', 'مدرب', 'مساعد مدرب', 'مدرب حراس'];
+  const rolesWithCategory: string[] = ['إداري فئة', 'مشاهد', 'مسؤول تجهيزات', 'معالج', 'مدرب', 'مساعد مدرب', 'مدرب حراس'];
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userFormData.username || !userFormData.password) return alert('يرجى إكمال كافة البيانات المطلوبة');
+    if (!userFormData.username) return alert('يرجى إدخال اسم المستخدم');
+    if (!editingUserId && !userFormData.password) return alert('يرجى إدخال كلمة المرور للمستخدم الجديد');
 
     if (editingUserId) {
-      const updatedUser = { ...state.users.find(u => u.id === editingUserId), ...userFormData } as AppUser;
+      const existingUser = state.users.find(u => u.id === editingUserId);
+      const updatedUser: any = {
+        ...existingUser,
+        username: userFormData.username.trim(),
+        role: userFormData.role as UserRole,
+        restrictedCategory: rolesWithCategory.includes(userFormData.role || '') ? userFormData.restrictedCategory : undefined
+      };
+      if (userFormData.password && userFormData.password.trim()) {
+        updatedUser.password = userFormData.password.trim();
+      }
       const success = await syncToCloud?.('app_users', updatedUser);
       if (success) {
         setState(prev => ({
           ...prev,
           users: prev.users.map(u => u.id === editingUserId ? updatedUser : u)
         }));
+        recordAuditLog({
+          user: currentUser,
+          actionType: 'تعديل',
+          section: 'إدارة الحسابات والصلاحيات',
+          targetName: updatedUser.username,
+          details: `الدور: ${updatedUser.role}${updatedUser.restrictedCategory ? ` | الفئات: ${updatedUser.restrictedCategory}` : ' | صلاحيات شاملة'}`,
+          setState
+        });
         addLog?.('تعديل صلاحية مستخدم', `تم تحديث بيانات المستخدم: ${userFormData.username}`, 'info');
       }
     } else {
@@ -55,6 +74,14 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
       const success = await syncToCloud?.('app_users', newUser);
       if (success) {
         setState(prev => ({ ...prev, users: [...prev.users, newUser] }));
+        recordAuditLog({
+          user: currentUser,
+          actionType: 'إضافة',
+          section: 'إدارة الحسابات والصلاحيات',
+          targetName: newUser.username,
+          details: `الدور: ${newUser.role}${newUser.restrictedCategory ? ` | الفئات: ${newUser.restrictedCategory}` : ' | صلاحيات شاملة'}`,
+          setState
+        });
         addLog?.('إنشاء حساب مستخدم', `تم إنشاء مستخدم جديد بنجاح: ${newUser.username}`, 'success');
       }
     }
@@ -66,10 +93,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
-    let catName = newCatName.trim();
-    if (state.appMode === 'academy' && !catName.startsWith('أكاديمية')) {
-       catName = `أكاديمية - ${catName}`;
-    }
+    const catName = newCatName.trim();
     if (state.categories.includes(catName)) return alert('هذه الفئة موجودة مسبقاً.');
     
     // Update local state early for responsiveness
@@ -80,6 +104,13 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
        await syncToCloud('categories', { name: catName });
     }
     
+    recordAuditLog({
+      user: currentUser,
+      actionType: 'إضافة',
+      section: 'الإعدادات والفئات',
+      targetName: catName,
+      setState
+    });
     addLog?.('إضافة فئة', `تمت إضافة فئة: ${catName}`, 'success');
     setNewCatName('');
   };
@@ -122,7 +153,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                 </h3>
                 <p className="text-xs font-black text-orange-600 mt-2 uppercase tracking-widest drop-shadow-sm">التحكم المركزي الكامل بكافة المستخدمين والوصول</p>
               </div>
-              <button onClick={() => { setEditingUserId(null); setIsUserModalOpen(true); }} className="bg-[#001F3F] text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-3 shadow-xl border-b-4 border-black hover:bg-black transition-all">
+              <button onClick={() => { setEditingUserId(null); setUserFormData({ username: '', role: 'إداري فئة', password: '', restrictedCategory: '' }); setIsUserModalOpen(true); }} className="bg-[#001F3F] text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-3 shadow-xl border-b-4 border-black hover:bg-black transition-all">
                 <UserPlus size={24}/> إنشاء حساب جديد
               </button>
            </div>
@@ -147,7 +178,7 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
                         {user.role}
                       </span>
                       <div className="flex gap-2 shrink-0">
-                         <button onClick={() => { setEditingUserId(user.id); setUserFormData(user); setIsUserModalOpen(true); }} className="p-2 bg-white border-2 border-slate-900 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={16}/></button>
+                         <button onClick={() => { setEditingUserId(user.id); setUserFormData({ ...user, password: '' }); setIsUserModalOpen(true); }} className="p-2 bg-white border-2 border-slate-900 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={16}/></button>
                          {(user.username.toUpperCase() !== 'IZZAT' && user.username !== 'عزت عامر الشيخة') && (
                            <button onClick={() => deleteUser(user.id, user.username)} className="p-2 bg-white border-2 border-slate-900 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
                          )}
@@ -210,10 +241,12 @@ const SettingsView: React.FC<SettingsProps> = ({ state, setState, addLog, syncTo
               </div>
 
               <div className="space-y-2">
-                <label className={labelClass}>كلمة المرور (Secret Code)</label>
+                <label className={labelClass}>
+                  {editingUserId ? 'كلمة المرور الجديدة (اختياري - اتركه فارغاً للاحتفاظ بالحالية)' : 'كلمة المرور (Secret Code)'}
+                </label>
                 <div className="relative">
-                   <input required type={showPassInForm ? "text" : "password"} value={userFormData.password || ''} onChange={e => setUserFormData({ ...userFormData, password: e.target.value })}
-                    className={fieldClass} placeholder="••••••••" />
+                   <input required={!editingUserId} type={showPassInForm ? "text" : "password"} value={userFormData.password || ''} onChange={e => setUserFormData({ ...userFormData, password: e.target.value })}
+                    className={fieldClass} placeholder={editingUserId ? "اتركه فارغاً للاحتفاظ بكلمة المرور الحالية" : "••••••••"} />
                    <button type="button" onClick={() => setShowPassInForm(!showPassInForm)} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-900">
                       {showPassInForm ? <EyeOff size={24}/> : <Eye size={24}/>}
                    </button>

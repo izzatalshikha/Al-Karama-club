@@ -4,6 +4,14 @@ import { Calendar as CalendarIcon, MapPin, Clock, Plus, Trash2, Edit, X, Printer
 import { AppState, TrainingSession, Category, Person, AttendanceRecord, Match } from '../types';
 import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
+import {
+  canDeleteRecords,
+  canEditSportsData,
+  hasCategoryAccess,
+  isCategoryAdminRole,
+  isManagerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface TrainingPlannerProps {
   state: AppState;
@@ -16,11 +24,12 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const currentUser = state.currentUser;
   const restrictedCat = currentUser?.restrictedCategory;
   
-  const isManager = currentUser?.role === 'مدير';
-  const isCatAdmin = currentUser?.role === 'إداري فئة';
-  const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
+  const isManager = isManagerRole(currentUser);
+  const isCatAdmin = isCategoryAdminRole(currentUser);
+  const canSportsEdit = canEditSportsData(currentUser);
+  const isViewer = !canSportsEdit;
   
-  const canModifyConfig = (isManager || isCatAdmin) && !isViewer; 
+  const canModifyConfig = canSportsEdit; 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showPrintView, setShowPrintView] = useState(false);
@@ -51,6 +60,16 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
     if (!formData.date || !formData.time || isViewer || isSaving) return;
 
     const finalCategory = formData.category || (restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'الرجال');
+    if (!canEditSportsData(currentUser, finalCategory)) return;
+
+    if (editingSessionId) {
+      const existing = state.sessions.find(s => s.id === editingSessionId);
+      if (existing?.isCompleted && !isManager) {
+        alert('التمرين مكتمل ومنتهي — لا يمكن تعديله أو إعادة رصده إلا بواسطة المدير.');
+        return;
+      }
+    }
+
     const sessionData = {
       ...formData,
       category: finalCategory,
@@ -58,13 +77,17 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
       pitch: formData.pitch || 'ملعب الكرامة'
     };
 
+    const resolvedSeason = (!state.activeSeason || state.activeSeason === 'الكل')
+      ? (state.seasons?.[0] || '2025/2026')
+      : state.activeSeason;
+
     if (!editingSessionId) {
       const isDuplicate = state.sessions.some(s => 
         s.date === sessionData.date && 
         s.category === sessionData.category && 
         s.time === sessionData.time && 
         s.objective === sessionData.objective &&
-        (!s.season || s.season === state.activeSeason)
+        (!s.season || s.season === resolvedSeason)
       );
       if (isDuplicate) {
         alert('يوجد تمرين مجدول مسبقاً في نفس الوقت والتاريخ والموضوع!');
@@ -82,13 +105,21 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
           ...prev,
           sessions: prev.sessions.map(s => s.id === editingSessionId ? { ...s, ...sessionData } as TrainingSession : s)
         }));
+        await recordAuditLog({
+          user: currentUser,
+          actionType: 'تعديل',
+          section: 'خطة التدريبات',
+          targetName: `${sessionData.objective} (${finalCategory})`,
+          details: `تحديث موعد تمرين بتاريخ ${sessionData.date} الساعة ${sessionData.time}`,
+          setState: setState as any
+        });
         addLog?.('تعديل موعد تمرين', `تم تحديث بيانات تمرين فئة ${finalCategory}`, 'info');
       } else {
         const newSession: TrainingSession = {
           id: generateUUID(),
-...sessionData,
+          ...sessionData,
           category: finalCategory as Category,
-          season: state.activeSeason,
+          season: resolvedSeason,
           date: formData.date || '',
           time: formData.time || '16:00',
           pitch: formData.pitch || 'ملعب الكرامة',
@@ -101,6 +132,14 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
         if (error) { alert('خطأ في الحفظ: ' + error.message); setIsSaving(false); return; }
 
         setState(prev => ({ ...prev, sessions: [newSession, ...prev.sessions] }));
+        await recordAuditLog({
+          user: currentUser,
+          actionType: 'إضافة',
+          section: 'خطة التدريبات',
+          targetName: `${newSession.objective} (${newSession.category})`,
+          details: `جدولة تمرين بتاريخ ${newSession.date} الساعة ${newSession.time}`,
+          setState: setState as any
+        });
         addLog?.('إضافة موعد تمرين', `تمت جدولة تمرين جديد لفئة ${newSession.category}`, 'info');
       }
       setIsModalOpen(false);
@@ -113,7 +152,7 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   };
 
   const deleteSession = async (id: string, obj: string) => {
-    if (isViewer) return;
+    if (!canDeleteRecords(currentUser)) return;
     if (confirm(`هل تريد حذف جلسة "${obj}" نهائياً من السجلات؟`)) {
         const { error } = await supabase.from('sessions').delete().eq('id', id);
         if (error) {
@@ -128,21 +167,32 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
   const toggleSessionComplete = async (id: string, currentStatus: boolean) => {
     if (isViewer) return;
     const session = state.sessions.find(s => s.id === id);
-    if (isCatAdmin && session && restrictedCat && !String(restrictedCat).split(',').includes(session.category)) return;
+    if (!session) return;
+    if (!canEditSportsData(currentUser, session.category)) return;
+    if (currentStatus && !isManager) return;
 
-    const { error } = await supabase.from('sessions').upsert({ id, isCompleted: !currentStatus });
+    const { error } = await supabase.from('sessions').update({ isCompleted: !currentStatus }).eq('id', id);
     if (error) { alert('فشل التحديث: ' + error.message); return; }
 
     setState(prev => ({
       ...prev,
       sessions: prev.sessions.map(s => s.id === id ? { ...s, isCompleted: !currentStatus } : s)
     }));
+    await recordAuditLog({
+      user: currentUser,
+      actionType: 'تعديل',
+      section: 'خطة التدريبات',
+      targetName: `${session.objective} (${session.category})`,
+      details: !currentStatus ? 'اعتماد التمرين كمنجز' : 'إعادة فتح التمرين (إلغاء الإنجاز)',
+      setState: setState as any
+    });
   };
 
   const filteredSessions = useMemo(() => {
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     return (restrictedCat 
-      ? state.sessions.filter(s => String(restrictedCat).split(',').includes(s.category) && (!s.season || s.season === state.activeSeason))
-      : state.sessions.filter(s => (state.globalCategoryFilter === 'الكل' || s.category === state.globalCategoryFilter) && (!s.season || s.season === state.activeSeason)))
+      ? state.sessions.filter(s => String(restrictedCat).split(',').includes(s.category) && (isAllSeasons || !s.season || s.season === state.activeSeason))
+      : state.sessions.filter(s => (state.globalCategoryFilter === 'الكل' || s.category === state.globalCategoryFilter) && (isAllSeasons || !s.season || s.season === state.activeSeason)))
       .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [state.sessions, restrictedCat, state.globalCategoryFilter, state.activeSeason]);
 
@@ -383,8 +433,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 no-print">
             {filteredSessions.map(session => {
               const isComp = session.isCompleted;
-              const canEditThis = isManager || (!isComp && isCatAdmin && restrictedCat && String(restrictedCat).split(',').includes(session.category));
-              const canDeleteThis = isManager;
+              const canEditThis = isManager || (!isComp && canEditSportsData(currentUser, session.category));
+              const canDeleteThis = canDeleteRecords(currentUser);
 
               return (
                 <div key={session.id} className={`bg-white p-3 md:p-4 rounded-2xl md:rounded-2xl shadow-sm border border-slate-200 relative group overflow-hidden border-r-4 transition-all no-print ${isComp ? 'border-r-emerald-500' : 'hover:border-r-blue-900 border-r-slate-100'}`}>
@@ -410,8 +460,8 @@ export default function TrainingPlanner({ state, setState, defaultSelectedId, ad
                   </div>
 
                   {!isViewer && (
-                    <button disabled={!canEditThis} onClick={() => toggleSessionComplete(session.id, !!isComp)} className={`mt-3 w-full py-2 rounded-lg font-black text-[9px] flex items-center justify-center gap-1.5 border transition-all ${!canEditThis ? 'opacity-30 cursor-not-allowed' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700 hover:bg-white' : 'bg-white border-blue-900 text-blue-900 hover:bg-blue-50 focus:scale-95'}`}>
-                       <CheckCircle size={12}/> {isComp ? (isManager ? 'مكتمل (اضغط للإلغاء)' : 'مكتمل') : 'تأشير כمنجز'}
+                    <button disabled={!canEditThis} onClick={() => toggleSessionComplete(session.id, !!isComp)} className={`mt-3 w-full py-2 rounded-lg font-black text-[9px] flex items-center justify-center gap-1.5 border transition-all ${!canEditThis ? 'opacity-40 cursor-not-allowed' : isComp ? 'bg-emerald-50 border-emerald-600 text-emerald-700 hover:bg-white' : 'bg-white border-blue-900 text-blue-900 hover:bg-blue-50 focus:scale-95'}`}>
+                       <CheckCircle size={12}/> {isComp ? (isManager ? 'مكتمل (اضغط للإلغاء)' : 'مكتمل ومعتمد') : 'تأشير كمنجز'}
                     </button>
                   )}
                 </div>

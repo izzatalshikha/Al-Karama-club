@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { 
   X, Save, Loader2, User, Phone, MapPin, Ruler, CreditCard, 
-  Briefcase, Medal, Plus, Trash2, Upload, FileCheck, CheckCircle2, Calendar
+  Briefcase, Medal, Plus, Trash2, Upload, FileCheck, CheckCircle2, Calendar, HeartPulse
 } from 'lucide-react';
-import { Person, Role, CoachingCertificate, PreviousExperience } from '../types';
+import { Person, Role, CoachingCertificate, PreviousExperience, UserRole, AppUser } from '../types';
 import { supabase, generateUUID } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
 import DocumentUploadCard from './DocumentUploadCard';
 import { compressDocumentImage } from '../utils/imageCompressor';
 import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface EditPersonModalProps {
   person: Person;
@@ -17,6 +18,7 @@ interface EditPersonModalProps {
   onClose: () => void;
   onSaved: (updatedPerson: Person) => void;
   isSelf?: boolean;
+  currentUserRole?: UserRole;
 }
 
 export const EditPersonModal: React.FC<EditPersonModalProps> = ({
@@ -24,9 +26,29 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   isOpen,
   onClose,
   onSaved,
-  isSelf = false
+  isSelf = false,
+  currentUserRole
 }) => {
+  const activeSessionUser: AppUser | null = (() => {
+    try {
+      const saved = localStorage.getItem('eagle_os_v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed?.currentUser || null;
+      }
+    } catch {}
+    return null;
+  })();
+
+  const effectiveRole: UserRole | undefined = currentUserRole || activeSessionUser?.role;
+  const isMedic = effectiveRole === 'معالج';
+  const isCatAdmin = effectiveRole === 'إداري فئة';
+  const isManager = effectiveRole === 'مدير';
+  const isReadOnly = effectiveRole === 'مشاهد' || effectiveRole === 'أمين مستودع' || effectiveRole === 'مسؤول تجهيزات';
   const isPlayer = person.role === 'لاعب';
+  const canEditNonMedical = !isMedic && !isReadOnly;
+  const canEditWeightHeight = !isReadOnly && (!isSelf || !isPlayer || isManager);
+  const canEditMedicalFields = isManager || isMedic;
 
   const rawPersonSeasons = [
     ...(Array.isArray(person.seasons) ? person.seasons : []),
@@ -38,7 +60,6 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const [formData, setFormData] = useState<Partial<Person>>({
     ...person,
     emergencyPhone: person.emergencyPhone || (person as any).emergencyContact || '',
-    isAcademyPlayer: false, // تأكيد كعضو نادي رسمي وليس أكاديمية
     season: finalDefaultSeasons[finalDefaultSeasons.length - 1],
     seasons: finalDefaultSeasons,
     certificates: person.certificates ? [...person.certificates] : [],
@@ -54,33 +75,58 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     setIsSaving(true);
     setErrorMsg('');
     setSuccessMsg('');
 
     try {
-      const rawSeasons: string[] = [
-        ...(Array.isArray(formData.seasons) ? formData.seasons : []),
-        ...(typeof formData.season === 'string' ? formData.season.split(',') : [])
-      ].map(s => String(s || '').trim()).filter(Boolean);
-      const finalSeasons = Array.from(new Set(rawSeasons));
-      const validSeasons = finalSeasons.length > 0 ? finalSeasons : ['2025/2026'];
+      let cleanData: any;
+      if (isMedic) {
+        cleanData = {
+          ...person,
+          height: formData.height,
+          weight: formData.weight,
+          medicalHistory: formData.medicalHistory,
+          injuries: formData.injuries
+        };
+      } else {
+        const rawSeasons: string[] = [
+          ...(Array.isArray(formData.seasons) ? formData.seasons : []),
+          ...(typeof formData.season === 'string' ? formData.season.split(',') : [])
+        ].map(s => String(s || '').trim()).filter(Boolean);
+        const finalSeasons = Array.from(new Set(rawSeasons));
+        const validSeasons = finalSeasons.length > 0 ? finalSeasons : ['2025/2026'];
 
-      const rawEmergency = formData.emergencyPhone ?? (formData as any).emergencyContact;
-      const cleanData: any = {
-        ...formData,
-        emergencyPhone: rawEmergency ? String(rawEmergency).trim() : null,
-        isAcademyPlayer: false, // تأكيد كلاعب/كادر نادي دائماً
-        name: formData.name?.trim() || person.name,
-        seasons: validSeasons,
-        season: validSeasons[validSeasons.length - 1] || '2025/2026'
-      };
-      delete cleanData.emergencyContact;
+        const rawEmergency = formData.emergencyPhone ?? (formData as any).emergencyContact;
+        cleanData = {
+          ...formData,
+          emergencyPhone: rawEmergency ? String(rawEmergency).trim() : null,
+          name: formData.name?.trim() || person.name,
+          seasons: validSeasons,
+          season: validSeasons[validSeasons.length - 1] || '2025/2026',
+          ...( !canEditMedicalFields ? {
+            medicalHistory: person.medicalHistory,
+            injuries: person.injuries,
+            medicalCard: person.medicalCard
+          } : {})
+        };
+        delete cleanData.emergencyContact;
+      }
 
       const saveRes = await safeSavePerson(cleanData, 'update', person.id);
-      if (!saveRes.success) throw saveRes.error;
+      if (!saveRes.success) throw saveRes.error || new Error('فشل حفظ البيانات في السحابة');
 
       const updated = { ...person, ...cleanData };
+      if (!isSelf) {
+        recordAuditLog({
+          user: activeSessionUser,
+          actionType: 'تعديل',
+          section: isPlayer ? 'ملف اللاعب' : 'ملف الكادر',
+          targetName: updated.name,
+          details: isMedic ? 'تحديث الوزن/الطول والبيانات الطبية' : 'تحديث البيانات'
+        });
+      }
       onSaved(updated);
       setSuccessMsg('تم حفظ وتحديث البيانات والمواسم بنجاح!');
       setTimeout(() => {
@@ -88,7 +134,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
       }, 1000);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'حدث خطأ أثناء حفظ البيانات');
+      setErrorMsg(err?.message || (typeof err === 'string' ? err : '') || 'حدث خطأ أثناء حفظ البيانات');
     } finally {
       setIsSaving(false);
     }
@@ -171,7 +217,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   {isPlayer ? 'لاعب نادي رسمي (فريق النادي الكروي)' : 'كادر نادي رسمي'}
                 </p>
                 <p className="text-[11px] text-blue-200 font-bold">
-                  عضو مسجل في صفوف النادي وليس لاعباً في الأكاديمية
+                  عضو مسجل في صفوف النادي الرياضي
                 </p>
               </div>
             </div>
@@ -188,7 +234,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
               role={formData.role}
               number={formData.number}
               onPhotoChange={(newPhoto) => setFormData(prev => ({ ...prev, photo: newPhoto || undefined }))}
-              disabled={isSelf && isPlayer}
+              disabled={(isSelf && isPlayer) || !canEditNonMedical}
               size="lg"
             />
             <div className="space-y-1 text-center sm:text-right">
@@ -213,70 +259,77 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <label className="text-[11px] font-black text-slate-600 block">الاسم الكامل</label>
                 <input
                   required
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.name || ''}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">اسم الأب</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.fatherName || ''}
                   onChange={e => setFormData({ ...formData, fatherName: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">اسم الأم</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.motherName || ''}
                   onChange={e => setFormData({ ...formData, motherName: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">تاريخ الميلاد</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="date"
                   value={formData.birthDate || ''}
                   onChange={e => setFormData({ ...formData, birthDate: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">مكان الولادة</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.birthPlace || ''}
                   onChange={e => setFormData({ ...formData, birthPlace: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">الخانة (القيد)</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.khana || ''}
                   onChange={e => setFormData({ ...formData, khana: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">الرقم الوطني</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.nationalId || ''}
                   onChange={e => setFormData({ ...formData, nationalId: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
@@ -285,11 +338,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   <Phone size={13} className="text-blue-600" /> رقم الهاتف
                 </label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="tel"
                   placeholder="09xxxxxxxx"
                   value={formData.phone || ''}
                   onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
@@ -298,10 +352,11 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   <MapPin size={13} className="text-emerald-600" /> عنوان السكن
                 </label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   value={formData.address || ''}
                   onChange={e => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
 
@@ -311,11 +366,12 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                     <Phone size={13} className="text-red-500" /> هاتف الطوارئ / ولي الأمر
                   </label>
                   <input
+                    disabled={!canEditNonMedical}
                     type="tel"
                     placeholder="09xxxxxxxx"
                     value={formData.emergencyPhone || (formData as any).emergencyContact || ''}
                     onChange={e => setFormData({ ...formData, emergencyPhone: e.target.value, emergencyContact: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
               )}
@@ -344,7 +400,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                   return (
                     <label
                       key={s}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-black cursor-pointer transition-all ${
+                      className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-black transition-all ${!canEditNonMedical ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${
                         isChecked 
                           ? 'bg-orange-500 text-white border-orange-600 shadow-md shadow-orange-500/20' 
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-orange-300'
@@ -352,8 +408,10 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                     >
                       <input
                         type="checkbox"
+                        disabled={!canEditNonMedical}
                         checked={isChecked}
                         onChange={e => {
+                          if (!canEditNonMedical) return;
                           const currentSet = Array.from(new Set(currentSeasons));
                           const nextSeasons = e.target.checked
                             ? Array.from(new Set([...currentSet, s]))
@@ -385,9 +443,10 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">المركز</label>
                   <select
+                    disabled={!canEditNonMedical}
                     value={formData.position || ''}
                     onChange={e => setFormData({ ...formData, position: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   >
                     <option value="">اختر المركز...</option>
                     <option value="حارس مرمى">حارس مرمى</option>
@@ -406,9 +465,10 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">القدم المفضلة</label>
                   <select
+                    disabled={!canEditNonMedical}
                     value={formData.preferredFoot || 'يمنى'}
                     onChange={e => setFormData({ ...formData, preferredFoot: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   >
                     <option value="يمنى">يمنى</option>
                     <option value="يسرى">يسرى</option>
@@ -419,6 +479,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">رقم القميص</label>
                   <input
+                    disabled={!canEditNonMedical}
                     type="text"
                     value={formData.number !== undefined && formData.number !== null ? String(formData.number) : ''}
                     onChange={e => {
@@ -426,16 +487,17 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                       const parsed = val.trim() === '' ? undefined : parseInt(val, 10);
                       setFormData({ ...formData, number: Number.isNaN(parsed) ? (val as any) : parsed });
                     }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">زمرة الدم</label>
                   <select
+                    disabled={!canEditNonMedical}
                     value={formData.bloodType || ''}
                     onChange={e => setFormData({ ...formData, bloodType: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   >
                     <option value="">اختر...</option>
                     <option value="A+">A+</option>
@@ -452,39 +514,43 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">الطول (سم)</label>
                   <input
+                    disabled={!canEditWeightHeight}
                     type="number"
                     value={formData.height || ''}
                     onChange={e => setFormData({ ...formData, height: e.target.value ? parseFloat(e.target.value) : undefined })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">الوزن (كغ)</label>
                   <input
+                    disabled={!canEditWeightHeight}
                     type="number"
                     value={formData.weight || ''}
                     onChange={e => setFormData({ ...formData, weight: e.target.value ? parseFloat(e.target.value) : undefined })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">قياس الحذاء</label>
                   <input
+                    disabled={!canEditNonMedical}
                     type="text"
                     value={formData.shoeSize || ''}
                     onChange={e => setFormData({ ...formData, shoeSize: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">قياس الملابس</label>
                   <select
+                    disabled={!canEditNonMedical}
                     value={formData.clothesSize || ''}
                     onChange={e => setFormData({ ...formData, clothesSize: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   >
                     <option value="">اختر...</option>
                     <option value="XS">XS</option>
@@ -507,9 +573,10 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">الدور / المنصب</label>
                   <select
+                    disabled={!canEditNonMedical}
                     value={formData.role || 'مدرب'}
                     onChange={e => setFormData({ ...formData, role: e.target.value as Role })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   >
                     <option value="مدرب">مدرب</option>
                     <option value="مساعد مدرب">مساعد مدرب</option>
@@ -526,21 +593,23 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">التحصيل العلمي</label>
                   <input
+                    disabled={!canEditNonMedical}
                     type="text"
                     placeholder="مثال: دبلوم تربية رياضية"
                     value={formData.academicDegree || ''}
                     onChange={e => setFormData({ ...formData, academicDegree: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-black text-slate-600 block">الرقم الاتحادي</label>
                   <input
+                    disabled={!canEditNonMedical}
                     type="text"
                     value={formData.federalNumber || ''}
                     onChange={e => setFormData({ ...formData, federalNumber: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -552,28 +621,34 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                     <Medal size={15} className="text-orange-500" />
                     الشهادات والدورات التدريبية ({formData.certificates?.length || 0})
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const current = formData.certificates || [];
-                      setFormData({
-                        ...formData,
-                        certificates: [...current, { id: generateUUID(), name: '', date: '' }]
-                      });
-                    }}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shadow-sm transition-all"
-                  >
-                    <Plus size={14} /> إضافة شهادة جديدة (+)
-                  </button>
+                  {canEditNonMedical && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = formData.certificates || [];
+                        setFormData({
+                          ...formData,
+                          certificates: [...current, { id: generateUUID(), name: '', date: '' }]
+                        });
+                      }}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shadow-sm transition-all"
+                    >
+                      <Plus size={14} /> إضافة شهادة جديدة (+)
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-3">
-                  {formData.certificates?.map((cert, cIdx) => (
+                  {formData.certificates?.map((cert, cIdx) => {
+                    const origCertImg = (person.certificates || [])[cIdx]?.image;
+                    const isCertLocked = isCatAdmin && Boolean(origCertImg);
+                    return (
                     <div key={cert.id || cIdx} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                       <div className="flex items-center gap-2">
                         <input
+                          disabled={!canEditNonMedical || isCertLocked}
                           placeholder="اسم الشهادة أو الدورة التدريبية"
-                          className="flex-1 bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-orange-500"
+                          className="flex-1 bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-orange-500 disabled:opacity-60"
                           value={cert.name}
                           onChange={e => {
                             const arr = [...(formData.certificates || [])];
@@ -582,8 +657,9 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                           }}
                         />
                         <input
+                          disabled={!canEditNonMedical || isCertLocked}
                           type="date"
-                          className="w-36 bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-orange-500"
+                          className="w-36 bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-orange-500 disabled:opacity-60"
                           value={cert.date}
                           onChange={e => {
                             const arr = [...(formData.certificates || [])];
@@ -591,42 +667,46 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                             setFormData({ ...formData, certificates: arr });
                           }}
                         />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const arr = (formData.certificates || []).filter((_, i) => i !== cIdx);
-                            setFormData({ ...formData, certificates: arr });
-                          }}
-                          className="p-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {canEditNonMedical && !isCertLocked && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const arr = (formData.certificates || []).filter((_, i) => i !== cIdx);
+                              setFormData({ ...formData, certificates: arr });
+                            }}
+                            className="p-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
 
                       {/* رفع صورة الشهادة */}
                       <div className="flex items-center gap-3 bg-white p-2.5 rounded-lg border border-slate-200/80">
-                        <label className="cursor-pointer bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-slate-700 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-slate-200 transition-all shrink-0">
-                          <Upload size={13} />
-                          <span>{cert.image ? 'تغيير صورة الشهادة' : 'رفع صورة الشهادة'}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                try {
-                                  const url = await uploadToCloudinary(file, 'certificates');
-                                  const arr = [...(formData.certificates || [])];
-                                  arr[cIdx] = { ...arr[cIdx], image: url };
-                                  setFormData({ ...formData, certificates: arr });
-                                } catch (err: any) {
-                                  alert('خطأ أثناء رفع صورة الشهادة إلى السحابة: ' + (err.message || err));
+                        {canEditNonMedical && !isCertLocked && (
+                          <label className="cursor-pointer bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-slate-700 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-slate-200 transition-all shrink-0">
+                            <Upload size={13} />
+                            <span>{cert.image ? 'تغيير صورة الشهادة' : 'رفع صورة الشهادة'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  try {
+                                    const url = await uploadToCloudinary(file, 'certificates');
+                                    const arr = [...(formData.certificates || [])];
+                                    arr[cIdx] = { ...arr[cIdx], image: url };
+                                    setFormData({ ...formData, certificates: arr });
+                                  } catch (err: any) {
+                                    alert('خطأ أثناء رفع صورة الشهادة إلى السحابة: ' + (err.message || err));
+                                  }
                                 }
-                              }
-                            }}
-                          />
-                        </label>
+                              }}
+                            />
+                          </label>
+                        )}
 
                         {cert.image && (
                           <div className="flex items-center gap-2">
@@ -636,24 +716,56 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                               className="w-10 h-10 object-cover rounded-lg border border-slate-200 shadow-xs"
                             />
                             <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                              <FileCheck size={12} /> مرفقة ومحفوظة
+                              <FileCheck size={12} /> {isCertLocked ? 'مرفقة ومعتمدة (مقفلة)' : 'مرفقة ومحفوظة'}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const arr = [...(formData.certificates || [])];
-                                arr[cIdx] = { ...arr[cIdx], image: undefined };
-                                setFormData({ ...formData, certificates: arr });
-                              }}
-                              className="text-[10px] text-red-500 hover:underline font-bold"
-                            >
-                              إزالة الصورة
-                            </button>
+                            {canEditNonMedical && !isCertLocked && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const arr = [...(formData.certificates || [])];
+                                  arr[cIdx] = { ...arr[cIdx], image: undefined };
+                                  setFormData({ ...formData, certificates: arr });
+                                }}
+                                className="text-[10px] text-red-500 hover:underline font-bold"
+                              >
+                                إزالة الصورة
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* الحالة الطبية (للمعالج والمدير حصراً) */}
+          {canEditMedicalFields && (
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-rose-200 shadow-sm space-y-4">
+              <h4 className="text-xs font-black text-rose-600 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-3">
+                <HeartPulse size={16} /> البيانات الطبية والإصابات (للمعالج والمدير حصراً)
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black text-slate-600 block">السجل الطبي</label>
+                  <textarea
+                    rows={3}
+                    value={formData.medicalHistory || ''}
+                    onChange={e => setFormData({ ...formData, medicalHistory: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-rose-500 outline-none resize-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black text-slate-600 block">الإصابات الحالية</label>
+                  <textarea
+                    rows={3}
+                    value={formData.injuries || ''}
+                    onChange={e => setFormData({ ...formData, injuries: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-rose-500 outline-none resize-none"
+                  />
                 </div>
               </div>
             </div>
@@ -669,29 +781,32 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">رقم جواز السفر</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="text"
                   placeholder="N01234567"
                   value={formData.passportNumber || ''}
                   onChange={e => setFormData({ ...formData, passportNumber: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">تاريخ الإصدار</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="date"
                   value={formData.passportIssueDate || ''}
                   onChange={e => setFormData({ ...formData, passportIssueDate: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-black text-slate-600 block">تاريخ الانتهاء</label>
                 <input
+                  disabled={!canEditNonMedical}
                   type="date"
                   value={formData.passportExpiryDate || ''}
                   onChange={e => setFormData({ ...formData, passportExpiryDate: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-900 focus:border-orange-500 outline-none disabled:opacity-60"
                 />
               </div>
             </div>
@@ -703,6 +818,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 description="الوجه الأمامي للبطاقة الشخصية أو إخراج القيد"
                 value={formData.idCardImage}
                 onChange={b64 => setFormData({ ...formData, idCardImage: b64 })}
+                disabled={!canEditNonMedical}
                 badgeLabel="الوجه الأمامي"
               />
 
@@ -711,6 +827,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 description="الوجه الخلفي للبطاقة الشخصية"
                 value={formData.idCardBackImage}
                 onChange={b64 => setFormData({ ...formData, idCardBackImage: b64 })}
+                disabled={!canEditNonMedical}
                 badgeLabel="الوجه الخلفي"
               />
 
@@ -719,6 +836,7 @@ export const EditPersonModal: React.FC<EditPersonModalProps> = ({
                 description="صفحة الصورة والبيانات الرسمية"
                 value={formData.passportImage}
                 onChange={b64 => setFormData({ ...formData, passportImage: b64 })}
+                disabled={!canEditNonMedical}
                 badgeLabel="جواز السفر"
               />
             </div>

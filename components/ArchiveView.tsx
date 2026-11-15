@@ -17,8 +17,9 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ state, onMatchClick, onSessio
   const restrictedCat = state.currentUser?.restrictedCategory;
 
   const completedMatches = useMemo(() => {
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     return state.matches
-      .filter(m => m.isCompleted && (!m.season || m.season === state.activeSeason) && 
+      .filter(m => m.isCompleted && (isAllSeasons || !m.season || m.season === state.activeSeason) && 
         (restrictedCat ? String(restrictedCat).split(',').includes(m.category) : (globalFilter === 'الكل' || m.category === globalFilter)) &&
         (m.opponent.includes(searchTerm) || m.matchType.includes(searchTerm))
       )
@@ -26,8 +27,9 @@ const ArchiveView: React.FC<ArchiveViewProps> = ({ state, onMatchClick, onSessio
   }, [state.matches, globalFilter, restrictedCat, searchTerm, state.activeSeason]);
 
   const completedSessions = useMemo(() => {
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     return state.sessions
-      .filter(s => s.isCompleted && (!s.season || s.season === state.activeSeason) && 
+      .filter(s => s.isCompleted && (isAllSeasons || !s.season || s.season === state.activeSeason) && 
         (restrictedCat ? String(restrictedCat).split(',').includes(s.category) : (globalFilter === 'الكل' || s.category === globalFilter)) &&
         (s.objective.includes(searchTerm))
       )

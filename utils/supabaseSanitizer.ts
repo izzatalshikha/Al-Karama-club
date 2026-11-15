@@ -64,12 +64,9 @@ export async function safeSavePerson(
     }
   }
 
-  // معالجة تصنيف الأكاديمية واستلام الطقم فقط إذا تم تمريرهما أو عند الإنشاء الكامل
+  // معالجة استلام الطقم فقط إذا تم تمريره أو عند الإنشاء الكامل
   if ('receivedKit' in cleanData || !isPartialUpdate) {
     cleanData.receivedKit = cleanData.receivedKit === true || String(cleanData.receivedKit) === 'true';
-  }
-  if ('isAcademyPlayer' in cleanData || !isPartialUpdate) {
-    cleanData.isAcademyPlayer = Boolean(cleanData.isAcademyPlayer);
   }
 
   // ضمان حفظ سجل الوزن بشكل مرن (سواء في عمود مستقل أو داخل monthlyReports)
@@ -213,7 +210,11 @@ export async function safeSavePerson(
 
   const executeSave = async (payloadToSave: any) => {
     if (action === 'update' && targetId) {
-      return await supabase.from('people').update(payloadToSave).eq('id', targetId).select('id');
+      const updateRes = await supabase.from('people').update(payloadToSave).eq('id', targetId).select('id');
+      if (!updateRes?.error && Array.isArray(updateRes?.data) && updateRes.data.length === 0) {
+        return await supabase.from('people').upsert({ ...payloadToSave, id: targetId }).select('id');
+      }
+      return updateRes;
     } else {
       return await supabase.from('people').upsert(payloadToSave).select('id');
     }
@@ -229,9 +230,9 @@ export async function safeSavePerson(
       if (!res?.error && (!res?.data || res?.data?.length > 0)) {
         return { success: true, data: cleanData, error: null };
       }
-      lastError = res?.error;
+      lastError = res?.error || new Error('لم يتم العثور على السجل أو تعذر تحديثه في قاعدة البيانات');
     } catch (err: any) {
-      lastError = err;
+      lastError = err || new Error('حدث خطأ غير متوقع أثناء الاتصال بقاعدة البيانات');
     }
 
     const errMsg = String(lastError?.message || '');
@@ -261,9 +262,6 @@ export async function safeSavePerson(
     if (errMsg.includes('numeric') || errMsg.includes('integer') || errCode === '22P02') {
       if ('receivedKit' in currentPayload) {
         currentPayload.receivedKit = currentPayload.receivedKit ? true : false;
-      }
-      if ('isAcademyPlayer' in currentPayload) {
-        currentPayload.isAcademyPlayer = Boolean(currentPayload.isAcademyPlayer);
       }
       if ('number' in currentPayload) {
         currentPayload.number = null;
@@ -300,15 +298,16 @@ export async function safeSavePerson(
 
     try {
       const fallbackRes = await executeSave(fallbackData);
-      if (!fallbackRes?.error) {
+      if (!fallbackRes?.error && (!fallbackRes?.data || fallbackRes?.data?.length > 0)) {
         return { success: true, data: cleanData, error: null };
       }
-      lastError = fallbackRes.error;
+      lastError = fallbackRes?.error || lastError;
     } catch (e: any) {
-      lastError = e;
+      lastError = e || lastError;
     }
   }
 
-  console.error('خطأ مزامنة مع Supabase:', lastError?.message || lastError);
-  return { success: false, data: cleanData, error: lastError };
+  const finalError = lastError || new Error('تعذر مزامنة البيانات مع قاعدة البيانات');
+  console.error('خطأ مزامنة مع Supabase:', finalError?.message || finalError);
+  return { success: false, data: cleanData, error: finalError };
 }

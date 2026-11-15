@@ -7,6 +7,12 @@ import {
 } from 'lucide-react';
 import { AppState, AttendanceStatus, AttendanceRecord, TrainingSession, Person } from '../types';
 import { generateUUID, supabase } from '../App';
+import {
+  canEditSportsData,
+  hasCategoryAccess,
+  isManagerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 export const getWhatsAppUrl = (phone: string | undefined, message: string) => {
   if (!phone) return null;
@@ -43,26 +49,55 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   const currentUser = state.currentUser!;
   const globalFilter = state.globalCategoryFilter;
   const restrictedCat = currentUser.restrictedCategory;
-  const isViewer = currentUser.role === 'مشاهد' || currentUser?.role === 'معالج';
-  const isManager = currentUser.role === 'مدير';
+  const isManager = isManagerRole(currentUser);
+  const canSportsEdit = canEditSportsData(currentUser);
+  const isViewer = !canSportsEdit;
 
-  const sessions = state.sessions
+  const allKnownSessions = useMemo(() => {
+    const existingIds = new Set((state.sessions || []).map(s => s.id));
+    const peopleById = new Map<string, Person>((state.people || []).map(p => [p.id, p]));
+    const orphanMap = new Map<string, TrainingSession>();
+
+    (state.attendance || []).forEach(rec => {
+      if (!rec.sessionId || existingIds.has(rec.sessionId) || orphanMap.has(rec.sessionId)) return;
+      const person = peopleById.get(rec.personId);
+      const inferredCategory = (person?.category || state.categories?.[0] || 'الرجال') as any;
+      const inferredDate = rec.date || new Date().toISOString().split('T')[0];
+      const inferredSeason = inferredDate.startsWith('2027') ? '2026/2027' : '2025/2026';
+      orphanMap.set(rec.sessionId, {
+        id: rec.sessionId,
+        category: inferredCategory,
+        season: inferredSeason,
+        date: inferredDate,
+        time: rec.time || '16:00',
+        pitch: 'ملعب الكرامة',
+        objective: 'تمرين مرصود (سجل حضور محفوظ)',
+        isCompleted: true,
+        isLocked: true
+      });
+    });
+
+    return [...(state.sessions || []), ...Array.from(orphanMap.values())];
+  }, [state.sessions, state.attendance, state.people, state.categories]);
+
+  const sessions = allKnownSessions
     .filter(s => {
-      if (s.season && s.season !== state.activeSeason) return false;
-      if (restrictedCat) return String(restrictedCat).split(',').includes(s.category);
+      if (state.activeSeason && state.activeSeason !== 'الكل' && s.season && s.season !== state.activeSeason) return false;
+      if (restrictedCat) return hasCategoryAccess(currentUser, s.category);
       return (globalFilter === 'الكل' || s.category === globalFilter);
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const activeSession = state.sessions.find(s => s.id === selectedSessionId);
-  const categoryMembers = state.people
-    .filter(p => (activeSession ? p.category === activeSession.category : true))
-    .sort((a, b) => (a.role !== 'لاعب' ? -1 : 1));
-
+  const activeSession = allKnownSessions.find(s => s.id === selectedSessionId);
   const savedRecords = state.attendance.filter(r => r.sessionId === selectedSessionId);
+  const attendedPersonIds = new Set(savedRecords.map(r => r.personId));
+  const categoryMembers = state.people
+    .filter(p => (activeSession ? (p.category === activeSession.category || attendedPersonIds.has(p.id)) : true))
+    .sort((a, b) => (a.role !== 'لاعب' ? -1 : 1));
   
-  const isLocked = activeSession?.isCompleted;
-  const canEditNow = isViewer ? false : (isManager ? (adminEditOverride || !isLocked) : !isLocked);
+  const isLocked = Boolean(activeSession?.isCompleted);
+  const canAccessSession = !activeSession || isManager || hasCategoryAccess(currentUser, activeSession.category);
+  const canEditNow = isViewer || !canAccessSession ? false : (isManager ? (adminEditOverride || !isLocked) : !isLocked);
 
   useEffect(() => {
     if (!activeSession || isManager || !activeSession.time || isViewer) {
@@ -120,16 +155,17 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
   }, [categoryMembers, localRecords, savedRecords]);
 
   const handleSetStatus = (pid: string, status: AttendanceStatus) => {
-    if ((isLocked && !canEditNow) || isViewer) return;
+    if (!canEditNowFinal || isViewer) return;
     const now = new Date();
     const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
     setLocalRecords(prev => ({ ...prev, [pid]: { ...prev[pid], status, time: timeStr } }));
   };
 
   const saveAttendance = async () => {
-    if (!selectedSessionId || isSaving || isViewer) return;
+    if (!selectedSessionId || isSaving || isViewer || (isLocked && !canEditNow) || !canEditNowFinal) return;
     setIsSaving(true);
     try {
+      const wasLocked = Boolean(isLocked);
       const newRecords: AttendanceRecord[] = [];
       const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       
@@ -157,7 +193,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
       
       if (attError) throw attError;
 
-      await supabase.from('sessions').upsert({ id: selectedSessionId, isCompleted: true });
+      await supabase.from('sessions').update({ isCompleted: true }).eq('id', selectedSessionId);
       
       setState(prev => ({
         ...prev,
@@ -165,6 +201,15 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
         sessions: prev.sessions.map(s => s.id === selectedSessionId ? { ...s, isCompleted: true } : s)
       }));
       
+      await recordAuditLog({
+        user: currentUser,
+        actionType: wasLocked ? 'تعديل' : 'إضافة',
+        section: 'رصد الحضور والغياب',
+        targetName: `${activeSession?.objective || 'تمرين'} (${activeSession?.category || ''})`,
+        details: `${wasLocked ? 'تعديل استثنائي لكشف حضور' : 'اعتماد نهائي لكشف حضور'} بتاريخ ${activeSession?.date || ''} (${newRecords.length} سجل)`,
+        setState: setState as any
+      });
+
       setLocalRecords({});
       addLog?.('تثبيت الحضور', `اعتماد كشف حضور: ${activeSession?.category}`, 'success');
       alert('تم الاعتماد النهائي بنجاح.');
@@ -322,7 +367,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                           {(Object.entries(statusConfig) as [AttendanceStatus, any][]).map(([status, cfg]) => (
                             <button 
                               key={status}
-                              disabled={isViewer}
+                              disabled={!canEditNowFinal}
                               onClick={() => handleSetStatus(p.id, status)} 
                               className={`px-5 py-2.5 rounded-xl text-[10px] font-black border transition-all active:scale-95 flex items-center gap-2 ${currentStatus === status ? `${cfg.bgColor} text-white border-white/20 shadow-md scale-105` : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'}`}
                             >
@@ -347,9 +392,9 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                       <td className="px-8 py-6">
                         <div className="relative group/input">
                            <Edit3 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-orange-500 transition-colors" size={16} />
-                           <input type="text" readOnly={isViewer} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
+                           <input type="text" readOnly={!canEditNowFinal} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
                             className="bg-white border border-slate-200 rounded-xl pr-12 pl-4 py-3 text-xs font-bold w-full outline-none focus:border-orange-500 transition-all shadow-sm" 
-                            placeholder={isViewer ? "" : "سجل عذراً أو ملاحظة..."}
+                            placeholder={!canEditNowFinal ? "" : "سجل عذراً أو ملاحظة..."}
                            />
                         </div>
                       </td>
@@ -396,7 +441,7 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
                        {(Object.entries(statusConfig) as [AttendanceStatus, any][]).map(([status, cfg]) => (
                         <button 
                           key={status}
-                          disabled={isViewer}
+                          disabled={!canEditNowFinal}
                           onClick={() => handleSetStatus(p.id, status)} 
                           className={`py-2.5 rounded-xl text-[10px] font-black border transition-all flex items-center justify-center gap-2 ${currentStatus === status ? `${cfg.bgColor} text-white` : 'bg-white text-slate-600 border-slate-200'}`}
                         >
@@ -408,9 +453,9 @@ const AttendanceTracker: React.FC<AttendanceTrackerProps> = ({ state, setState, 
 
                     <div className="relative">
                       <Edit3 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                      <input type="text" readOnly={isViewer} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
+                      <input type="text" readOnly={!canEditNowFinal} value={local?.excuse || saved?.excuse || ""} onChange={e => setLocalRecords(prev => ({ ...prev, [p.id]: { ...prev[p.id], excuse: e.target.value } }))}
                         className="bg-white border border-slate-200 rounded-xl pr-10 pl-3 py-2 text-[10px] font-bold w-full outline-none focus:border-orange-500" 
-                        placeholder="سجل عذراً..."
+                        placeholder={!canEditNowFinal ? "" : "سجل عذراً..."}
                       />
                     </div>
                   </div>

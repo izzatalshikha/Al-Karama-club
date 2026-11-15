@@ -10,6 +10,7 @@ import {
   Edit, UserCheck, Heart, Ruler, Scale, Phone, MapPin, Sparkles, Award, Smartphone
 } from 'lucide-react';
 import DocumentUploadCard from './DocumentUploadCard';
+import ProPlayerPassCard from './ProPlayerPassCard';
 import { supabase } from '../App';
 import { safeSavePerson } from '../utils/supabaseSanitizer';
 import { PWAInstallModal, PWAFloatingPrompt } from './PWAInstallModal';
@@ -23,6 +24,7 @@ interface PlayerPortalProps {
 
 export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLogout, setState }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'edit-profile' | 'documents' | 'schedule'>('profile');
+  const [selectedSeason, setSelectedSeason] = useState<string>('all');
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
@@ -316,44 +318,41 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
 
       {/* Top Header for Player */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm print:hidden">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
             {player.photo ? (
-              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-orange-500 shadow-md shrink-0">
-                <img loading="lazy" decoding="async" src={player.photo} alt={player.name} className="w-full h-full object-cover" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-orange-500 shadow-sm shrink-0">
+                <img loading="lazy" decoding="async" src={player.photo} alt={player.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               </div>
             ) : (
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white flex items-center justify-center font-black text-xl border-2 border-orange-500/50 shadow-md shrink-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white flex items-center justify-center font-black text-lg sm:text-xl border-2 border-orange-500/50 shadow-sm shrink-0">
                 {player.name.charAt(0)}
               </div>
             )}
-            <ClubLogo size={36} className="hidden sm:block" />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-black text-blue-900">{player.name}</h1>
-                <span className="bg-orange-50 text-orange-600 border border-orange-200 text-[11px] font-black px-2.5 py-0.5 rounded-full">
-                  فئة {player.category}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-bold">بوابة اللاعب الإلكترونية • نادي الكرامة</p>
+            <ClubLogo size={34} className="hidden sm:block shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-lg font-black text-blue-900 truncate">{player.name}</h1>
+              <p className="text-[11px] text-slate-500 font-bold truncate">
+                بوابة اللاعب · فئة {player.category}
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Champions Welcome Replay Button بألوان النادي */}
             <button
               onClick={() => setShowWelcomeSplash(true)}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-blue-700 via-blue-600 to-orange-500 hover:from-blue-600 hover:to-orange-400 text-white font-black px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs shadow-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all border border-blue-400/40"
+              className="min-h-[38px] flex items-center gap-1.5 bg-gradient-to-r from-blue-700 via-blue-600 to-orange-500 hover:from-blue-600 hover:to-orange-400 text-white font-black px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs shadow-sm transition-all border border-blue-400/40 whitespace-nowrap"
               title="عرض شارة وبطولة النادي"
             >
-              <Trophy size={14} className="text-orange-300" />
-              <span className="hidden sm:inline">ترحيب الأبطال</span>
+              <Trophy size={14} className="text-orange-300 shrink-0" />
+              <span className="hidden md:inline">ترحيب الأبطال</span>
             </button>
 
-            <div className="hidden sm:flex bg-slate-100 p-1 rounded-xl gap-1">
+            <div className="hidden lg:flex bg-slate-100 p-1 rounded-xl gap-1">
               <button
                 onClick={() => setActiveTab('profile')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
                   activeTab === 'profile' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
@@ -361,7 +360,7 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
               </button>
               <button
                 onClick={() => setActiveTab('edit-profile')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeTab === 'edit-profile' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
@@ -370,19 +369,16 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
               </button>
               <button
                 onClick={() => setActiveTab('documents')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeTab === 'documents' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
                 <CreditCard size={14} />
                 <span>الوثائق وجواز السفر</span>
-                {!hasDocumentsUploaded && (
-                  <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
-                )}
               </button>
               <button
                 onClick={() => setActiveTab('schedule')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
                   activeTab === 'schedule' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
@@ -392,25 +388,26 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
 
             <button
               onClick={() => setShowInstallModal(true)}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black px-2.5 sm:px-3 py-2 rounded-xl text-[11px] sm:text-xs shadow-sm hover:shadow-md active:scale-95 transition-all"
+              className="min-h-[38px] flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black px-2.5 sm:px-3 py-2 rounded-xl text-[11px] sm:text-xs shadow-sm transition-all whitespace-nowrap"
               title="تثبيت التطبيق على جهازك (آيفون وأندرويد)"
             >
-              <Smartphone size={15} />
-              <span className="hidden xs:inline sm:inline">تثبيت التطبيق</span>
+              <Smartphone size={15} className="shrink-0" />
+              <span className="hidden sm:inline">تثبيت التطبيق</span>
             </button>
 
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/60 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors shadow-sm"
+              className="min-h-[38px] flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/60 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-bold transition-colors shadow-sm whitespace-nowrap"
+              title="تسجيل الخروج"
             >
-              <LogOut size={16} />
+              <LogOut size={16} className="shrink-0" />
               <span className="hidden sm:inline">تسجيل الخروج</span>
             </button>
           </div>
         </div>
 
         {/* Mobile tab switch */}
-        <div className="flex sm:hidden border-t border-slate-100 px-4 py-2 bg-slate-50/50 gap-1 overflow-x-auto">
+        <div className="flex lg:hidden border-t border-slate-100 px-3 py-2 bg-slate-50/50 gap-1.5 overflow-x-auto">
           <button
             onClick={() => setActiveTab('profile')}
             className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold text-center transition-all whitespace-nowrap ${
@@ -452,24 +449,15 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
         {activeTab === 'profile' ? (
           <div>
-            {/* بطاقة دعوة لتحديث البيانات */}
-            <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-blue-950 p-4 sm:p-6 rounded-3xl text-white flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 shadow-md border border-blue-800">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border border-orange-400/30 flex items-center justify-center text-orange-400 shrink-0">
-                  <UserCheck size={24} />
-                </div>
-                <div>
-                  <h3 className="font-black text-sm sm:text-base">تحديث وتعديل البيانات الشخصية والرياضية</h3>
-                  <p className="text-xs text-blue-200 mt-0.5">يمكنك تعديل رقم هاتفك، عنوانك، أرقام الطوارئ، قياساتك البدنية وبياناتك الشخصية مباشرة</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setActiveTab('edit-profile')}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-5 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap shrink-0"
-              >
-                <Edit size={16} /> تعديل بياناتي الآن
-              </button>
-            </div>
+            <ProPlayerPassCard
+              player={player}
+              state={state}
+              selectedSeason={selectedSeason}
+              onSeasonChange={setSelectedSeason}
+              onEditProfile={() => setActiveTab('edit-profile')}
+              onOpenDocuments={() => setActiveTab('documents')}
+              onPrint={() => window.print()}
+            />
 
             <ErrorBoundary fallbackTitle="الملف الفني والسجل الرقمي للاعب">
               <PlayerReport
@@ -477,6 +465,9 @@ export const PlayerPortal: React.FC<PlayerPortalProps> = ({ player, state, onLog
                 state={state}
                 setState={setState || (() => {})}
                 onBack={() => {}}
+                hideTopHeroCard={true}
+                selectedSeason={selectedSeason}
+                onSeasonChange={setSelectedSeason}
               />
             </ErrorBoundary>
           </div>

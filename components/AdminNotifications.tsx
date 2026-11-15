@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { AppState, TechnicalReport } from '../types';
 import { Bell, CheckCircle2, MessageSquare, CalendarX2, Car, Trash2, Search, Filter } from 'lucide-react';
 import { supabase } from '../App';
+import { canDeleteRecords, canEditSportsData } from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface AdminNotificationsProps {
   state: AppState;
@@ -12,6 +14,9 @@ interface AdminNotificationsProps {
 const AdminNotifications: React.FC<AdminNotificationsProps> = ({ state, setState, syncToCloud }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'resolved'>('all');
+
+  const canManage = canEditSportsData(state.currentUser);
+  const canDelete = canDeleteRecords(state.currentUser);
 
   const notifications = useMemo(() => {
     return (state.technicalReports || [])
@@ -26,6 +31,7 @@ const AdminNotifications: React.FC<AdminNotificationsProps> = ({ state, setState
   }, [state.technicalReports, filterType, filterStatus]);
 
   const handleMarkResolved = async (report: TechnicalReport) => {
+    if (!canManage) return;
     const updated = { ...report, rating: 1 };
     
     // Update local state
@@ -38,9 +44,19 @@ const AdminNotifications: React.FC<AdminNotificationsProps> = ({ state, setState
     if (syncToCloud) {
        await syncToCloud('technical_reports', updated);
     }
+
+    await recordAuditLog({
+      user: state.currentUser,
+      actionType: 'تعديل',
+      section: 'إشعارات وطلبات الأهالي',
+      targetName: report.author || 'ولي أمر',
+      details: `تأشير الطلب كمقروء ومراجع (${getTypeName(report.type)})`,
+      setState: setState as any
+    });
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) return;
     if (!window.confirm('هل أنت متأكد من حذف هذا الإشعار تماماً؟')) return;
     
     setState(prev => ({
@@ -136,16 +152,18 @@ const AdminNotifications: React.FC<AdminNotificationsProps> = ({ state, setState
                         <p className="text-slate-700 whitespace-pre-wrap font-medium leading-relaxed text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">{req.content}</p>
                      </div>
                      <div className="flex flex-row md:flex-col gap-2 shrink-0 md:justify-center">
-                        {req.rating === 0 && (
+                        {canManage && req.rating === 0 && (
                            <button onClick={() => handleMarkResolved(req)} className="flex-1 md:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-green-50 hover:bg-green-100 text-green-700 font-bold transition-colors">
                               <CheckCircle2 size={18} />
                               <span className="md:hidden lg:inline">علامة كمقروء</span>
                            </button>
                         )}
-                        <button onClick={() => handleDelete(req.id)} className="flex-1 md:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold transition-colors">
-                           <Trash2 size={18} />
-                           <span className="hidden lg:inline">حذف</span>
-                        </button>
+                        {canDelete && (
+                           <button onClick={() => handleDelete(req.id)} className="flex-1 md:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold transition-colors">
+                              <Trash2 size={18} />
+                              <span className="hidden lg:inline">حذف</span>
+                           </button>
+                        )}
                      </div>
                   </div>
                ))}

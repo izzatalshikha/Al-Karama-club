@@ -22,6 +22,19 @@ import { compressDocumentImage } from '../utils/imageCompressor';
 import { uploadToCloudinary } from '../utils/cloudinaryUploader';
 import EditPersonModal from './EditPersonModal';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
+import {
+  canDeleteRecords,
+  canEditSelfProfile,
+  canEditSportsData,
+  canEditWeightOrHeight,
+  hasCategoryAccess,
+  isAnyWarehouseRole,
+  isCategoryAdminRole,
+  isManagerRole,
+  isMedicRole,
+  isViewerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface PlayerReportProps {
   state: AppState;
@@ -29,9 +42,21 @@ interface PlayerReportProps {
   player: Person | null;
   onBack: () => void;
   addLog?: (message: string, type?: 'success' | 'error' | 'info') => void;
+  hideTopHeroCard?: boolean;
+  selectedSeason?: string;
+  onSeasonChange?: (season: string) => void;
 }
 
-const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, onBack, addLog }) => {
+const PlayerReport: React.FC<PlayerReportProps> = ({
+  state,
+  setState,
+  player,
+  onBack,
+  addLog,
+  hideTopHeroCard = false,
+  selectedSeason: controlledSeason,
+  onSeasonChange,
+}) => {
   const [isSavingReport, setIsSavingReport] = useState(false);
   const [monthlyNotes, setMonthlyNotes] = useState<{ [key: string]: string }>(() => {
     if (!player?.monthlyReports) return {};
@@ -57,7 +82,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   const months = ["كانون الثاني", "شباط", "آذار", "نيسان", "أيار", "حزيران", "تموز", "آب", "أيلول", "تشرين الأول", "تشرين الثاني", "كانون الأول"];
   const currentMonthIndex = new Date().getMonth();
   const [selectedMonth, setSelectedMonth] = useState(months[currentMonthIndex]);
-  const [selectedSeason, setSelectedSeason] = useState<string>(state.activeSeason || '2025/2026');
+  const [internalSeason, setInternalSeason] = useState<string>(
+    state.activeSeason === 'الكل' ? 'all' : (state.activeSeason || '2025/2026')
+  );
+  const selectedSeason = controlledSeason !== undefined ? controlledSeason : internalSeason;
+  const setSelectedSeason = (val: string) => {
+    if (onSeasonChange) onSeasonChange(val);
+    else setInternalSeason(val);
+  };
 
   if (!player || !state.currentUser) return null;
 
@@ -74,12 +106,40 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     (state.currentUser?.username && (state.currentUser.username === player.name || player.name.includes(state.currentUser.username))) ||
     (state.currentUser?.id === player.id)
   );
-  const isManager = state.currentUser.role === 'مدير';
-  const isCoach = state.currentUser.role === 'مدرب' || state.currentUser.role === 'مساعد مدرب' || state.currentUser.role === 'إداري فئة';
-  const canEditPerson = isManager || isSelf || (isCoach && (!state.currentUser?.restrictedCategory || String(state.currentUser.restrictedCategory).includes(player.category)));
+  const isManager = isManagerRole(state.currentUser);
+  const isCatAdmin = isCategoryAdminRole(state.currentUser);
+  const isMedic = isMedicRole(state.currentUser);
+  const isReadOnlyRole =
+    isViewerRole(state.currentUser) ||
+    isAnyWarehouseRole(state.currentUser) ||
+    state.currentUser.role === 'لاعب' ||
+    state.currentUser.role === 'ولي أمر';
+  const catMatch = hasCategoryAccess(state.currentUser, player.category);
+  const canEditSports = canEditSportsData(state.currentUser, player.category);
+  const canEditWeight = canEditWeightOrHeight(state.currentUser, player.category);
+  const canDeleteWeight = canDeleteRecords(state.currentUser);
+  const canEditPerson =
+    isManager ||
+    (isSelf && canEditSelfProfile(state.currentUser)) ||
+    canEditSports ||
+    (isMedic && catMatch);
 
-  const isViewer = state.currentUser.role === 'مشاهد' || state.currentUser.role === 'لاعب';
-  const canUploadOfficialPhoto = isManager || (isCoach && (!state.currentUser?.restrictedCategory || String(state.currentUser.restrictedCategory).includes(player.category)));
+  const savedReportObj: Record<string, any> = useMemo(() => {
+    if (!player?.monthlyReports) return {};
+    if (typeof player.monthlyReports === 'string') {
+      try { return JSON.parse(player.monthlyReports); } catch { return {}; }
+    }
+    return typeof player.monthlyReports === 'object' ? player.monthlyReports : {};
+  }, [player?.monthlyReports]);
+
+  const isSavedMonthLockedForCatAdmin = isCatAdmin && Boolean(String(savedReportObj[selectedMonth] || '').trim());
+  const canEditMonthlyReport =
+    !isReadOnlyRole &&
+    !isMedic &&
+    (isManager || (canEditSports && !isSavedMonthLockedForCatAdmin));
+
+  const isViewer = !canEditMonthlyReport;
+  const canUploadOfficialPhoto = isManager || canEditSports;
 
   const handlePhotoUpdate = async (newPhoto: string | null) => {
     if (!player || !canUploadOfficialPhoto) return;
@@ -92,6 +152,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         people: prev.people.map(p => p.id === player.id ? updated : p)
       }));
       Object.assign(player, { photo: newPhoto || undefined });
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: 'تعديل',
+        section: 'البيانات والملفات الشخصية',
+        targetName: player.name,
+        details: 'تحديث الصورة الشخصية الرسمية',
+        setState: setState as any
+      });
       addLog?.('تم تحديث الصورة الشخصية بنجاح', 'success');
     } catch (err: any) {
       alert('خطأ أثناء حفظ الصورة: ' + (err.message || err));
@@ -116,7 +184,9 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   }, [player.experiences, player.monthlyReports]);
 
   const handleCertificateImageUpdate = async (index: number, file: File) => {
-    if (!player || !canEditPerson) return;
+    const existingCert = cadreCertificates[index];
+    if (!player || isMedic || isReadOnlyRole) return;
+    if (!isManager && (!canEditSports || (isCatAdmin && Boolean(existingCert?.image)))) return;
     try {
       const cloudinaryUrl = await uploadToCloudinary(file, 'certificates');
       const newCerts = [...cadreCertificates];
@@ -129,6 +199,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         people: prev.people.map(p => p.id === player.id ? updated : p)
       }));
       Object.assign(player, { certificates: newCerts });
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: existingCert?.image ? 'تعديل' : 'إضافة',
+        section: 'شهادات ووثائق الكوادر',
+        targetName: `${player.name} - ${existingCert?.name || `شهادة #${index + 1}`}`,
+        details: existingCert?.image ? 'تحديث وثيقة الشهادة' : 'رفع وثيقة الشهادة',
+        setState: setState as any
+      });
       addLog?.('تم تحديث وثيقة الشهادة سحابياً بنجاح', 'success');
     } catch (err: any) {
       alert('خطأ أثناء رفع وحفظ صورة الشهادة: ' + (err.message || err));
@@ -150,7 +228,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
 
     const targetSeason = selectedSeason;
     const matchSeasonFilter = (m: Match) => {
-      if (targetSeason === 'all') return true;
+      if (!targetSeason || targetSeason === 'all' || targetSeason === 'الكل') return true;
       const mSeason = m.season || (m.date?.startsWith('2027') ? '2026/2027' : '2025/2026');
       return mSeason === targetSeason;
     };
@@ -223,7 +301,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
     // تصفية سجلات حضور اللاعب الفعلية
     const records = (state.attendance || []).filter(a => {
       if (a.personId !== player.id) return false;
-      if (targetSeason === 'all') return true;
+      if (!targetSeason || targetSeason === 'all' || targetSeason === 'الكل') return true;
       const sess = sessionMap.get(a.sessionId) as any;
       const sessSeason = sess?.season || (a.date?.startsWith('2027') ? '2026/2027' : '2025/2026');
       return sessSeason === targetSeason;
@@ -353,10 +431,12 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   // حفظ قياس وزن جديد
   const handleSaveWeightEntry = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditWeight) return;
     const wNum = parseFloat(newWeightVal);
     if (isNaN(wNum) || wNum <= 0) return;
     setIsSavingWeight(true);
     try {
+      const isUpdatingDate = weightHistory.some(x => x.date === newWeightDate);
       const newEntry: WeightEntry = {
         date: newWeightDate,
         weight: wNum,
@@ -384,6 +464,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
       }));
 
       Object.assign(player, cleanData);
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: isUpdatingDate ? 'تعديل' : 'إضافة',
+        section: 'قياسات الوزن والطول',
+        targetName: player.name,
+        details: `الوزن ${wNum} كغ بتاريخ ${newWeightDate}`,
+        setState: setState as any
+      });
       addLog?.('تم حفظ قياس الوزن بنجاح', 'success');
       setIsWeightModalOpen(false);
       setNewWeightVal('');
@@ -397,6 +485,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
 
   // حذف قياس وزن
   const handleDeleteWeightEntry = async (dateToDelete: string) => {
+    if (!canDeleteWeight) return;
     if (!confirm('هل تريد بالتأكيد حذف هذا القياس من سجل الوزن؟')) return;
     try {
       const updatedHistory = weightHistory.filter(x => x.date !== dateToDelete);
@@ -423,8 +512,10 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
   };
 
   const handleSaveMonthlyReport = async () => {
+    if (!canEditMonthlyReport) return;
     setIsSavingReport(true);
     try {
+      const hadExisting = Boolean(String(savedReportObj[selectedMonth] || '').trim());
       const updatedReports = { ...monthlyNotes };
       const { error } = await supabase.from('people').update({ monthlyReports: updatedReports }).eq('id', player.id);
       if (error) throw error;
@@ -432,6 +523,15 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         ...prev,
         people: prev.people.map(p => p.id === player.id ? { ...p, monthlyReports: updatedReports } : p)
       }));
+      Object.assign(player, { monthlyReports: updatedReports });
+      await recordAuditLog({
+        user: state.currentUser,
+        actionType: hadExisting ? 'تعديل' : 'إضافة',
+        section: 'التقييمات والتقارير الشهرية',
+        targetName: `${player.name} - شهر ${selectedMonth}`,
+        details: hadExisting ? 'تعديل تقرير شهري محفوظ' : 'حفظ تقرير شهري جديد',
+        setState: setState as any
+      });
       addLog?.(`تم حفظ تقرير شهر ${selectedMonth} بنجاح`, 'success');
     } catch (err: any) { alert(err.message); } finally { setIsSavingReport(false); }
   };
@@ -482,80 +582,153 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
          </div>
       </div>
 
-      {/* هيدر التحكم والرجوع */}
-      <div className="flex flex-col md:flex-row justify-between items-center bg-[#0f172a] p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] border-2 border-slate-900 shadow-xl gap-4 md:gap-6 print:hidden">
-        <button onClick={onBack} className="w-full md:w-auto bg-white/5 hover:bg-orange-500 text-white px-6 py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-2">
-          <ChevronRight size={18} /> العودة
-        </button>
-        <div className="flex items-center gap-3 md:gap-4 text-center md:text-right">
-           <ClubLogo size={42} className="md:w-[58px] md:h-[58px]" />
-           <div>
-              <h1 className="text-xl md:text-2xl font-black text-white bg-gradient-to-l from-orange-400 to-white bg-clip-text text-transparent leading-none">الملف الفني والسجل الرقمي</h1>
-              <p className="text-[8px] md:text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">EAGLE OS PERFORMANCE & PASSPORT</p>
-           </div>
-        </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          {canEditPerson && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditFormData({ ...player });
-                setIsEditModalOpen(true);
-              }}
-              className="flex-1 md:flex-none bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 whitespace-nowrap"
-            >
-              <Edit2 size={16} /> تعديل البيانات
+      {/* هيدر التحكم والرجوع + بطاقة التعريف العصرية */}
+      {!hideTopHeroCard && (
+        <>
+          <div className="flex flex-col md:flex-row justify-between items-center bg-[#08152E] p-4 md:p-6 rounded-3xl border border-slate-800 shadow-lg gap-4 md:gap-6 print:hidden">
+            <button onClick={onBack} className="w-full md:w-auto min-h-[40px] bg-white/10 hover:bg-orange-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
+              <ChevronRight size={18} /> العودة
             </button>
-          )}
-          <button onClick={() => window.print()} className="flex-1 md:flex-none bg-white text-slate-950 px-6 py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl hover:bg-orange-600 hover:text-white transition-all whitespace-nowrap">
-            <Printer size={16} /> طباعة السجل
-          </button>
-        </div>
-      </div>
+            <div className="flex items-center gap-3 md:gap-4 text-center md:text-right">
+               <ClubLogo size={42} className="md:w-[52px] md:h-[52px]" />
+               <div>
+                  <h1 className="text-lg md:text-2xl font-black text-white leading-tight">
+                    {player.role === 'لاعب' ? 'الملف الفني والسجل الرقمي للاعب' : 'الملف التنفيذي والسجل المهني للكادر'}
+                  </h1>
+                  <p className="text-xs text-slate-300 font-medium mt-0.5">
+                    نادي الكرامة الرياضي · {player.role === 'لاعب' ? `فئة ${player.category}` : `${player.role} · ${player.category || 'عام'}`}
+                  </p>
+               </div>
+            </div>
+            <div className="flex items-center gap-2.5 w-full md:w-auto">
+              {canEditPerson && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditFormData({ ...player });
+                    setIsEditModalOpen(true);
+                  }}
+                  className="flex-1 md:flex-none min-h-[40px] bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-sm transition-colors whitespace-nowrap"
+                >
+                  <Edit2 size={16} /> تعديل البيانات
+                </button>
+              )}
+              <button onClick={() => window.print()} className="flex-1 md:flex-none min-h-[40px] bg-white text-slate-900 px-5 py-2.5 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-slate-100 transition-colors whitespace-nowrap">
+                <Printer size={16} /> طباعة السجل
+              </button>
+            </div>
+          </div>
 
-      {/* ============================================================== */}
-      {/* بطاقة البروفايل العلوية الشاملة للتعريف باللاعب */}
-      {/* ============================================================== */}
-      <div className="modern-card p-6 md:p-8 bg-gradient-to-l from-blue-950 via-[#0f172a] to-blue-900 text-white border-2 border-blue-900 rounded-[2rem] shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-          <div className="flex flex-col sm:flex-row items-center gap-6 md:gap-7 text-center sm:text-right">
-            <ProfilePhotoUploader
-              photo={player.photo}
-              name={player.name}
-              role={player.role}
-              number={player.number}
-              onPhotoChange={handlePhotoUpdate}
-              disabled={!canUploadOfficialPhoto}
-              size="2xl"
-            />
-            <div>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-                <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
-                  {player.role} • {player.category}
-                </span>
-                <span className="bg-blue-800/80 text-blue-200 border border-blue-700 px-3 py-1 rounded-full text-[10px] font-black">
-                  ⚽ عضو نادي الكرامة الرسمي
-                </span>
+          {/* بطاقة البروفايل العلوية العصرية (مخصصة للاعب أو للكوادر حسب الدور) */}
+          <div className="rounded-3xl bg-gradient-to-br from-[#061229] via-[#0B1F44] to-[#081733] text-white border border-slate-700/60 shadow-xl overflow-hidden">
+            <div className="p-6 md:p-8 space-y-6">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-right">
+                  <ProfilePhotoUploader
+                    photo={player.photo}
+                    name={player.name}
+                    role={player.role}
+                    number={player.role === 'لاعب' ? player.number : undefined}
+                    onPhotoChange={handlePhotoUpdate}
+                    disabled={!canUploadOfficialPhoto}
+                    size="2xl"
+                  />
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-slate-300 font-semibold">
+                      <span className="text-orange-300 font-bold">{player.role}</span>
+                      <span aria-hidden="true" className="text-slate-500">·</span>
+                      <span>{player.category ? `فئة ${player.category.split(',').join(' · ')}` : 'نادي الكرامة الرياضي'}</span>
+                      <span aria-hidden="true" className="text-slate-500">·</span>
+                      <span className="font-mono tabular-nums text-sky-300">انضم {player.joinDate || '---'}</span>
+                    </div>
+
+                    <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">{player.name}</h2>
+
+                    {player.role === 'لاعب' ? (
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 text-xs text-slate-300 font-medium">
+                        <span>المركز: <strong className="text-white">{player.position || 'غير محدد'}</strong></span>
+                        <span>القدم: <strong className="text-white">{player.preferredFoot || 'غير محدد'}</strong></span>
+                        <span>زمرة الدم: <strong className="text-white font-mono tabular-nums">{player.bloodType || '---'}</strong></span>
+                        {player.number !== undefined && player.number !== null && String(player.number).trim() !== '' && (
+                          <span>القميص: <strong className="text-orange-300 font-mono tabular-nums">#{player.number}</strong></span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 text-xs text-slate-300 font-medium">
+                        <span>المؤهل العلمي: <strong className="text-white">{player.academicDegree || 'غير محدد'}</strong></span>
+                        {player.coachingCertificate && (
+                          <span>الشهادة الأساسية: <strong className="text-emerald-300">{player.coachingCertificate}</strong></span>
+                        )}
+                        {player.phone && (
+                          <span>الهاتف: <strong className="text-white font-mono tabular-nums" dir="ltr">{player.phone}</strong></span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center lg:justify-end gap-4 border-t lg:border-t-0 lg:border-r border-white/10 pt-4 lg:pt-0 lg:pr-6 shrink-0">
+                  <div className="text-center sm:text-right space-y-1.5 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">الرقم الوطني / السجل</span>
+                      <span className="font-mono tabular-nums font-bold text-orange-300">
+                        {player.nationalId || player.id.substring(0, 8)}
+                      </span>
+                    </div>
+                    {(player.federalNumber || player.internationalId) && (
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">الاتحادي / الدولي</span>
+                        <span className="font-mono tabular-nums font-bold text-white">
+                          {player.federalNumber || '---'} / {player.internationalId || '---'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-white p-2 rounded-2xl shadow-md border border-slate-200 shrink-0 print:hidden">
+                    <QRCodeSVG value={`${window.location.origin}${window.location.pathname}?playerId=${player.id}`} size={68} level="M" />
+                  </div>
+                </div>
               </div>
-              <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">{player.name}</h2>
-              <p className="text-xs text-slate-300 font-bold mt-1">
-                المركز: {player.position || 'غير محدد'} | تاريخ الانضمام: {player.joinDate || '---'}
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-4 border-t md:border-t-0 md:border-r border-white/10 pt-4 md:pt-0 md:pr-6">
-            <div className="text-center sm:text-right">
-              <span className="text-[10px] font-black text-slate-400 block uppercase tracking-wider">رمز السجل الرقمي</span>
-              <span className="text-xs font-black text-orange-400 font-mono">{player.nationalId || player.id.substring(0, 8)}</span>
-            </div>
-            <div className="bg-white p-2 rounded-xl shadow-md border border-slate-200 shrink-0 print:hidden">
-              <QRCodeSVG value={`${window.location.origin}${window.location.pathname}?playerId=${player.id}`} size={64} level="M" />
+              {/* شريط المؤشرات السريعة لملف الكادر */}
+              {player.role !== 'لاعب' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10">
+                  <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] text-slate-300 font-semibold block">الشهادات المعتمدة</span>
+                      <span className="text-lg font-black text-white font-mono tabular-nums">{cadreCertificates.length} شهادة</span>
+                    </div>
+                    <GraduationCap size={18} className="text-sky-400 shrink-0" />
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] text-slate-300 font-semibold block">محطات الخبرة</span>
+                      <span className="text-lg font-black text-white font-mono tabular-nums">{cadreExperiences.length} محطة</span>
+                    </div>
+                    <Briefcase size={18} className="text-orange-400 shrink-0" />
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] text-slate-300 font-semibold block">الفئات المسندة</span>
+                      <span className="text-lg font-black text-emerald-300 font-mono tabular-nums">
+                        {player.category ? player.category.split(',').filter(Boolean).length : 0} فئات
+                      </span>
+                    </div>
+                    <Users size={18} className="text-emerald-400 shrink-0" />
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] text-slate-300 font-semibold block">المواسم النشطة</span>
+                      <span className="text-lg font-black text-orange-300 font-mono tabular-nums">{finalPlayerSeasons.length} موسم</span>
+                    </div>
+                    <CalendarCheck size={18} className="text-amber-400 shrink-0" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* ============================================================== */}
       {/* شريط المواسم الرياضية ومحدد الإحصائيات الفورية */}
@@ -1059,10 +1232,14 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
       <section className="space-y-6">
         <div className="border-r-4 border-emerald-600 pr-3">
           <h2 className="text-base md:text-lg font-black text-blue-950">
-            البند الثالث: المواصفات الفنية والبدنية وتتبع قياسات الوزن
+            {player.role === 'لاعب'
+              ? 'البند الثالث: المواصفات الفنية والبدنية وتتبع قياسات الوزن'
+              : 'البند الثالث: السيرة المهنية والشهادات التدريبية والخبرات'}
           </h2>
           <p className="text-[11px] font-bold text-slate-500">
-            القياسات البدنية وتتبع الوزن عبر الأشهر مع التنبيه التلقائي للزيادة أو النقصان
+            {player.role === 'لاعب'
+              ? 'القياسات البدنية وتتبع الوزن عبر الأشهر مع التنبيه التلقائي للزيادة أو النقصان'
+              : 'التوصيف الوظيفي في النادي وسجل الشهادات المعتمدة ومحطات العمل السابقة'}
           </p>
         </div>
 
@@ -1091,7 +1268,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             <div className="pt-4 border-t border-slate-100">
               <h4 className="text-xs font-black text-slate-700 flex items-center gap-2 mb-3">
                 <Package size={15} className="text-orange-500" />
-                التجهيزات الرياضية والاشتراكات
+                التجهيزات الرياضية
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex flex-col gap-1">
@@ -1102,12 +1279,6 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                 </div>
                 {player.kitAmount && (
                   <InfoBlock icon={Wallet} label="مبلغ طقم اللباس" value={`${player.kitAmount} ل.س`} color="text-emerald-600" />
-                )}
-                {player.isAcademyPlayer && player.subscriptionAmount && (
-                  <InfoBlock icon={Wallet} label="قسط الاشتراك" value={`${player.subscriptionAmount} ل.س`} color="text-emerald-600" />
-                )}
-                {player.isAcademyPlayer && player.subscriptionMonth && (
-                  <InfoBlock icon={Calendar} label="شهر الاشتراك" value={player.subscriptionMonth} color="text-blue-600" />
                 )}
               </div>
             </div>
@@ -1134,7 +1305,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                   </div>
                 </div>
 
-                {canEditPerson && (
+                {canEditWeight && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1236,7 +1407,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                         <th className="p-3 text-center">الوزن (كغ)</th>
                         <th className="p-3 text-center">الفارق عن القياس السابق</th>
                         <th className="p-3">ملاحظات</th>
-                        {canEditPerson && <th className="p-3 text-center">إجراءات</th>}
+                        {canDeleteWeight && <th className="p-3 text-center">إجراءات</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-bold text-slate-900">
@@ -1263,7 +1434,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
                               )}
                             </td>
                             <td className="p-3 text-slate-600 text-[11px]">{w.note || 'قياس دوري'}</td>
-                            {canEditPerson && (
+                            {canDeleteWeight && (
                               <td className="p-3 text-center">
                                 <button
                                   type="button"
@@ -1287,82 +1458,72 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
         ) : (
           <div className="space-y-6">
             {/* بطاقة التوصيف الوظيفي للكادر */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-emerald-600 bg-white space-y-4">
-              <SectionTitle icon={Activity} title="التوصيف الوظيفي للكادر في النادي" color="text-emerald-500" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                <InfoBlock icon={Target} label="الدور الوظيفي" value={player.role} />
-                <InfoBlock icon={UserCheck} label="الصفة والانتماء" value="كادر نادي رسمي" color="text-blue-900 font-black" />
-                <InfoBlock icon={CalendarCheck} label="الفئة" value={player.category || 'غير محدد'} />
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+              <SectionTitle icon={Activity} title="التوصيف الوظيفي والتكليف الرسمي في النادي" color="text-emerald-700" />
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <InfoBlock icon={Target} label="الدور الوظيفي" value={player.role} color="text-blue-950 font-black" />
+                <InfoBlock icon={UserCheck} label="الصفة الرسمية" value="كادر نادي رسمي" color="text-blue-900 font-bold" />
+                <InfoBlock icon={Users} label="الفئات المسندة" value={player.category ? player.category.split(',').join(' · ') : 'غير محدد'} />
                 <InfoBlock icon={CalendarCheck} label="تاريخ الانضمام" value={player.joinDate} />
-                {player.academicDegree && (
-                  <InfoBlock icon={GraduationCap} label="المؤهل العلمي" value={player.academicDegree} />
-                )}
-                {player.coachingCertificate && (
-                  <InfoBlock icon={Award} label="الشهادة التدريبية الأساسية" value={player.coachingCertificate} color="text-emerald-700 font-bold" />
-                )}
+                <InfoBlock icon={GraduationCap} label="المؤهل العلمي" value={player.academicDegree} />
+                <InfoBlock icon={Award} label="الشهادة الأساسية" value={player.coachingCertificate} color="text-emerald-700 font-bold" />
               </div>
             </div>
 
             {/* الشهادات التدريبية التخصصية ووثائقها المرفوعة */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-blue-600 bg-white space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <SectionTitle icon={GraduationCap} title={"الشهادات التدريبية والتأهيلية (" + cadreCertificates.length + ")"} color="text-blue-600" />
-                <span className="text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-full">
-                  معتمدة في سجل النادي
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+                <SectionTitle icon={GraduationCap} title={`الشهادات التدريبية والتأهيلية (${cadreCertificates.length})`} color="text-blue-700" />
+                <span className="text-xs font-bold text-slate-500">
+                  وثائق معتمدة في السجل المهني للنادي
                 </span>
               </div>
 
               {cadreCertificates.length === 0 ? (
-                <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 font-bold text-xs">
-                  لم يتم إضافة شهادات تدريبية تخصصية للكادر بعد.
+                <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 font-semibold text-xs">
+                  لم يتم إضافة شهادات تدريبية أو تخصصية لهذا الكادر بعد.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {cadreCertificates.map((cert, cIdx) => (
-                    <div key={cIdx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-blue-300 transition-all shadow-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className="font-black text-sm text-blue-950 flex items-center gap-1.5">
-                            <Award size={16} className="text-blue-600 shrink-0" />
-                            {cert.name}
+                  {cadreCertificates.map((cert: any, cIdx) => (
+                    <div key={cert.id || cIdx} className="bg-slate-50/80 border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-blue-300 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <h4 className="font-black text-sm text-blue-950 flex items-center gap-2">
+                            <Award size={16} className="text-orange-500 shrink-0" />
+                            <span>{cert.name || `شهادة #${cIdx + 1}`}</span>
                           </h4>
-                          <p className="text-xs text-slate-500 font-bold mt-1">
-                            الجهة المانحة: {cert.issuer || 'غير محدد'}
+                          <p className="text-xs text-slate-600 font-medium">
+                            {cert.issuer ? `الجهة المانحة: ${cert.issuer}` : 'شهادة تخصصية موثقة'}
+                            {(cert.date || cert.year) ? ` · التاريخ: ${cert.date || cert.year}` : ''}
                           </p>
                         </div>
-                        {cert.year && (
-                          <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono shrink-0">
-                            سنة {cert.year}
-                          </span>
-                        )}
                       </div>
 
-                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
+                      <div className="pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
                         {cert.image ? (
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => setPreviewDoc({ title: "وثيقة شهادة " + cert.name, src: cert.image })}
-                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                              onClick={() => setPreviewDoc({ title: `وثيقة شهادة ${cert.name || ''}`, src: cert.image! })}
+                              className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-blue-900 hover:bg-orange-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors"
                             >
-                              <Eye size={13} />
-                              <span>معاينة وثيقة الشهادة</span>
+                              <Eye size={14} />
+                              <span>معاينة الوثيقة</span>
                             </button>
-                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              وثيقة مرفقة ✓
-                            </span>
+                            <span className="text-xs font-bold text-emerald-700">مرفقة</span>
                           </div>
                         ) : (
-                          <span className="text-[11px] text-slate-400 font-bold">لا توجد صورة للشهادة</span>
+                          <span className="text-xs text-slate-400 font-medium">لا توجد صورة مرفقة</span>
                         )}
 
-                        {canEditPerson && (
-                          <label className="cursor-pointer px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-orange-500 text-slate-700 hover:text-orange-600 font-black text-xs flex items-center gap-1.5 transition-all shadow-xs">
-                            <Upload size={13} />
-                            <span>{cert.image ? 'تعديل الوثيقة' : 'رفع صورة الشهادة'}</span>
+                        {!isMedic && !isReadOnlyRole && (isManager || (canEditSports && !(isCatAdmin && Boolean(cert.image)))) && (
+                          <label className="cursor-pointer min-h-[36px] px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-orange-500 text-slate-700 hover:text-orange-600 font-bold text-xs flex items-center gap-1.5 transition-colors">
+                            <Upload size={14} />
+                            <span>{cert.image ? 'تحديث الوثيقة' : 'رفع الوثيقة'}</span>
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/*,application/pdf"
                               className="hidden"
                               onChange={(e) => {
                                 const f = e.target.files?.[0];
@@ -1378,34 +1539,43 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
               )}
             </div>
 
-            {/* الخبرات التدريبية والمهنية السابقة */}
-            <div className="modern-card p-6 md:p-8 border-r-8 border-indigo-600 bg-white space-y-4">
-              <SectionTitle icon={Briefcase} title={"الخبرات السابقة في الأندية والمؤسسات (" + cadreExperiences.length + ")"} color="text-indigo-600" />
+            {/* الخط الزمني للخبرات التدريبية والمهنية السابقة */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+              <SectionTitle icon={Briefcase} title={`الخبرات والمحطات المهنية السابقة (${cadreExperiences.length})`} color="text-indigo-700" />
               {cadreExperiences.length === 0 ? (
-                <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 font-bold text-xs">
-                  لم يتم إضافة سجل خبرات سابقة بعد.
+                <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 font-semibold text-xs">
+                  لم يتم إضافة سجل خبرات أو أندية سابقة بعد.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {cadreExperiences.map((exp, eIdx) => (
-                    <div key={eIdx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-black text-sm text-blue-950 flex items-center gap-1.5">
-                          <Briefcase size={16} className="text-indigo-600" />
-                          {exp.clubOrOrg}
-                        </span>
-                        <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
-                          {exp.fromYear} - {exp.toYear || 'حتى الآن'}
-                        </span>
+                  {cadreExperiences.map((exp: any, eIdx) => {
+                    const orgName = exp.employer || exp.clubOrOrg || 'جهة عمل غير محددة';
+                    const roleName = exp.position || exp.role || 'منصب فني / إداري';
+                    const period = exp.fromYear ? `${exp.fromYear} – ${exp.toYear || 'حتى الآن'}` : '';
+                    return (
+                      <div key={exp.id || eIdx} className="bg-slate-50/80 border border-slate-200 p-4 rounded-2xl space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 font-black text-sm text-blue-950">
+                            <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 font-mono tabular-nums text-xs flex items-center justify-center shrink-0">
+                              {eIdx + 1}
+                            </span>
+                            <span>{orgName}</span>
+                          </div>
+                          {period && (
+                            <span className="text-xs font-mono tabular-nums font-bold text-indigo-700 shrink-0">
+                              {period}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-slate-700 pr-8">المسمى الوظيفي: {roleName}</p>
+                        {exp.achievements && (
+                          <p className="text-xs font-medium text-slate-500 pr-8">
+                            {exp.achievements}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-xs font-bold text-slate-700">المسمى الوظيفي: {exp.role}</p>
-                      {exp.achievements && (
-                        <p className="text-[11px] font-medium text-slate-500 italic">
-                          أبرز المهام والإنجازات: {exp.achievements}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1435,14 +1605,19 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             ))}
           </div>
           <div className="space-y-4 print:hidden">
+            {isSavedMonthLockedForCatAdmin && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-black">
+                تقرير محفوظ ومعتمد لشهر {selectedMonth} — التعديل بعد الحفظ متاح للمدير فقط.
+              </div>
+            )}
             <textarea 
               className="w-full bg-slate-50 border border-slate-200 shadow-inner rounded-2xl p-4 md:p-6 text-xs md:text-sm text-blue-950 h-36 md:h-44 resize-none outline-none focus:border-blue-900 transition-all font-medium leading-relaxed"
               placeholder={`اكتب الملاحظات والتقييم الفني لشهر ${selectedMonth}...`}
               value={monthlyNotes[selectedMonth] || ""}
               onChange={e => setMonthlyNotes({...monthlyNotes, [selectedMonth]: e.target.value})}
-              readOnly={isViewer}
+              readOnly={!canEditMonthlyReport}
             ></textarea>
-            {!isViewer && (
+            {canEditMonthlyReport && (
               <button onClick={handleSaveMonthlyReport} disabled={isSavingReport} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md transition-all active:translate-y-0.5">
                 {isSavingReport ? <Loader2 size={18} className="animate-spin"/> : <Save size={18}/>} 
                 حفظ تقرير {selectedMonth}
@@ -1502,11 +1677,58 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             </h2>
           </div>
           <div className="modern-card p-6 md:p-8 border-r-8 border-red-600 bg-red-600/5 space-y-4">
+            {/* الإصابات النشطة ومسار العودة للعب إن وجدت */}
+            {(() => {
+              const activePlayerInjuries = (state.injuries || []).filter(i => i.personId === player.id && i.status !== 'تعافى');
+              if (activePlayerInjuries.length === 0) return null;
+              return (
+                <div className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-red-700 flex items-center gap-1.5">
+                      <ShieldAlert size={16} className="text-red-600" /> تنبيه طبي: اللاعب يخضع حالياً لبرنامج علاجي وتأهيلي
+                    </span>
+                    <span className="bg-red-100 text-red-800 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                      {activePlayerInjuries.length} إصابة نشطة
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {activePlayerInjuries.map(inj => (
+                      <div key={inj.id} className="bg-red-50/60 p-3 rounded-xl border border-red-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div>
+                          <p className="text-xs font-black text-red-950">{inj.type} ({inj.location})</p>
+                          <p className="text-[10px] font-bold text-slate-500">بدء الإصابة: {inj.startDate} {inj.expectedReturn ? `• العودة المتوقعة: ${inj.expectedReturn}` : ''}</p>
+                          {inj.doctorNotesToCoach && (
+                            <p className="text-[10px] font-black text-blue-900 mt-1 bg-blue-50 px-2 py-0.5 rounded-md inline-block">
+                              📢 توجيهات الطبيب: {inj.doctorNotesToCoach}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-left shrink-0">
+                          <span className="inline-block bg-white text-blue-900 border border-slate-200 text-[10px] font-black px-2.5 py-1 rounded-lg shadow-sm">
+                            المرحلة: {inj.rtpStage === 'clinic' ? '1. عيادة' : inj.rtpStage === 'gym' ? '2. صالة حديد' : inj.rtpStage === 'pitch' ? '3. تأهيل بالعشب' : inj.rtpStage === 'partial' ? '4. تدريب جزئي' : '5. جاهز للعب'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><HeartPulse size={12}/> السجل الطبي</p>
-                <div className="bg-white p-3 rounded-xl border border-red-100 min-h-[50px] text-xs font-medium text-red-950">
-                  {player.medicalHistory || 'لا يوجد سجلات طبية.'}
+                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1"><HeartPulse size={12}/> السجل الطبي والفحص الدوري</p>
+                <div className="bg-white p-3 rounded-xl border border-red-100 min-h-[50px] text-xs font-medium text-red-950 space-y-1">
+                  <div>{player.medicalHistory || 'لا يوجد سجلات طبية سابقة.'}</div>
+                  {player.bloodType && (
+                    <div className="text-[10px] font-black text-rose-700">🩸 فصيلة الدم: {player.bloodType}</div>
+                  )}
+                  {player.medicalCard?.allergies && (
+                    <div className="text-[10px] font-black text-red-600">⚠️ الحساسية: {player.medicalCard.allergies}</div>
+                  )}
+                  {player.medicalCard?.cardioStatus && (
+                    <div className="text-[10px] font-bold text-slate-600">فحص القلب: {player.medicalCard.cardioStatus}</div>
+                  )}
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -1686,6 +1908,7 @@ const PlayerReport: React.FC<PlayerReportProps> = ({ state, setState, player, on
             addLog?.('تم تحديث البيانات بنجاح', 'success');
           }}
           isSelf={isSelf}
+          currentUserRole={state.currentUser.role}
         />
       )}
     </div>

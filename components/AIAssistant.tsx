@@ -39,12 +39,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ state }) => {
       p.role === 'لاعب' && (selectedCategory === 'الكل' ? true : p.category === selectedCategory)
     );
     
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     const categoryMatches = state.matches.filter(m => 
-      m.isCompleted && (!m.season || m.season === state.activeSeason) && (selectedCategory === 'الكل' ? true : m.category === selectedCategory)
+      m.isCompleted && (isAllSeasons || !m.season || m.season === state.activeSeason) && (selectedCategory === 'الكل' ? true : m.category === selectedCategory)
     );
 
     const categorySessions = state.sessions.filter(s => 
-      (!s.season || s.season === state.activeSeason) && (selectedCategory === 'الكل' ? true : s.category === selectedCategory)
+      (isAllSeasons || !s.season || s.season === state.activeSeason) && (selectedCategory === 'الكل' ? true : s.category === selectedCategory)
     );
 
     const medicalHistory = categoryPlayers

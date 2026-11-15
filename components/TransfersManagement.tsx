@@ -3,6 +3,8 @@ import { RefreshCw, Plus, Save, Trash2, Edit2, X, Paperclip, CheckCircle2, XCirc
 import { AppState, TransferRequest } from '../types';
 import { generateUUID } from '../App';
 import { uploadToCloudinary } from '../utils/cloudinaryUploader';
+import { canDeleteRecords, canEditSportsData, isManagerRole } from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface TransfersManagementProps {
   state: AppState;
@@ -16,19 +18,31 @@ const TransfersManagement: React.FC<TransfersManagementProps> = ({ state, setSta
   const [formData, setFormData] = useState<Partial<TransferRequest>>({});
   
   const currentUser = state.currentUser!;
-  const canEdit = currentUser.role === 'مدير' || currentUser.role === 'إداري فئة' || currentUser.role === 'مدرب';
+  const isManager = isManagerRole(currentUser);
+  const canEdit = canEditSportsData(currentUser);
+  const canDelete = canDeleteRecords(currentUser);
 
   const transfers = state.transfers || [];
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.playerId) return;
+    if (!canEdit || !formData.playerId) return;
+
+    const targetPlayerName = state.people.find(p => p.id === formData.playerId)?.name || formData.playerName || 'لاعب';
 
     if (editingId) {
       setState(prev => ({
         ...prev,
         transfers: prev.transfers.map(t => t.id === editingId ? { ...t, ...formData } as TransferRequest : t)
       }));
+      await recordAuditLog({
+        user: currentUser,
+        actionType: 'تعديل',
+        section: 'الانتقالات والإعارة',
+        targetName: targetPlayerName,
+        details: 'تحديث بيانات طلب انتقال / إعارة',
+        setState: setState as any
+      });
       addLog('تم تحديث طلب الانتقال/الإعارة');
     } else {
       const newTransfer: TransferRequest = {
@@ -41,12 +55,21 @@ const TransfersManagement: React.FC<TransfersManagementProps> = ({ state, setSta
         ...prev,
         transfers: [...(prev.transfers || []), newTransfer]
       }));
+      await recordAuditLog({
+        user: currentUser,
+        actionType: 'إضافة',
+        section: 'الانتقالات والإعارة',
+        targetName: targetPlayerName,
+        details: 'إضافة طلب انتقال / إعارة جديد',
+        setState: setState as any
+      });
       addLog('تم إضافة طلب انتقال/إعارة جديد');
     }
     setIsModalOpen(false);
   };
 
   const handleDelete = (id: string) => {
+    if (!canDelete) return;
     if (confirm('هل أنت متأكد من حذف هذا الطلب؟')) {
       setState(prev => ({
         ...prev,
@@ -56,11 +79,22 @@ const TransfersManagement: React.FC<TransfersManagementProps> = ({ state, setSta
     }
   };
 
-  const handleStatusChange = (id: string, status: TransferRequest['status']) => {
+  const handleStatusChange = async (id: string, status: TransferRequest['status']) => {
+    if (!isManager) return;
+    const req = transfers.find(t => t.id === id);
+    const pName = state.people.find(p => p.id === req?.playerId)?.name || req?.playerName || 'طلب انتقال';
     setState(prev => ({
       ...prev,
       transfers: prev.transfers.map(t => t.id === id ? { ...t, status } : t)
     }));
+    await recordAuditLog({
+      user: currentUser,
+      actionType: 'تعديل',
+      section: 'الانتقالات والإعارة',
+      targetName: pName,
+      details: `تغيير حالة الطلب إلى: ${status}`,
+      setState: setState as any
+    });
     addLog(`تم تغيير حالة الطلب إلى ${status}`);
   };
 
@@ -170,14 +204,14 @@ const TransfersManagement: React.FC<TransfersManagementProps> = ({ state, setSta
                   }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2">
                     <Edit2 size={16} /> تعديل
                   </button>
-                  {currentUser.role === 'مدير' && (
+                  {canDelete && (
                     <button onClick={() => handleDelete(transfer.id)} className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2">
                       <Trash2 size={16} /> حذف
                     </button>
                   )}
                 </div>
               )}
-              {canEdit && currentUser.role === 'مدير' && (
+              {isManager && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   <button onClick={() => handleStatusChange(transfer.id, 'مقبول')} className="bg-emerald-50 text-emerald-600 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-100">قبول</button>
                   <button onClick={() => handleStatusChange(transfer.id, 'قيد الانتظار')} className="bg-amber-50 text-amber-600 py-1.5 rounded-lg text-xs font-bold hover:bg-amber-100">انتظار</button>

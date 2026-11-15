@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, Calendar, Trophy, Clock, MapPin, Zap, 
-  Activity, Search, Package, WalletCards, Bot, Loader2, BarChart2, MessageCircle
+  Activity, Search, Package, WalletCards, Bot, Loader2, BarChart2
 } from 'lucide-react';
 import { AppState, Person, Match, TrainingSession } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
@@ -77,8 +77,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
   const [searchTerm, setSearchTerm] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [finYear, setFinYear] = useState(new Date().getFullYear().toString());
-  const [finMonth, setFinMonth] = useState('الكل');
 
   const globalFilter = state.globalCategoryFilter;
   const isManager = state.currentUser?.role === 'مدير';
@@ -149,21 +147,23 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
 
   const upcomingMatches = useMemo(() => {
     const now = new Date();
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     return state.matches.filter(m => {
       const matchStart = parseDateTime(m.date, m.time);
       const matchDurationMins = parseInt(m.matchDuration || '90') + parseInt(m.stoppageTime1 || '0') + parseInt(m.stoppageTime2 || '0') + 15; // ~15m half time break
       const matchEnd = new Date(matchStart.getTime() + matchDurationMins * 60000);
-      return (!m.season || m.season === state.activeSeason) && (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && matchEnd >= now;
+      return (isAllSeasons || !m.season || m.season === state.activeSeason) && (!restrictedCat || allowedCategories.includes(m.category)) && (globalFilter === 'الكل' || m.category === globalFilter) && !m.isCompleted && matchEnd >= now;
     }).sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
   }, [state.matches, globalFilter, restrictedCat, allowedCategories, state.activeSeason]);
 
   const upcomingSessions = useMemo(() => {
     const now = new Date();
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     return state.sessions.filter(s => {
       const sessionStart = parseDateTime(s.date, s.time);
       const sessionDurationMins = parseInt((s as any).duration || '90');
       const sessionEnd = new Date(sessionStart.getTime() + sessionDurationMins * 60000);
-      return (!s.season || s.season === state.activeSeason) && (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && sessionEnd >= now;
+      return (isAllSeasons || !s.season || s.season === state.activeSeason) && (!restrictedCat || allowedCategories.includes(s.category)) && (globalFilter === 'الكل' || s.category === globalFilter) && !s.isCompleted && sessionEnd >= now;
     }).sort((a, b) => parseDateTime(a.date, a.time).getTime() - parseDateTime(b.date, b.time).getTime());
   }, [state.sessions, globalFilter, restrictedCat, allowedCategories, state.activeSeason]);
 
@@ -178,78 +178,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
       return (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter) && end > now && end <= threeMonthsFromNow;
     }).sort((a, b) => new Date(a.contractEnd!).getTime() - new Date(b.contractEnd!).getTime());
   }, [state.people, globalFilter, restrictedCat, allowedCategories]);
-
-  const subscriptionAlerts = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getFullYear() * 12 + now.getMonth();
-    const currentDay = now.getDate();
-
-    return state.people.filter(p => {
-      if (p.role !== 'لاعب' || !p.isAcademyPlayer || !p.subscriptionMonth) return false;
-      const [year, month] = p.subscriptionMonth.split('-').map(Number);
-      const subMonth = year * 12 + (month - 1);
-      
-      const isExpired = subMonth < currentMonth;
-      const isExpiringSoon = subMonth === currentMonth && currentDay >= 22;
-
-      return (!restrictedCat || allowedCategories.includes(p.category)) && 
-             (globalFilter === 'الكل' || p.category === globalFilter) && 
-             (isExpired || isExpiringSoon);
-    }).map(p => {
-      const [year, month] = p.subscriptionMonth!.split('-').map(Number);
-      const subMonth = year * 12 + (month - 1);
-      return {
-        ...p,
-        isExpired: subMonth < currentMonth
-      };
-    });
-  }, [state.people, globalFilter, restrictedCat, allowedCategories]);
-
-  const financialStats = useMemo(() => {
-    const players = state.people.filter(p => p.role === 'لاعب' && p.isAcademyPlayer && (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter));
-    let totalSubs = 0;
-    let totalKits = 0;
-    let kitsCount = 0;
-
-    players.forEach(p => {
-      if (p.subscriptionAmount) totalSubs += parseFloat(p.subscriptionAmount) || 0;
-      if (p.receivedKit) {
-        kitsCount++;
-        if (p.kitAmount) totalKits += parseFloat(p.kitAmount) || 0;
-      }
-    });
-
-    return { totalPlayers: players.length, totalSubs, totalKits, kitsCount };
-  }, [state.people, restrictedCat, allowedCategories, globalFilter]);
-
-  const monthlyFinancialData = useMemo(() => {
-    const players = state.people.filter(p => p.role === 'لاعب' && p.isAcademyPlayer && (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter));
-    
-    const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
-    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-    
-    return months.map((m, index) => {
-      const monthStr = `${finYear}-${m}`;
-      let subs = 0;
-      let kits = 0;
-      
-      players.forEach(p => {
-        if (p.subscriptionMonth === monthStr) {
-          if (p.subscriptionAmount) subs += parseFloat(p.subscriptionAmount) || 0;
-        }
-        if (p.receivedKit && p.registrationDate && p.registrationDate.startsWith(monthStr)) {
-          if (p.kitAmount) kits += parseFloat(p.kitAmount) || 0;
-        }
-      });
-      
-      return {
-        name: monthNames[index],
-        monthValue: m,
-        'الاشتراكات': subs,
-        'اللباس': kits,
-      };
-    }).filter(d => finMonth === 'الكل' || d.monthValue === finMonth);
-  }, [state.people, restrictedCat, allowedCategories, globalFilter, finYear, finMonth]);
 
   const seasonalPerformance = useMemo(() => {
     const catsToEvaluate = state.categories.filter(c => 
@@ -277,7 +205,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         if (validPlayers > 0) avgAge = totalAge / validPlayers;
       }
 
-      const categoryMatches = state.matches.filter(m => m.category === cat && m.isCompleted && (!m.season || m.season === state.activeSeason));
+      const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
+      const categoryMatches = state.matches.filter(m => m.category === cat && m.isCompleted && (isAllSeasons || !m.season || m.season === state.activeSeason));
       const playedMatches = categoryMatches.length;
       let wins = 0;
       categoryMatches.forEach(m => {
@@ -303,7 +232,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
     );
 
     return catsToEvaluate.map(cat => {
-      const sessions = state.sessions.filter(s => s.category === cat && (!s.season || s.season === state.activeSeason));
+      const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
+      const sessions = state.sessions.filter(s => s.category === cat && (isAllSeasons || !s.season || s.season === state.activeSeason));
       const sessionIds = sessions.map(s => s.id);
       
       const records = state.attendance.filter(a => sessionIds.includes(a.sessionId));
@@ -339,19 +269,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#64748B'];
 
-  const isAcademyMode = state.appMode === 'academy';
-
   const stats = [
     { label: 'الكوادر واللاعبين', value: state.people.filter(p => (!restrictedCat || allowedCategories.includes(p.category)) && (globalFilter === 'الكل' || p.category === globalFilter)).length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    ...(isAcademyMode ? [
-      { label: 'طلاب الأكاديمية (اللاعبين)', value: financialStats.totalPlayers, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
-      { label: 'إجمالي الاشتراكات', value: financialStats.totalSubs.toLocaleString() + ' $', icon: WalletCards, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-      { label: 'إجمالي مبلغ اللباس', value: financialStats.totalKits.toLocaleString() + ' $', icon: Package, color: 'text-amber-500', bg: 'bg-amber-500/10' },
-      { label: 'اللاعبين المستلمين لباس', value: financialStats.kitsCount, icon: Package, color: 'text-rose-500', bg: 'bg-rose-500/10' }
-    ] : [
-      { label: 'الأنشطة المجدولة', value: upcomingMatches.length + upcomingSessions.length, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-      { label: 'أصناف المستودع', value: state.warehouse.filter(w => (!restrictedCat || allowedCategories.includes(w.category)) && (globalFilter === 'الكل' || w.category === globalFilter)).length, icon: Package, color: 'text-purple-500', bg: 'bg-purple-500/10' }
-    ])
+    { label: 'الأنشطة المجدولة', value: upcomingMatches.length + upcomingSessions.length, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    { label: 'أصناف المستودع', value: state.warehouse.filter(w => (!restrictedCat || allowedCategories.includes(w.category)) && (globalFilter === 'الكل' || w.category === globalFilter)).length, icon: Package, color: 'text-purple-500', bg: 'bg-purple-500/10' }
   ];
 
   return (
@@ -462,36 +383,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         </div>
       )}
 
-      {isAcademyMode && subscriptionAlerts.length > 0 && (
-        <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-lg mb-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-orange-700 font-bold">تنبيه اشتراكات اللاعبين:</span>
-          </div>
-          <ul className="space-y-2">
-            {subscriptionAlerts.map(p => {
-              const statusText = p.isExpired ? "انتهى اشتراكه عن شهر" : "اقترب موعد تجديد اشتراكه لشهر";
-              const waText = p.isExpired
-                ? `نذكركم بانتهاء اشتراك اللاعب ${p.name} للأكاديمية، يرجى تجديد الاشتراك وشكراً.`
-                : `نذكركم باقتراب موعد تجديد اشتراك اللاعب ${p.name} للأكاديمية، يرجى تجديد الاشتراك وشكراً.`;
-              const waLink = p.phone ? `https://wa.me/${p.phone}?text=${encodeURIComponent(waText)}` : null;
-              
-              return (
-                <li key={p.id} className="text-sm text-orange-800 font-semibold flex flex-col sm:flex-row sm:items-center justify-between bg-orange-100/50 p-3 rounded-lg gap-3">
-                  <span className="cursor-pointer hover:underline" onClick={() => onPlayerClick?.(p as any)}>
-                    اللاعب {p.name} ({statusText} {p.subscriptionMonth})
-                  </span>
-                  {waLink && (
-                    <a href={waLink} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 bg-emerald-500 text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-emerald-600 transition-colors shrink-0">
-                      <MessageCircle size={14} /> مراسلة الأهل عبر واتساب
-                    </a>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
          <div className="space-y-6">
             <div className="flex items-center gap-3 border-r-4 border-orange-500 pr-4">
@@ -570,53 +461,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onMatchClick, on
         ))}
       </div>
 
-      {isAcademyMode && (
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mt-8 mb-10">
-           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-             <h3 className="text-lg font-black text-blue-900 flex items-center gap-2">
-                <WalletCards className="text-emerald-500" size={20} />
-                الدخل الشهري والمصاريف
-             </h3>
-             <div className="flex items-center gap-2">
-               <select 
-                 className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-                 value={finYear}
-                 onChange={(e) => setFinYear(e.target.value)}
-               >
-                 {[0, 1, 2, 3].map(offset => {
-                   const y = new Date().getFullYear() - offset;
-                   return <option key={y} value={y.toString()}>{y}</option>;
-                 })}
-               </select>
-               <select 
-                 className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-                 value={finMonth}
-                 onChange={(e) => setFinMonth(e.target.value)}
-               >
-                 <option value="الكل">كل الأشهر</option>
-                 {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m, i) => (
-                   <option key={m} value={m}>{['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'][i]}</option>
-                 ))}
-               </select>
-             </div>
-           </div>
-           <div className="h-80 w-full" dir="ltr">
-              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
-                 <BarChart data={monthlyFinancialData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
-                    <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                    <Bar dataKey="الاشتراكات" fill="#10B981" radius={[4, 4, 0, 0]} barSize={24} />
-                    <Bar dataKey="اللباس" fill="#F59E0B" radius={[4, 4, 0, 0]} barSize={24} />
-                 </BarChart>
-              </ResponsiveContainer>
-           </div>
-        </div>
-      )}
-
-      {!isAcademyMode && seasonalPerformance.length > 0 && (
+      {seasonalPerformance.length > 0 && (
          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mt-8 mb-10">
             <h3 className="text-lg font-black text-blue-900 flex items-center gap-2 mb-6">
                <BarChart2 className="text-blue-500" size={20} />

@@ -9,6 +9,13 @@ import {
 import { AppState, Match, MatchType, MatchEvent, Person } from '../types';
 import { generateUUID, supabase } from '../App';
 import ClubLogo from './ClubLogo';
+import {
+  canDeleteRecords,
+  canEditSportsData,
+  hasCategoryAccess,
+  isManagerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface MatchPlannerProps {
   state: AppState;
@@ -35,8 +42,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   }, [defaultSelectedId, state.matches, loadedDefaultMatchId]);
   
   const currentUser = state.currentUser;
-  const isManager = currentUser?.role === 'مدير';
-  const isViewer = currentUser?.role === 'مشاهد' || currentUser?.role === 'معالج';
+  const isManager = isManagerRole(currentUser);
+  const canSportsEdit = canEditSportsData(currentUser);
+  const isViewer = !canSportsEdit;
   const restrictedCat = currentUser?.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
@@ -105,8 +113,9 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   };
 
   const filteredMatches = useMemo(() => {
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     return state.matches.filter(m => {
-      if (m.season && m.season !== state.activeSeason) return false;
+      if (!isAllSeasons && m.season && m.season !== state.activeSeason) return false;
       const isBaraaemMatch = m.lineup?.halvesCount === '3' || m.category === 'البراعم';
       
       // If we are in baraaem mode, only show baraaem matches
@@ -116,7 +125,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
         if (isBaraaemMatch) return false;
       }
 
-      if (restrictedCat) return String(restrictedCat).split(',').includes(m.category);
+      if (restrictedCat) return hasCategoryAccess(currentUser, m.category);
       return (state.globalCategoryFilter === 'الكل' || m.category === state.globalCategoryFilter);
     }).sort((a,b) => b.date.localeCompare(a.date));
   }, [state.matches, state.globalCategoryFilter, restrictedCat, viewMode, state.activeSeason]);
@@ -124,6 +133,8 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   const handleCreateMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isViewer || isSaving) return;
+    const targetCategory = formData.category || defaultCategory;
+    if (!canEditSportsData(currentUser, targetCategory)) return;
     if (!formData.opponent) {
       alert('يرجى إدخال اسم الفريق الخصم');
       return;
@@ -137,11 +148,15 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     const isBaraaemFormat = viewMode === 'baraaem' || formData.category === 'البراعم';
     const finalCategory = formData.category || defaultCategory;
 
+    const resolvedSeason = (!state.activeSeason || state.activeSeason === 'الكل')
+      ? (state.seasons?.[0] || '2025/2026')
+      : state.activeSeason;
+
     const isDuplicate = state.matches.some(m => 
         m.date === formData.date && 
         m.opponent === formData.opponent && 
         m.category === finalCategory &&
-        (!m.season || m.season === state.activeSeason)
+        (!m.season || m.season === resolvedSeason)
     );
     
     if (isDuplicate) {
@@ -154,7 +169,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       const newMatch: Match = {
         id: generateUUID(),
         category: finalCategory,
-        season: state.activeSeason,
+        season: resolvedSeason,
         matchType: (formData.matchType as MatchType) || 'دوري',
         opponent: formData.opponent,
         pitch: formData.pitch || 'ملعب الكرامة',
@@ -192,6 +207,14 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       if (error) { alert('خطأ في المزامنة: ' + error.message); setIsSaving(false); return; }
 
       setState(prev => ({ ...prev, matches: [newMatch, ...prev.matches] }));
+      await recordAuditLog({
+        user: currentUser,
+        actionType: 'إضافة',
+        section: 'إدارة المباريات',
+        targetName: `الكرامة × ${newMatch.opponent} (${newMatch.category})`,
+        details: `جدولة مباراة ${newMatch.matchType} بتاريخ ${newMatch.date}`,
+        setState: setState as any
+      });
       addLog?.('جدولة مباراة', `تمت جدولة مواجهة ضد ${newMatch.opponent}`, 'success');
       setIsAddOpen(false);
       setActiveMatch(newMatch);
@@ -203,7 +226,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
   };
 
   const deleteMatch = async (id: string) => {
-    if (!isManager) return;
+    if (!canDeleteRecords(currentUser)) return;
     if (confirm('🚨 هل أنت متأكد من حذف هذه المباراة نهائياً من السجلات المركزية؟')) {
       const { error } = await supabase.from('matches').delete().eq('id', id);
       if (error) { alert('خطأ في الحذف: ' + error.message); return; }
@@ -214,6 +237,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
 
   const saveMatch = async (complete: boolean = false) => {
     if (!activeMatch || isViewer) return;
+    if (!canEditSportsData(currentUser, activeMatch.category)) return;
+    const existingMatch = state.matches.find(m => m.id === activeMatch.id);
+    if (existingMatch?.isCompleted && !isManager) {
+      alert('المباراة معتمدة ومكتملة — التعديل بعد الاعتماد متاح للمدير فقط.');
+      return;
+    }
     const finalMatch = recalculateAllMinutes({ ...activeMatch, isCompleted: complete });
     // Remove isBaraaem if it exists from older data
     if ('isBaraaem' in finalMatch) {
@@ -226,6 +255,14 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       ...prev,
       matches: prev.matches.map(m => m.id === finalMatch.id ? finalMatch : m)
     }));
+    await recordAuditLog({
+      user: currentUser,
+      actionType: 'تعديل',
+      section: 'إدارة المباريات',
+      targetName: `الكرامة × ${finalMatch.opponent} (${finalMatch.category})`,
+      details: complete ? `اعتماد التقرير النهائي (${finalMatch.ourScore} - ${finalMatch.opponentScore})` : 'حفظ مسودة وتفاصيل المباراة',
+      setState: setState as any
+    });
     setActiveMatch(null);
     addLog?.('تحديث مباراة', `تم حفظ بيانات ${finalMatch.opponent}`, 'success');
   };
@@ -243,11 +280,12 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
     const matchDate = activeMatch.date || new Date().toISOString().split('T')[0];
     
     // جلب جميع مباريات الفريق المكتملة في نفس البطولة والموسم، السابقة زمنياً لهذه المباراة
+    const isAllSeasons = !state.activeSeason || state.activeSeason === 'الكل';
     const previousMatches = state.matches
       .filter(m => m.isCompleted && 
                    m.matchType === activeMatch.matchType && 
                    m.category === activeMatch.category && 
-                   m.season === state.activeSeason && 
+                   (isAllSeasons || !m.season || m.season === state.activeSeason) && 
                    ((m.date < matchDate) || (m.date === matchDate && m.id !== activeMatch.id)))
       .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -382,7 +420,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
       {/* Matches Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
         {filteredMatches.map(m => {
-          const canEdit = isManager || (!m.isCompleted && !isViewer);
+          const canEdit = isManager || (!m.isCompleted && canEditSportsData(currentUser, m.category));
           return (
             <div 
               key={m.id} 
@@ -417,7 +455,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     {canEdit ? <Activity size={16}/> : <FileText size={16}/>}
                     {canEdit ? 'إدارة المباراة' : 'تقرير فني'}
                   </button>
-                  {isManager && (
+                  {canDeleteRecords(currentUser) && (
                     <button onClick={(e) => { e.stopPropagation(); deleteMatch(m.id); }} className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all border border-red-100 shadow-sm">
                       <Trash2 size={16}/>
                     </button>
@@ -542,7 +580,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                           </div>
                        </div>
                     </div>
-                    {!isViewer && (isManager || !activeMatch.isCompleted) && (
+                    {canEditSportsData(currentUser, activeMatch.category) && (isManager || !activeMatch.isCompleted) && (
                       <div className="flex gap-2 md:gap-3 w-full lg:w-auto mt-4 lg:mt-0">
                          <button onClick={() => saveMatch(true)} className="flex-1 bg-emerald-600 text-white px-4 md:px-8 py-3.5 rounded-2xl font-black text-[10px] md:text-sm flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/10 whitespace-nowrap">
                             <CheckCircle size={18}/> <span className="hidden xs:inline">اعتماد التقرير</span><span className="xs:hidden">اعتماد</span>
@@ -554,7 +592,7 @@ const MatchPlanner: React.FC<MatchPlannerProps> = ({ state, setState, defaultSel
                     )}
                  </div>
 
-                 <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 ${(!isManager && activeMatch.isCompleted) ? 'pointer-events-none opacity-80 select-none grayscale-[0.2]' : ''}`}>
+                 <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 ${(isViewer || (!isManager && activeMatch.isCompleted) || !canEditSportsData(currentUser, activeMatch.category)) ? 'pointer-events-none opacity-80 select-none grayscale-[0.2]' : ''}`}>
                     
                     {/* Column 1: Score & Lineup */}
                     <div className="lg:col-span-8 space-y-6 md:space-y-8">

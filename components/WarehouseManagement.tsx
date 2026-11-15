@@ -1,8 +1,23 @@
 
 import React, { useState, useMemo } from 'react';
-import { Package, Plus, Trash2, Edit3, Search, Filter, Box, Archive, ClipboardList, ShieldAlert, X, Save, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Package, Plus, Trash2, Edit3, Search, Filter, Box, Archive, ClipboardList, ShieldAlert, X, Save, TrendingUp, AlertTriangle, CheckCircle, Clock, UserCheck } from 'lucide-react';
 import { AppState, WarehouseItem, Category } from '../types';
 import { generateUUID, supabase } from '../App';
+import {
+  canAddWarehouseItem,
+  canDeleteRecords,
+  canEditWarehouseItem,
+  formatActorLabel,
+  formatAuditDate,
+  formatAuditTime,
+  getAllowedCategories,
+  isEquipmentOfficerRole,
+  isManagerRole,
+  isMedicRole,
+  isViewerRole,
+  isWarehouseKeeperRole
+} from '../utils/permissions';
+import { getLocalWarehouseEditors, recordAuditLog, saveLocalWarehouseEditor } from '../utils/auditLogger';
 
 interface WarehouseManagementProps {
   state: AppState;
@@ -18,13 +33,21 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
   const [localCategoryFilter, setLocalCategoryFilter] = useState<string>('الكل');
   
   const currentUser = state.currentUser!;
-  const restrictedCat = currentUser.restrictedCategory;
-  const isManager = currentUser.role === 'مدير';
-  const isWarehouseKeeper = currentUser.role === 'أمين مستودع';
-  const isViewer = currentUser.role === 'مشاهد' || currentUser?.role === 'معالج';
+  const allowedCats = useMemo(() => getAllowedCategories(currentUser), [currentUser]);
+  const isManager = isManagerRole(currentUser);
+  const isWarehouseKeeper = isWarehouseKeeperRole(currentUser);
+  const isEquipmentOfficer = isEquipmentOfficerRole(currentUser);
+  const isViewer = isViewerRole(currentUser) || isMedicRole(currentUser);
+  const canAdd = canAddWarehouseItem(currentUser);
+  const canDelete = canDeleteRecords(currentUser);
+  const localEditors = useMemo(() => getLocalWarehouseEditors(), [state.warehouse]);
+
+  const defaultCategoryForNew = (isEquipmentOfficer && allowedCats.length > 0)
+    ? allowedCats[0]
+    : (allowedCats.length > 0 && !isWarehouseKeeper && !isManager ? allowedCats[0] : 'المخزن العام');
 
   const [formData, setFormData] = useState<Partial<WarehouseItem>>({
-    category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'المخزن العام',
+    category: defaultCategoryForNew,
     condition: 'جديد',
     unit: 'قطعة',
     quantity: 0
@@ -32,8 +55,14 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
 
   const filteredItems = useMemo(() => {
     return state.warehouse.filter(item => {
-      // إذا كان المستخدم محصوراً في فئة، يرى بيانات فئته + المخزن العام فقط
-      const canAccess = isManager || isWarehouseKeeper || (restrictedCat && String(restrictedCat).split(',').includes(item.category)) || item.category === 'المخزن العام';
+      let canAccess = false;
+      if (isManager || isWarehouseKeeper) {
+        canAccess = true;
+      } else if (isEquipmentOfficer) {
+        canAccess = allowedCats.length === 0 || allowedCats.includes(item.category);
+      } else {
+        canAccess = allowedCats.length === 0 || allowedCats.includes(item.category) || item.category === 'المخزن العام';
+      }
       if (!canAccess) return false;
 
       const matchCat = localCategoryFilter === 'الكل' ? true : item.category === localCategoryFilter;
@@ -41,24 +70,35 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
       
       return matchCat && matchSearch;
     }).sort((a, b) => a.category.localeCompare(b.category));
-  }, [state.warehouse, localCategoryFilter, searchTerm, restrictedCat, isManager, isWarehouseKeeper]);
+  }, [state.warehouse, localCategoryFilter, searchTerm, allowedCats, isManager, isWarehouseKeeper, isEquipmentOfficer]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isViewer) return;
+    if (!canAdd) return;
     if (!formData.name || formData.quantity === undefined) return;
 
-    const itemToSave = {
+    const targetCategory = (formData.category as any) || defaultCategoryForNew;
+    if (!canEditWarehouseItem(currentUser, targetCategory)) {
+      alert('ليس لديك صلاحية إضافة أو تعديل أصناف ضمن هذه الفئة.');
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const actorLabel = formatActorLabel(currentUser);
+
+    const itemToSave: WarehouseItem = {
       id: editingId || generateUUID(),
       name: formData.name!,
-      category: formData.category as any || 'المخزن العام',
+      category: targetCategory,
       quantity: formData.quantity!,
       unit: formData.unit as any || 'قطعة',
       condition: formData.condition as any || 'جديد',
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: nowIso,
+      lastModifiedBy: actorLabel,
       notes: formData.notes || ''
     };
 
+    saveLocalWarehouseEditor(itemToSave.id, actorLabel, nowIso);
     const success = await syncToCloud?.('warehouse', itemToSave);
     if (!success) return;
 
@@ -73,15 +113,29 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
       addLog?.('إضافة للمستودع', `تم تسجيل صنف جديد: ${itemToSave.name}`, 'success');
     }
 
+    recordAuditLog({
+      user: currentUser,
+      actionType: editingId ? 'تعديل' : 'إضافة',
+      section: 'المستودع',
+      targetName: itemToSave.name,
+      details: `الفئة: ${itemToSave.category} | الكمية: ${itemToSave.quantity} ${itemToSave.unit}`,
+      setState: setState as any
+    });
+
     setIsModalOpen(false);
     setEditingId(null);
   };
 
   const exportToCSV = () => {
-    const headers = ['المادة', 'القسم/الفئة', 'الكمية', 'الوحدة', 'الحالة', 'ملاحظات', 'آخر تحديث'];
-    const rows = filteredItems.map(item => [
-      item.name, item.category, item.quantity, item.unit, item.condition, item.notes || '', item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : ''
-    ]);
+    const headers = ['المادة', 'القسم/الفئة', 'الكمية', 'الوحدة', 'الحالة', 'ملاحظات', 'تاريخ آخر تعديل', 'وقت آخر تعديل', 'آخر من قام بالتعديل'];
+    const rows = filteredItems.map(item => {
+      const fallback = localEditors[item.id];
+      const ts = item.lastUpdated || fallback?.lastUpdated;
+      const editor = item.lastModifiedBy || fallback?.lastModifiedBy || '';
+      return [
+        item.name, item.category, item.quantity, item.unit, item.condition, item.notes || '', formatAuditDate(ts), formatAuditTime(ts), editor
+      ];
+    });
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
       + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
     const encodedUri = encodeURI(csvContent);
@@ -122,15 +176,15 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
            </div>
            
            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
-             {(isManager || isWarehouseKeeper || (isViewer && !restrictedCat)) && (
+             {(isManager || isWarehouseKeeper || (isEquipmentOfficer && allowedCats.length > 1) || (isViewer && allowedCats.length === 0)) && (
                <select 
                  value={localCategoryFilter}
                  onChange={e => setLocalCategoryFilter(e.target.value)}
                  className="flex-1 md:flex-none min-w-[120px] bg-white border border-slate-200 rounded-xl py-3 px-4 font-black text-xs outline-none cursor-pointer hover:bg-slate-50 transition-all shadow-sm"
                >
                  <option value="الكل">جميع الأقسام</option>
-                 <option value="المخزن العام">المخزن العام</option>
-                 {((restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : state.categories)).map(c => <option key={c} value={c}>{c}</option>)}
+                 {(!isEquipmentOfficer || allowedCats.length === 0) && <option value="المخزن العام">المخزن العام</option>}
+                 {(allowedCats.length > 0 && !isManager && !isWarehouseKeeper ? allowedCats : state.categories).map(c => <option key={c} value={c}>{c}</option>)}
                </select>
              )}
 
@@ -138,8 +192,8 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                 <ClipboardList size={20}/> تصدير CSV
              </button>
 
-             {!isViewer && (
-               <button onClick={() => { setEditingId(null); setFormData({ category: restrictedCat ? String(restrictedCat).split(',').filter(Boolean)[0] : 'المخزن العام', condition: 'جديد', unit: 'قطعة', quantity: 0 }); setIsModalOpen(true); }} className="flex-1 md:flex-none whitespace-nowrap bg-blue-900 text-white px-6 py-3 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all active:scale-95">
+             {canAdd && (
+               <button onClick={() => { setEditingId(null); setFormData({ category: defaultCategoryForNew, condition: 'جديد', unit: 'قطعة', quantity: 0 }); setIsModalOpen(true); }} className="flex-1 md:flex-none whitespace-nowrap bg-blue-900 text-white px-6 py-3 rounded-xl font-black text-xs md:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10 hover:bg-blue-800 transition-all active:scale-95">
                  <Plus size={20}/> إضافة صنف
                </button>
              )}
@@ -148,16 +202,23 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 px-2 md:px-0">
-         {filteredItems.map(item => (
-           <div key={item.id} className="bg-white p-5 md:p-6 rounded-[2rem] border border-slate-200 shadow-sm relative group hover:shadow-xl transition-all border-b-8 hover:border-orange-500 border-b-slate-100">
-              <div className="flex justify-between items-start mb-4">
-                 <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase border-2 ${item.category === 'المخزن العام' ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-blue-50 text-blue-900 border-blue-100'}`}>
-                   {item.category}
-                 </span>
-                 <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    {!isViewer && (isManager || isWarehouseKeeper || (restrictedCat && String(restrictedCat).split(',').includes(item.category))) && (
-                      <>
-                        <button onClick={() => { setEditingId(item.id); setFormData(item); setIsModalOpen(true); }} className="p-2 bg-slate-100 text-blue-900 rounded-lg border border-slate-200 hover:bg-blue-900 hover:text-white transition-all"><Edit3 size={14}/></button>
+         {filteredItems.map(item => {
+           const fallback = localEditors[item.id];
+           const lastTs = item.lastUpdated || fallback?.lastUpdated;
+           const lastEditor = item.lastModifiedBy || fallback?.lastModifiedBy;
+           const canEditThis = canAdd && canEditWarehouseItem(currentUser, item.category);
+           return (
+           <div key={item.id} className="bg-white p-5 md:p-6 rounded-[2rem] border border-slate-200 shadow-sm relative group hover:shadow-xl transition-all border-b-8 hover:border-orange-500 border-b-slate-100 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                   <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase border-2 ${item.category === 'المخزن العام' ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-blue-50 text-blue-900 border-blue-100'}`}>
+                     {item.category}
+                   </span>
+                   <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      {canEditThis && (
+                        <button onClick={() => { setEditingId(item.id); setFormData(item); setIsModalOpen(true); }} title="تعديل الصنف" className="p-2 bg-slate-100 text-blue-900 rounded-lg border border-slate-200 hover:bg-blue-900 hover:text-white transition-all"><Edit3 size={14}/></button>
+                      )}
+                      {canDelete && (
                         <button onClick={async () => { 
                           if(confirm('هل تريد حذف هذا الصنف؟')) { 
                             const { error } = await supabase.from('warehouse').delete().eq('id', item.id);
@@ -165,27 +226,40 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                             setState(p => ({...p, warehouse: p.warehouse.filter(x => x.id !== item.id)})); 
                             addLog?.('حذف من المستودع', `تم مسح: ${item.name}`, 'error'); 
                           } 
-                        }} className="p-2 bg-red-50 text-red-600 rounded-lg border border-red-100 hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
-                      </>
-                    )}
-                 </div>
+                        }} title="حذف الصنف (للمدير فقط)" className="p-2 bg-red-50 text-red-600 rounded-lg border border-red-100 hover:bg-red-600 hover:text-white transition-all"><Trash2 size={14}/></button>
+                      )}
+                   </div>
+                </div>
+                <div className="mb-4">
+                   <h4 className="text-lg font-black text-blue-900 mb-2 truncate">{item.name}</h4>
+                   <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ring-4 ring-opacity-10 ${item.condition === 'جديد' ? 'bg-emerald-500 ring-emerald-500' : item.condition === 'تالف' ? 'bg-red-500 ring-red-500' : 'bg-orange-500 ring-orange-500'}`}></span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{item.condition}</span>
+                   </div>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-between items-center transition-colors group-hover:bg-blue-50">
+                   <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase mb-1">الكمية المتوفرة</p>
+                      <p className="text-2xl font-black text-blue-900">{item.quantity} <span className="text-[10px] text-slate-400 font-bold uppercase">{item.unit}</span></p>
+                   </div>
+                   <div className="bg-white p-3 rounded-xl shadow-sm"><Box size={24} className="text-blue-900/20 group-hover:text-blue-900/60 transition-colors" /></div>
+                </div>
               </div>
-              <div className="mb-6">
-                 <h4 className="text-lg font-black text-blue-900 mb-2 truncate">{item.name}</h4>
-                 <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ring-4 ring-opacity-10 ${item.condition === 'جديد' ? 'bg-emerald-500 ring-emerald-500' : item.condition === 'تالف' ? 'bg-red-500 ring-red-500' : 'bg-orange-500 ring-orange-500'}`}></span>
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{item.condition}</span>
-                 </div>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-between items-center transition-colors group-hover:bg-blue-50">
-                 <div>
-                    <p className="text-[9px] font-black text-slate-500 uppercase mb-1">الكمية المتوفرة</p>
-                    <p className="text-2xl font-black text-blue-900">{item.quantity} <span className="text-[10px] text-slate-400 font-bold uppercase">{item.unit}</span></p>
-                 </div>
-                 <div className="bg-white p-3 rounded-xl shadow-sm"><Box size={24} className="text-blue-900/20 group-hover:text-blue-900/60 transition-colors" /></div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-1 text-[10px] text-slate-500 font-bold">
+                <div className="flex items-center gap-1.5 text-blue-900/80">
+                  <Clock size={12} className="text-orange-500 shrink-0" />
+                  <span>آخر تعديل: {formatAuditDate(lastTs)} {lastTs ? `• ${formatAuditTime(lastTs)}` : ''}</span>
+                </div>
+                {lastEditor && (
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <UserCheck size={12} className="text-emerald-600 shrink-0" />
+                    <span className="truncate">بواسطة: {lastEditor}</span>
+                  </div>
+                )}
               </div>
            </div>
-         ))}
+           );
+         })}
          {filteredItems.length === 0 && (
            <div className="col-span-full py-20 md:py-32 text-center bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200 p-8">
               <Box size={64} className="mx-auto text-slate-300 mb-4" />
@@ -194,7 +268,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
          )}
       </div>
 
-      {isModalOpen && !isViewer && (
+      {isModalOpen && canAdd && (
         <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-md flex items-center justify-center z-[500] p-0 md:p-4 no-print" dir="rtl">
            <div className="bg-white w-full h-full md:h-auto md:max-w-lg md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
               <div className="p-6 bg-white border-b border-slate-100 flex justify-between items-center shrink-0">
@@ -211,8 +285,8 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ state, setSta
                         value={formData.category || ''} 
                         onChange={e => setFormData({...formData, category: e.target.value as any})}
                        >
-                          <option value="المخزن العام">المخزن العام</option>
-                          {((restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : state.categories)).map(c => <option key={c} value={c}>{c}</option>)}
+                          {(!isEquipmentOfficer || allowedCats.length === 0) && <option value="المخزن العام">المخزن العام</option>}
+                          {(allowedCats.length > 0 && !isManager && !isWarehouseKeeper ? allowedCats : state.categories).map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
                     </div>
                     <div className="space-y-1.5">

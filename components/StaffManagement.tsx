@@ -12,6 +12,16 @@ import DocumentUploadCard from './DocumentUploadCard';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
 import { compressDocumentImage } from '../utils/imageCompressor';
 import { uploadToCloudinary } from '../utils/cloudinaryUploader';
+import {
+  canDeleteRecords,
+  canEditMedicalData,
+  canEditSelfProfile,
+  canEditSportsData,
+  hasCategoryAccess,
+  isCategoryAdminRole,
+  isManagerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface StaffManagementProps {
   state: AppState;
@@ -29,8 +39,10 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
   const [previewDoc, setPreviewDoc] = useState<{ title: string; src: string } | null>(null);
 
   const currentUser = state.currentUser!;
-  const isManager = currentUser.role === 'مدير';
-  const isViewer = currentUser.role === 'مشاهد' || currentUser?.role === 'معالج';
+  const isManager = isManagerRole(currentUser);
+  const isCatAdmin = isCategoryAdminRole(currentUser);
+  const canSportsEdit = canEditSportsData(currentUser);
+  const isViewer = !canSportsEdit;
   const restrictedCat = currentUser.restrictedCategory;
   const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
@@ -65,9 +77,11 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     e.preventDefault();
     if (!formData.name?.trim() || isSaving) return;
     const isEditingSelf = editingId === currentUser.relatedPersonId || formData.name === currentUser.username;
-    if (isViewer && !isEditingSelf && !isManager) return;
+    const canModifyThis = isManager || (isEditingSelf && canEditSelfProfile(currentUser)) || canEditSportsData(currentUser, formData.category);
+    if (!canModifyThis) return;
 
     setIsSaving(true);
+    const existingPerson = editingId ? state.people.find(p => p.id === editingId) : null;
     const rawSeasons: string[] = [
       ...(Array.isArray(formData.seasons) ? formData.seasons : []),
       ...(typeof formData.season === 'string' ? formData.season.split(',') : [])
@@ -78,11 +92,13 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     const updatedPerson = {
       ...initialFormState,
       ...formData,
-      isAcademyPlayer: false, // دائماً كادر نادي رسمي
       seasons: validSeasons,
       season: validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
       id: editingId || generateUUID(),
       name: formData.name!.trim(),
+      medicalHistory: canEditMedicalData(currentUser, formData.category) ? formData.medicalHistory : existingPerson?.medicalHistory,
+      injuries: canEditMedicalData(currentUser, formData.category) ? formData.injuries : existingPerson?.injuries,
+      medicalCard: canEditMedicalData(currentUser, formData.category) ? formData.medicalCard : existingPerson?.medicalCard,
     } as any;
 
     ['birthDate', 'passportIssueDate', 'passportExpiryDate'].forEach(key => {
@@ -92,7 +108,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     try {
       let updatedUserObj = null;
       let newAccountStr = '';
-      if (!editingId && autoCreateAccount) {
+      if (!editingId && autoCreateAccount && isManager) {
          const pass = Math.random().toString(36).slice(-6);
          const uRole = updatedPerson.role === 'طبيب' || updatedPerson.role === 'معالج' ? 'طبيب' : 'إداري فئات';
          const newAcc = {
@@ -119,6 +135,15 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
           : [updatedPerson, ...prev.people]
       }));
 
+      await recordAuditLog({
+        user: currentUser,
+        actionType: editingId ? 'تعديل' : 'إضافة',
+        section: 'إدارة الكادر الفني والإداري',
+        targetName: updatedPerson.name,
+        details: `${updatedPerson.role} • الفئة: ${updatedPerson.category || 'عام'}`,
+        setState: setState as any
+      });
+
       addLog?.(editingId ? 'تم تحديث البيانات بنجاح' : 'تمت الإضافة بنجاح', 'success');
       if (newAccountStr) {
          alert(newAccountStr);
@@ -136,7 +161,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`هل أنت متأكد من حذف سجل ${name} نهائياً؟`) || isViewer) return;
+    if (!canDeleteRecords(currentUser)) return;
+    if (!confirm(`هل أنت متأكد من حذف سجل ${name} نهائياً؟`)) return;
     try {
       const { error } = await supabase.from('people').delete().eq('id', id);
       if (error) throw error;
@@ -148,6 +174,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
   };
 
   const handleCreateAccount = async (person: Person) => {
+    if (!isManager) return;
     const existing = state.users.find(u => u.username === person.name);
     if (existing) {
        alert(`يوجد حساب مسبقاً بهذا الاسم: ${existing.username}`);
@@ -174,6 +201,14 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
         ...prev,
         users: [...prev.users, newAcc] as any
       }));
+      await recordAuditLog({
+        user: currentUser,
+        actionType: 'إضافة',
+        section: 'حسابات الدخول والصلاحيات',
+        targetName: person.name,
+        details: `إنشاء حساب تلقائي بصلاحية (${uRole})`,
+        setState: setState as any
+      });
       
       const msg = `تم إنشاء الحساب بنجاح!\nاسم الحساب: ${person.name}\nكلمة المرور: ${pass}`;
       alert(msg);
@@ -200,7 +235,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
   };
 
   const openEdit = (p: Person) => {
-    if (isViewer) return;
+    const isSelf = p.id === currentUser.relatedPersonId || p.name === currentUser.username;
+    const canModifyThis = isManager || (isSelf && canEditSelfProfile(currentUser)) || canEditSportsData(currentUser, p.category);
+    if (!canModifyThis) return;
     const rawSeasons: string[] = [
       ...(Array.isArray(p.seasons) ? p.seasons : []),
       ...(typeof p.season === 'string' ? p.season.split(',') : [])
@@ -219,7 +256,6 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
     setEditingId(p.id);
     setFormData({ 
       ...p, 
-      isAcademyPlayer: false, // كادر نادي رسمي
       season: finalSeasons[finalSeasons.length - 1],
       seasons: finalSeasons,
       academicDegree: p.academicDegree || '',
@@ -307,162 +343,229 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
           </div>
       </div>
 
-      {/* قائمة البطاقات */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-4">
+      {/* قائمة بطاقات الكوادر العصرية */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {filteredMembers.map(person => {
           const hasAccount = state.users.some(u => u.username === person.name);
           const isSelf = person.id === currentUser.relatedPersonId || person.name === currentUser.username;
-          const canEditPerson = !isViewer || isSelf || isManager;
-          const getRoleIcon = (role: string) => {
+          const canEditPerson = isManager || (isSelf && canEditSelfProfile(currentUser)) || (canSportsEdit && hasCategoryAccess(currentUser, person.category));
+          const canDeletePerson = canDeleteRecords(currentUser) && !isSelf;
+
+          const getRoleTheme = (role: string) => {
             switch(role) {
-              case 'مدرب': return <UserCog size={12} className="text-orange-600" />;
-              case 'مساعد مدرب': return <Users size={12} className="text-orange-500" />;
-              case 'مدرب حراس': return <Shield size={12} className="text-blue-600" />;
-              case 'مدرب لياقة': return <Dumbbell size={12} className="text-emerald-600" />;
-              case 'إداري': return <Briefcase size={12} className="text-purple-600" />;
-              case 'طبيب': return <Stethoscope size={12} className="text-red-500" />;
-              case 'معالج': return <HeartPulse size={12} className="text-rose-400" />;
-              case 'منسق إعلامي': return <Camera size={12} className="text-indigo-500" />;
-              case 'مرافق': return <User size={12} className="text-slate-500" />;
-              default: return <User size={12} className="text-slate-500" />;
+              case 'مدرب':
+                return { icon: <UserCog size={14} className="text-orange-600" />, topBar: 'bg-orange-500', roleText: 'text-orange-700' };
+              case 'مساعد مدرب':
+                return { icon: <Users size={14} className="text-amber-600" />, topBar: 'bg-amber-500', roleText: 'text-amber-700' };
+              case 'مدرب حراس':
+                return { icon: <Shield size={14} className="text-blue-600" />, topBar: 'bg-blue-600', roleText: 'text-blue-700' };
+              case 'مدرب لياقة':
+                return { icon: <Dumbbell size={14} className="text-emerald-600" />, topBar: 'bg-emerald-600', roleText: 'text-emerald-700' };
+              case 'إداري':
+                return { icon: <Briefcase size={14} className="text-indigo-600" />, topBar: 'bg-indigo-600', roleText: 'text-indigo-700' };
+              case 'طبيب':
+                return { icon: <Stethoscope size={14} className="text-rose-600" />, topBar: 'bg-rose-600', roleText: 'text-rose-700' };
+              case 'معالج':
+                return { icon: <HeartPulse size={14} className="text-rose-500" />, topBar: 'bg-rose-500', roleText: 'text-rose-700' };
+              case 'منسق إعلامي':
+                return { icon: <Camera size={14} className="text-sky-600" />, topBar: 'bg-sky-600', roleText: 'text-sky-700' };
+              default:
+                return { icon: <User size={14} className="text-slate-600" />, topBar: 'bg-slate-700', roleText: 'text-slate-700' };
             }
           };
 
+          const theme = getRoleTheme(person.role || '');
+          const personSeasons = Array.from(new Set([
+            ...(Array.isArray(person.seasons) ? person.seasons : []),
+            ...(typeof person.season === 'string' ? person.season.split(',') : [])
+          ].map(s => String(s || '').trim()).filter(Boolean)));
+          const certsCount = person.certificates?.length || 0;
+          const expsCount = person.experiences?.length || 0;
+          const hasDocs = Boolean(person.idCardImage || person.passportImage || (person.passportNumber || '').trim() !== '');
+
           return (
-          <div key={person.id} className={`modern-card p-4 md:p-5 group hover:border-orange-500 transition-all flex flex-col border-b-4 ${isSelf ? 'border-b-orange-500 ring-2 ring-orange-400/30' : 'border-b-orange-500/20'}`}>
-             <div className="flex justify-between items-start mb-3">
-                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center font-black text-xl transition-all border shadow-sm overflow-hidden shrink-0 ${isSelf ? 'bg-orange-500 text-white border-orange-400' : 'bg-blue-50 text-blue-900 border-blue-100 group-hover:bg-orange-500 group-hover:text-white group-hover:border-orange-400'}`}>
-                   {person.photo ? (
-                     <img src={person.photo} alt={person.name} className="w-full h-full object-cover" />
-                   ) : (
-                     person.name.charAt(0)
-                   )}
+            <div
+              key={person.id}
+              className={`bg-white rounded-2xl border transition-all flex flex-col overflow-hidden shadow-sm hover:shadow-md ${
+                isSelf ? 'border-orange-400 ring-2 ring-orange-500/20' : 'border-slate-200 hover:border-orange-400'
+              }`}
+            >
+              {/* شريط التمييز اللوني العلوي حسب الصفة */}
+              <div className={`h-1.5 w-full ${theme.topBar}`} />
+
+              <div className="p-5 flex-1 flex flex-col gap-4">
+                {/* الرأس: الصورة + الاسم + الدور + الفئة */}
+                <div className="flex items-start gap-3.5">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-xl text-blue-950 overflow-hidden shrink-0">
+                    {person.photo ? (
+                      <img src={person.photo} alt={person.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{person.name.charAt(0)}</span>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`inline-flex items-center gap-1 text-xs font-bold ${theme.roleText}`}>
+                        {theme.icon}
+                        <span>{person.role}</span>
+                      </span>
+                      {isSelf && (
+                        <span className="text-[11px] font-black text-orange-600 shrink-0">
+                          ملفك الشخصي
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-base font-black text-blue-950 truncate" title={person.name}>
+                      {person.name}
+                    </h3>
+
+                    <p className="text-xs text-slate-500 font-medium truncate" title={person.category}>
+                      {person.category ? person.category.split(',').join(' · ') : 'نادي الكرامة'}
+                      {person.joinDate ? ` · انضم ${person.joinDate}` : ''}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                   <span className="text-[8px] md:text-[9px] font-black text-orange-700 uppercase tracking-widest leading-tight text-right w-full sm:max-w-24 break-words truncate" title={person.category}>{person.category.split(',').join(' • ')}</span>
-                   <span className="text-[10px] text-slate-600 font-bold flex items-center gap-1">
-                      {person.role}
-                      {getRoleIcon(person.role || '')}
-                   </span>
+
+                {/* المؤهل العلمي والشهادة الأساسية */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5 shrink-0">
+                      <GraduationCap size={14} className="text-blue-700" />
+                      المؤهل العلمي
+                    </span>
+                    <span className="font-bold text-slate-900 truncate">
+                      {person.academicDegree || 'غير محدد'}
+                    </span>
+                  </div>
+
+                  {person.coachingCertificate && (
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-500 font-medium flex items-center gap-1.5 shrink-0">
+                        <Award size={14} className="text-orange-500" />
+                        الشهادة
+                      </span>
+                      <span className="font-bold text-emerald-700 truncate">
+                        {person.coachingCertificate}
+                      </span>
+                    </div>
+                  )}
                 </div>
-             </div>
-             <div className="flex items-center justify-between gap-1 mb-1">
-               <h3 className="text-sm md:text-base font-black text-blue-950 group-hover:text-orange-700 transition-colors uppercase tracking-tight truncate">{person.name}</h3>
-               {isSelf && (
-                 <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full shrink-0 shadow-xs">
-                   ملفك الشخصي
-                 </span>
-               )}
-             </div>
-             {/* المؤهل والتحصيل العلمي */}
-             {person.academicDegree ? (
-               <div className="flex items-center gap-1.5 text-[10px] text-blue-900 font-black bg-blue-50/80 border border-blue-100 px-2.5 py-1 rounded-lg mb-2">
-                 <GraduationCap size={13} className="text-blue-700 shrink-0" />
-                 <span className="truncate">{person.academicDegree}</span>
-               </div>
-             ) : (
-               <p className="text-[8px] md:text-[9px] text-slate-400 font-bold mb-2 italic">لم يحدد التحصيل العلمي</p>
-             )}
 
-             {/* الشهادات التدريبية الرسمية مع روابط الصور المضغوطة */}
-             {person.certificates && person.certificates.length > 0 && (
-               <div className="space-y-1 mb-2 bg-orange-50/60 p-2 rounded-xl border border-orange-100">
-                 <div className="flex items-center justify-between text-[9px] font-black text-orange-900">
-                   <span className="flex items-center gap-1">
-                     <Award size={12} className="text-orange-600" />
-                     الشهادات التدريبية ({person.certificates.length})
-                   </span>
-                 </div>
-                 <div className="flex flex-col gap-1 mt-1">
-                   {person.certificates.slice(0, 3).map((cert, cIdx) => (
-                     <div key={cert.id || cIdx} className="flex items-center justify-between gap-1 text-[9px] bg-white px-2 py-1 rounded-lg border border-slate-100 shadow-2xs">
-                       <span className="font-bold text-slate-800 truncate" title={cert.name}>
-                         {cert.name || `شهادة #${cIdx + 1}`}
-                         {cert.date ? ` (${cert.date})` : ''}
-                       </span>
-                       {cert.image && (
-                         <button
-                           type="button"
-                           onClick={() => setPreviewDoc({ title: `وثيقة شهادة: ${cert.name || 'شهادة تدريبية'}`, src: cert.image! })}
-                           className="text-[8px] font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0 transition-colors border border-emerald-200"
-                           title="عرض وثيقة الشهادة"
-                         >
-                           <Eye size={10} /> الوثيقة
-                         </button>
-                       )}
-                     </div>
-                   ))}
-                   {person.certificates.length > 3 && (
-                     <span className="text-[8px] font-bold text-orange-700 text-center">+{person.certificates.length - 3} شهادات أخرى بالملف</span>
-                   )}
-                 </div>
-               </div>
-             )}
-
-             {/* الخبرات ومحطات العمل السابقة */}
-             {person.experiences && person.experiences.length > 0 && (
-               <div className="space-y-1 mb-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                 <div className="flex items-center justify-between text-[9px] font-black text-slate-700">
-                   <span className="flex items-center gap-1">
-                     <Briefcase size={11} className="text-blue-700" />
-                     الخبرات السابقة ({person.experiences.length})
-                   </span>
-                 </div>
-                 <div className="flex flex-wrap gap-1 mt-0.5">
-                   {person.experiences.map((exp, eIdx) => (
-                     <span key={exp.id || eIdx} className="bg-white text-slate-800 px-1.5 py-0.5 rounded border border-slate-200 text-[8px] font-bold truncate">
-                       {exp.employer} {exp.position ? `(${exp.position})` : ''}
-                     </span>
-                   ))}
-                 </div>
-               </div>
-             )}
-
-             {/* الشارات والمواسم والوثائق */}
-             <div className="flex flex-wrap gap-1 mb-3">
-                <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap">🛡️ كادر نادي</span>
-                {Array.from(new Set([
-                  ...(Array.isArray(person.seasons) ? person.seasons : []),
-                  ...(typeof person.season === 'string' ? person.season.split(',') : [])
-                ].map(s => String(s || '').trim()).filter(Boolean))).map(s => (
-                  <span key={s} className={`border px-1.5 py-0.5 rounded text-[8px] font-black whitespace-nowrap ${s === state.activeSeason ? 'bg-orange-500 text-white border-orange-600 shadow-xs' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
-                    موسم {s}
-                  </span>
-                ))}
-                {(person.passportNumber || '').trim() !== '' && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap">جواز: {person.passportNumber}</span>}
-                {(person.idCardImage || person.passportImage) && (
-                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[8px] font-bold flex items-center gap-1">
-                    <FileCheck size={10} /> الوثائق
-                  </span>
+                {/* الشهادات التدريبية المرفقة */}
+                {person.certificates && person.certificates.length > 0 && (
+                  <div className="pt-3 border-t border-slate-100 space-y-1.5">
+                    <p className="text-[11px] font-bold text-slate-500 flex items-center justify-between">
+                      <span>الشهادات التدريبية</span>
+                      <span className="font-mono tabular-nums text-blue-900">{certsCount}</span>
+                    </p>
+                    <div className="space-y-1">
+                      {person.certificates.slice(0, 2).map((cert, cIdx) => (
+                        <div key={cert.id || cIdx} className="flex items-center justify-between gap-2 text-xs bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200/70">
+                          <span className="font-semibold text-slate-800 truncate" title={cert.name}>
+                            {cert.name || `شهادة #${cIdx + 1}`}{cert.date ? ` (${cert.date})` : ''}
+                          </span>
+                          {cert.image && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc({ title: `وثيقة شهادة: ${cert.name || 'شهادة تدريبية'}`, src: cert.image! })}
+                              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 shrink-0"
+                              title="عرض وثيقة الشهادة"
+                            >
+                              <Eye size={12} /> الوثيقة
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {certsCount > 2 && (
+                        <p className="text-[11px] font-bold text-orange-600">
+                          +{certsCount - 2} شهادات أخرى داخل الملف
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
-             </div>
-             <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center gap-2">
-                <button onClick={() => onOpenReport?.(person)} className="text-[10px] font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={12}/></button>
-                <div className="flex gap-1.5 items-center">
-                   {!hasAccount && !isViewer && (
-                     <button onClick={() => handleCreateAccount(person)} title="إنشاء حساب للنظام" className="p-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all shadow-sm"><Key size={12} /></button>
-                   )}
-                   {canEditPerson && (
-                     <button 
-                       onClick={() => openEdit(person)} 
-                       title={isSelf ? "تعديل ملفك الشخصي" : "تعديل السجل"} 
-                       className={`p-1.5 rounded-lg transition-all shadow-sm ${
-                         isSelf 
-                           ? "bg-orange-500 text-white hover:bg-orange-600 ring-2 ring-orange-300" 
-                           : "bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white"
-                       }`}
-                     >
-                       <Edit2 size={12} />
-                     </button>
-                   )}
-                   {(!isViewer || isManager) && !isSelf && (
-                     <button onClick={() => handleDelete(person.id, person.name)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={12} /></button>
-                   )}
+
+                {/* الخبرات السابقة */}
+                {person.experiences && person.experiences.length > 0 && (
+                  <div className="pt-3 border-t border-slate-100 space-y-1">
+                    <p className="text-[11px] font-bold text-slate-500 flex items-center justify-between">
+                      <span>الخبرات السابقة</span>
+                      <span className="font-mono tabular-nums text-blue-900">{expsCount}</span>
+                    </p>
+                    <p className="text-xs font-semibold text-slate-700 truncate">
+                      {person.experiences
+                        .map((exp: any) => `${exp.employer || exp.clubOrOrg || ''}${(exp.position || exp.role) ? ` (${exp.position || exp.role})` : ''}`)
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                )}
+
+                {/* حالة التوثيق والموسم */}
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-600">
+                  <span className="font-mono tabular-nums text-blue-900">
+                    {personSeasons.length > 0 ? personSeasons.map(s => `موسم ${s}`).join(' · ') : `موسم ${state.activeSeason || '2025/2026'}`}
+                  </span>
+                  <span className={hasDocs ? 'text-emerald-700 flex items-center gap-1' : 'text-slate-400'}>
+                    {hasDocs && <FileCheck size={12} />}
+                    {hasDocs ? 'وثائق مكتملة' : 'بدون وثائق'}
+                  </span>
                 </div>
-             </div>
-          </div>
-        );
-      })}
+              </div>
+
+              {/* شريط الإجراءات السفلي */}
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenReport?.(person)}
+                  className="min-h-[38px] px-3 py-1.5 rounded-xl bg-blue-950 hover:bg-orange-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                >
+                  <span>الملف التنفيذي</span>
+                  <ChevronRight size={14} />
+                </button>
+
+                <div className="flex items-center gap-1.5">
+                  {!hasAccount && isManager && (
+                    <button
+                      type="button"
+                      onClick={() => handleCreateAccount(person)}
+                      title="إنشاء حساب للنظام"
+                      className="min-h-[38px] min-w-[38px] flex items-center justify-center bg-white border border-slate-200 text-orange-600 rounded-xl hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-colors"
+                    >
+                      <Key size={14} />
+                    </button>
+                  )}
+                  {canEditPerson && (
+                    <button
+                      type="button"
+                      onClick={() => openEdit(person)}
+                      title={isSelf ? "تعديل ملفك الشخصي" : "تعديل السجل"}
+                      className={`min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl border transition-colors ${
+                        isSelf
+                          ? "bg-orange-500 text-white border-orange-500 hover:bg-orange-600"
+                          : "bg-white border-slate-200 text-blue-700 hover:bg-blue-700 hover:text-white hover:border-blue-700"
+                      }`}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  )}
+                  {canDeletePerson && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(person.id, person.name)}
+                      title="حذف السجل"
+                      className="min-h-[38px] min-w-[38px] flex items-center justify-center bg-white border border-slate-200 text-red-600 rounded-xl hover:bg-red-600 hover:text-white hover:border-red-600 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
         {filteredMembers.length === 0 && (
           <div className="col-span-full py-16 md:py-20 text-center border-4 border-dashed border-slate-200 rounded-[2rem] md:rounded-[3rem]">
             <Search size={48} className="mx-auto mb-4 text-slate-200 md:w-16 md:h-16" />
@@ -683,7 +786,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                     <p className="text-xs text-slate-400 mt-1">انقر على علامة (+) في الأعلى لإضافة رخصة أو شهادة مع إمكانية رفع صورتها</p>
                   </div>
                 )}
-                {(formData.certificates || []).map((cert, index) => (
+                {(formData.certificates || []).map((cert, index) => {
+                  const certLockedForCatAdmin = isCatAdmin && Boolean(cert.image);
+                  return (
                   <div key={cert.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm relative space-y-3">
                     <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                       <div className="flex items-center gap-2">
@@ -696,18 +801,20 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newCerts = [...(formData.certificates || [])];
-                          newCerts.splice(index, 1);
-                          setFormData({...formData, certificates: newCerts});
-                        }}
-                        className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-all"
-                        title="حذف الشهادة"
-                      >
-                        <Trash2 size={16}/>
-                      </button>
+                      {!certLockedForCatAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newCerts = [...(formData.certificates || [])];
+                            newCerts.splice(index, 1);
+                            setFormData({...formData, certificates: newCerts});
+                          }}
+                          className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-all"
+                          title="حذف الشهادة"
+                        >
+                          <Trash2 size={16}/>
+                        </button>
+                      )}
                     </div>
 
                     {/* الحقول وخانة رفع صورة الشهادة جنباً إلى جنب */}
@@ -773,39 +880,43 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                                 >
                                   <Eye size={11} /> عرض مكبّر
                                 </button>
-                                <label className="cursor-pointer text-[10px] font-black text-orange-700 hover:text-orange-900 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
-                                  <Upload size={11} /> تغيير
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const f = e.target.files?.[0];
-                                      if (f) {
-                                        try {
-                                          const url = await uploadToCloudinary(f, 'certificates');
-                                          const newCerts = [...(formData.certificates || [])];
-                                          newCerts[index].image = url;
-                                          setFormData({...formData, certificates: newCerts});
-                                        } catch (err: any) {
-                                          alert('خطأ أثناء معالجة الصورة: ' + err.message);
-                                        }
-                                      }
-                                    }}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const newCerts = [...(formData.certificates || [])];
-                                    newCerts[index].image = '';
-                                    setFormData({...formData, certificates: newCerts});
-                                  }}
-                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 p-1 transition-colors"
-                                  title="إزالة الصورة"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                                {!certLockedForCatAdmin && (
+                                  <>
+                                    <label className="cursor-pointer text-[10px] font-black text-orange-700 hover:text-orange-900 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
+                                      <Upload size={11} /> تغيير
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={async (e) => {
+                                          const f = e.target.files?.[0];
+                                          if (f) {
+                                            try {
+                                              const url = await uploadToCloudinary(f, 'certificates');
+                                              const newCerts = [...(formData.certificates || [])];
+                                              newCerts[index].image = url;
+                                              setFormData({...formData, certificates: newCerts});
+                                            } catch (err: any) {
+                                              alert('خطأ أثناء معالجة الصورة: ' + err.message);
+                                            }
+                                          }
+                                        }}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newCerts = [...(formData.certificates || [])];
+                                        newCerts[index].image = '';
+                                        setFormData({...formData, certificates: newCerts});
+                                      }}
+                                      className="text-[10px] font-bold text-red-500 hover:text-red-700 p-1 transition-colors"
+                                      title="إزالة الصورة"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -839,7 +950,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* الخبرات ومحطات العمل السابقة */}
@@ -883,7 +995,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ state, setState, onOp
               </div>
 
               <div className="pt-6 md:pt-8 w-full border-t border-slate-100 flex flex-col gap-4">
-                {!editingId && (
+                {!editingId && isManager && (
                   <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border-dashed border-2 border-slate-200">
                      <div>
                         <p className="text-[12px] md:text-sm font-black text-slate-800 flex items-center gap-2"><Key size={16} className="text-orange-600"/> إنشاء حساب للتطبيق تلقائياً</p>

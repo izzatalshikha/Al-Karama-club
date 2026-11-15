@@ -14,6 +14,16 @@ import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Responsi
 import html2pdf from 'html2pdf.js';
 import DocumentUploadCard from './DocumentUploadCard';
 import ProfilePhotoUploader from './ProfilePhotoUploader';
+import {
+  canDeleteRecords,
+  canEditMedicalData,
+  canEditSportsData,
+  canEditWeightOrHeight,
+  isManagerRole,
+  isMedicRole,
+  isViewerRole
+} from '../utils/permissions';
+import { recordAuditLog } from '../utils/auditLogger';
 
 interface SquadManagementProps {
   state: AppState;
@@ -53,13 +63,17 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
 
   const currentUser = state.currentUser!;
-  const isManager = currentUser.role === 'مدير';
-  const isMedic = currentUser.role === 'معالج';
-  const isViewer = currentUser.role === 'مشاهد';
-  const canAddOrDelete = isManager || (!isViewer && !isMedic);
-  const canEdit = !isViewer;
+  const isManager = isManagerRole(currentUser);
+  const isMedic = isMedicRole(currentUser);
+  const isViewer = isViewerRole(currentUser);
+  const canAdd = canEditSportsData(currentUser);
+  const canDelete = canDeleteRecords(currentUser);
+  const canEditAny = isManager || isMedic || canAdd;
+  const canEditNonMedical = isManager || canAdd;
+  const canEditWH = canEditWeightOrHeight(currentUser);
+  const canEditMedicalFields = canEditMedicalData(currentUser);
   const restrictedCat = currentUser.restrictedCategory;
-  const allowedCategories = restrictedCat ? String(restrictedCat).split(',').filter(Boolean) : null;
+  const allowedCategories = restrictedCat ? String(restrictedCat).split(',').map(s => s.trim()).filter(Boolean) : null;
   const hasRestriction = allowedCategories !== null && allowedCategories.length > 0;
   const defaultCategory = hasRestriction ? allowedCategories[0] : (state.categories[0] || 'الرجال');
 
@@ -69,7 +83,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     category: defaultCategory,
     role: 'لاعب', number: undefined, phone: '', joinDate: new Date().toISOString().split('T')[0],
     height: '', weight: '', position: '', contractStart: '', contractEnd: '', contractValue: '',
-    subscriptionAmount: '', subscriptionMonth: '', registrationDate: new Date().toISOString().split('T')[0], receivedKit: false, kitAmount: '', isAcademyPlayer: false,
+    subscriptionAmount: '', subscriptionMonth: '', registrationDate: new Date().toISOString().split('T')[0], receivedKit: false, kitAmount: '',
     medicalHistory: '', injuries: '', penalties: '', notes: '', coachingCertificate: '', academicDegree: '',
     passportNumber: '', passportIssueDate: '', passportExpiryDate: '', idCardImage: '', idCardBackImage: '', passportImage: '',
     season: state.activeSeason || '2025/2026',
@@ -219,9 +233,12 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name?.trim() || isSaving || !canEdit) return;
+    if (!formData.name?.trim() || isSaving || !canEditAny) return;
+    if (!editingId && !canAdd) return;
 
     setIsSaving(true);
+    const existingPerson = editingId ? state.people.find(p => p.id === editingId) : undefined;
+
     const rawSeasons: string[] = [
       ...(Array.isArray(formData.seasons) ? formData.seasons : []),
       ...(typeof formData.season === 'string' ? formData.season.split(',') : [])
@@ -229,15 +246,33 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     const finalSeasons = Array.from(new Set(rawSeasons));
     const validSeasons = finalSeasons.length > 0 ? finalSeasons : [state.activeSeason || '2025/2026'];
 
-    const updatedPerson = {
-      ...initialFormState,
-      ...formData,
-      isAcademyPlayer: false, // دائماً لاعب نادي
-      seasons: validSeasons,
-      season: validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
-      id: editingId || generateUUID(),
-      name: formData.name!.trim(),
-    } as any;
+    let updatedPerson: any;
+    if (isMedic && existingPerson) {
+      // المعالج يعدل الطول والوزن والبيانات الطبية فقط دون المساس بباقي الحقول
+      updatedPerson = {
+        ...existingPerson,
+        height: formData.height,
+        weight: formData.weight,
+        medicalHistory: formData.medicalHistory,
+        injuries: formData.injuries
+      };
+    } else {
+      updatedPerson = {
+        ...initialFormState,
+        ...formData,
+        seasons: validSeasons,
+        season: validSeasons[validSeasons.length - 1] || state.activeSeason || '2025/2026',
+        id: editingId || generateUUID(),
+        name: formData.name!.trim(),
+        ...(existingPerson && !canEditMedicalFields
+          ? {
+              medicalHistory: existingPerson.medicalHistory,
+              injuries: existingPerson.injuries,
+              medicalCard: existingPerson.medicalCard
+            }
+          : {})
+      };
+    }
 
     try {
       const saveRes = await safeSavePerson(updatedPerson, 'upsert');
@@ -249,6 +284,15 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
           ? prev.people.map(p => p.id === editingId ? updatedPerson : p)
           : [updatedPerson, ...prev.people]
       }));
+
+      recordAuditLog({
+        user: currentUser,
+        actionType: editingId ? 'تعديل' : 'إضافة',
+        section: 'شؤون اللاعبين',
+        targetName: updatedPerson.name,
+        details: isMedic ? 'تحديث الوزن/الطول والبيانات الطبية' : `الفئة: ${updatedPerson.category || '-'}`,
+        setState: setState as any
+      });
 
       addLog?.(editingId ? 'تم تحديث البيانات بنجاح' : 'تمت إضافة العضو بنجاح', 'success');
       setIsModalOpen(false);
@@ -262,7 +306,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`هل أنت متأكد من حذف سجل ${name} نهائياً؟`) || !canAddOrDelete) return;
+    if (!canDelete || !confirm(`هل أنت متأكد من حذف سجل ${name} نهائياً؟`)) return;
     try {
       const { error } = await supabase.from('people').delete().eq('id', id);
       if (error) throw error;
@@ -290,7 +334,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
   };
 
   const openEdit = (p: Person) => {
-    if (!canEdit) return;
+    if (!canEditAny) return;
     const rawSeasons: string[] = [
       ...(Array.isArray(p.seasons) ? p.seasons : []),
       ...(typeof p.season === 'string' ? p.season.split(',') : [])
@@ -301,7 +345,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
     setEditingId(p.id);
     setFormData({
       ...p,
-      isAcademyPlayer: false, // نادي دائماً
       receivedKit: Boolean(p.receivedKit === true || String(p.receivedKit) === 'true'),
       season: finalSeasons[finalSeasons.length - 1],
       seasons: finalSeasons
@@ -374,7 +417,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
 
 
 
-         {canAddOrDelete && (
+         {canAdd && (
            <button onClick={() => { setEditingId(null); setFormData(initialFormState); setIsModalOpen(true); }}
              className="bg-orange-500 text-white px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-orange-500/10 hover:bg-orange-600 transition-all whitespace-nowrap w-full md:w-auto justify-center">
               <UserPlus size={20}/> إضافة جديد
@@ -448,10 +491,10 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
              <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center gap-2">
                 <button onClick={() => onOpenReport?.(person)} className="text-[10px] font-black text-slate-700 hover:text-orange-600 flex items-center gap-1 transition-colors uppercase tracking-widest whitespace-nowrap">الملف <ChevronRight size={12}/></button>
                 <div className="flex gap-1.5">
-                   {canEdit && (
+                   {canEditAny && (
                      <>
                        <button onClick={() => openEdit(person)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 size={12}/></button>
-                       {canAddOrDelete && (
+                       {canDelete && (
                          <button onClick={() => handleDelete(person.id, person.name)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 size={12}/></button>
                        )}
                      </>
@@ -507,7 +550,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   role={formData.role || 'لاعب'}
                   number={formData.number}
                   onPhotoChange={(newPhoto) => setFormData(prev => ({ ...prev, photo: newPhoto || undefined }))}
-                  disabled={isMedic}
+                  disabled={!canEditNonMedical}
                   size="lg"
                 />
                 <div className="space-y-1 text-center sm:text-right">
@@ -521,15 +564,15 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
               {/* القسم 1: الهوية */}
               <h4 className={sectionHeader}><Fingerprint size={16}/> 1. معلومات الهوية</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الاسم الثلاثي</label><input required disabled={isMedic} className={inputClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>اسم الأب</label><input disabled={isMedic} className={inputClass} value={formData.fatherName || ''} onChange={e => setFormData({...formData, fatherName: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>اسم الأم</label><input disabled={isMedic} className={inputClass} value={formData.motherName || ''} onChange={e => setFormData({...formData, motherName: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>تاريخ الميلاد</label><input type="date" disabled={isMedic} className={inputClass} value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>مكان الولادة</label><input disabled={isMedic} className={inputClass} value={formData.birthPlace || ''} onChange={e => setFormData({...formData, birthPlace: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الخانة</label><input disabled={isMedic} className={inputClass} value={formData.khana || ''} onChange={e => setFormData({...formData, khana: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الرقم الوطني</label><input disabled={isMedic} className={inputClass} value={formData.nationalId || ''} onChange={e => setFormData({...formData, nationalId: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الرقم الاتحادي</label><input disabled={isMedic} className={inputClass} value={formData.federalNumber || ''} onChange={e => setFormData({...formData, federalNumber: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الرقم الدولي</label><input disabled={isMedic} className={inputClass} value={formData.internationalId || ''} onChange={e => setFormData({...formData, internationalId: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الاسم الثلاثي</label><input required disabled={!canEditNonMedical} className={inputClass} value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>اسم الأب</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.fatherName || ''} onChange={e => setFormData({...formData, fatherName: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>اسم الأم</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.motherName || ''} onChange={e => setFormData({...formData, motherName: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>تاريخ الميلاد</label><input type="date" disabled={!canEditNonMedical} className={inputClass} value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>مكان الولادة</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.birthPlace || ''} onChange={e => setFormData({...formData, birthPlace: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الخانة</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.khana || ''} onChange={e => setFormData({...formData, khana: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الرقم الوطني</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.nationalId || ''} onChange={e => setFormData({...formData, nationalId: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الرقم الاتحادي</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.federalNumber || ''} onChange={e => setFormData({...formData, federalNumber: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الرقم الدولي</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.internationalId || ''} onChange={e => setFormData({...formData, internationalId: e.target.value})} /></div>
               </div>
 
               {/* وثائق الهوية وجواز السفر */}
@@ -538,7 +581,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 <div className="space-y-1">
                   <label className={labelClass}>رقم جواز السفر</label>
                   <input
-                    disabled={isMedic}
+                    disabled={!canEditNonMedical}
                     className={inputClass}
                     placeholder="مثال: N01234567"
                     value={formData.passportNumber || ''}
@@ -549,7 +592,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   <label className={labelClass}>تاريخ إصدار الجواز</label>
                   <input
                     type="date"
-                    disabled={isMedic}
+                    disabled={!canEditNonMedical}
                     className={inputClass}
                     value={formData.passportIssueDate || ''}
                     onChange={e => setFormData({...formData, passportIssueDate: e.target.value})}
@@ -559,7 +602,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   <label className={labelClass}>تاريخ انتهاء الجواز</label>
                   <input
                     type="date"
-                    disabled={isMedic}
+                    disabled={!canEditNonMedical}
                     className={inputClass}
                     value={formData.passportExpiryDate || ''}
                     onChange={e => setFormData({...formData, passportExpiryDate: e.target.value})}
@@ -574,7 +617,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   description="صورة الوجه الأمامي للبطاقة الشخصية أو إخراج القيد المدني الرسمي"
                   value={formData.idCardImage}
                   onChange={(b64) => setFormData(prev => ({ ...prev, idCardImage: b64 }))}
-                  disabled={isMedic}
+                  disabled={!canEditNonMedical}
                   badgeLabel="الوجه الأمامي"
                 />
                 <DocumentUploadCard
@@ -582,7 +625,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   description="صورة الوجه الخلفي للبطاقة الشخصية (اختياري في حال وجود وجه خلفي)"
                   value={formData.idCardBackImage}
                   onChange={(b64) => setFormData(prev => ({ ...prev, idCardBackImage: b64 }))}
-                  disabled={isMedic}
+                  disabled={!canEditNonMedical}
                   badgeLabel="الوجه الخلفي"
                 />
                 <DocumentUploadCard
@@ -590,7 +633,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   description="صورة صفحة البيانات الشخصية في جواز السفر (واضحة تماماً وبحجم خفيف جداً)"
                   value={formData.passportImage}
                   onChange={(b64) => setFormData(prev => ({ ...prev, passportImage: b64 }))}
-                  disabled={isMedic}
+                  disabled={!canEditNonMedical}
                   badgeLabel="جواز سفر"
                 />
               </div>
@@ -598,8 +641,8 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
               {/* القسم 3: الرياضة */}
               <h4 className={sectionHeader}><Activity size={16}/> 3. البيانات الرياضية</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select disabled={isMedic} className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option></select></div>
-                <div className="space-y-1"><label className={labelClass}>الفئة</label><select disabled={isMedic} className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div className="space-y-1"><label className={labelClass}>الدور الوظيفي</label><select disabled={!canEditNonMedical} className={inputClass} value={formData.role || ''} onChange={e => setFormData({...formData, role: e.target.value as Role})}><option value="لاعب">لاعب</option></select></div>
+                <div className="space-y-1"><label className={labelClass}>الفئة</label><select disabled={!canEditNonMedical} className={inputClass} value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">اختر الفئة</option>{(hasRestriction ? allowedCategories : state.categories).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 
                 <div className="space-y-1 sm:col-span-2 flex flex-col justify-center">
                   <label className={labelClass}>تصنيف اللاعب والانتماء</label>
@@ -626,11 +669,13 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                       const cur = Array.from(new Set(formData.seasons || []));
                       const isChecked = cur.includes(s);
                       return (
-                        <label key={s} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${isChecked ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200'}`}>
+                        <label key={s} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${!canEditNonMedical ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${isChecked ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200'}`}>
                           <input
                             type="checkbox"
+                            disabled={!canEditNonMedical}
                             checked={isChecked}
                             onChange={e => {
+                              if (!canEditNonMedical) return;
                               const next = e.target.checked 
                                 ? Array.from(new Set([...cur, s])) 
                                 : cur.filter(x => x !== s);
@@ -650,11 +695,11 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                   </div>
                 </div>
 
-                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input disabled={isMedic} type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
-                <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input disabled={isMedic} className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>رقم القميص</label><input disabled={!canEditNonMedical} type="number" className={inputClass} value={formData.number || ''} onChange={e => setFormData({...formData, number: e.target.value ? parseInt(e.target.value) : undefined})} /></div>
+                <div className="space-y-1"><label className={labelClass}>المركز الأساسي</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
                 <div className="space-y-1">
                   <label className={labelClass}>القدم المفضلة</label>
-                  <select disabled={isMedic} className={inputClass} value={formData.preferredFoot || 'يمنى'} onChange={e => setFormData({...formData, preferredFoot: e.target.value as any})}>
+                  <select disabled={!canEditNonMedical} className={inputClass} value={formData.preferredFoot || 'يمنى'} onChange={e => setFormData({...formData, preferredFoot: e.target.value as any})}>
                     <option value="يمنى">يمنى</option>
                     <option value="يسرى">يسرى</option>
                     <option value="كلاهما">كلاهما</option>
@@ -662,7 +707,7 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                 </div>
                 <div className="space-y-1">
                   <label className={labelClass}>زمرة الدم</label>
-                  <select disabled={isMedic} className={inputClass} value={formData.bloodType || ''} onChange={e => setFormData({...formData, bloodType: e.target.value})}>
+                  <select disabled={!canEditNonMedical} className={inputClass} value={formData.bloodType || ''} onChange={e => setFormData({...formData, bloodType: e.target.value})}>
                     <option value="">اختر...</option>
                     <option value="A+">A+</option>
                     <option value="A-">A-</option>
@@ -674,10 +719,10 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                     <option value="AB-">AB-</option>
                   </select>
                 </div>
-                <div className="space-y-1"><label className={labelClass}>قياس الحذاء</label><input disabled={isMedic} type="text" placeholder="مثال: 42" className={inputClass} value={formData.shoeSize || ''} onChange={e => setFormData({...formData, shoeSize: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>قياس الحذاء</label><input disabled={!canEditNonMedical} type="text" placeholder="مثال: 42" className={inputClass} value={formData.shoeSize || ''} onChange={e => setFormData({...formData, shoeSize: e.target.value})} /></div>
                 <div className="space-y-1">
                   <label className={labelClass}>قياس الملابس</label>
-                  <select disabled={isMedic} className={inputClass} value={formData.clothesSize || ''} onChange={e => setFormData({...formData, clothesSize: e.target.value})}>
+                  <select disabled={!canEditNonMedical} className={inputClass} value={formData.clothesSize || ''} onChange={e => setFormData({...formData, clothesSize: e.target.value})}>
                     <option value="">اختر...</option>
                     <option value="XS">XS</option>
                     <option value="S">S</option>
@@ -687,57 +732,31 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                     <option value="XXL">XXL</option>
                   </select>
                 </div>
-                <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input disabled={isMedic} type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input disabled={isMedic} className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الوزن (كغ)</label><input disabled={isMedic} className={inputClass} value={formData.weight || ''} onChange={e => setFormData({...formData, weight: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الشهادة التدريبية</label><input disabled={isMedic} className={inputClass} value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
-                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>التحصيل العلمي</label><input disabled={isMedic} className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>رقم الهاتف</label><input disabled={isMedic} className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>هاتف الطوارئ / ولي الأمر</label><input disabled={isMedic} className={inputClass} value={formData.emergencyPhone || ''} onChange={e => setFormData({...formData, emergencyPhone: e.target.value})} /></div>
-                <div className="sm:col-span-full space-y-1"><label className={labelClass}>عنوان السكن التفصيلي</label><input disabled={isMedic} className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>تاريخ الانضمام</label><input disabled={!canEditNonMedical} type="date" className={inputClass} value={formData.joinDate || ''} onChange={e => setFormData({...formData, joinDate: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الطول (سم)</label><input disabled={!canEditWH} className={inputClass} value={formData.height || ''} onChange={e => setFormData({...formData, height: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الوزن (كغ)</label><input disabled={!canEditWH} className={inputClass} value={formData.weight || ''} onChange={e => setFormData({...formData, weight: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الشهادة التدريبية</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.coachingCertificate || ''} onChange={e => setFormData({...formData, coachingCertificate: e.target.value})} /></div>
+                <div className="sm:col-span-2 space-y-1"><label className={labelClass}>التحصيل العلمي</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.academicDegree || ''} onChange={e => setFormData({...formData, academicDegree: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>رقم الهاتف</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>هاتف الطوارئ / ولي الأمر</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.emergencyPhone || ''} onChange={e => setFormData({...formData, emergencyPhone: e.target.value})} /></div>
+                <div className="sm:col-span-full space-y-1"><label className={labelClass}>عنوان السكن التفصيلي</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
               </div>
 
-              {/* القسم 3: السجل المالي والاشتراكات */}
-              {formData.isAcademyPlayer && (
-                <>
-                  <h4 className={sectionHeader}><Wallet size={16}/> 3. السجل المالي والاشتراكات (للأكاديمية)</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                    <div className="space-y-1"><label className={labelClass}>مبلغ الاشتراك / القسط</label><input type="number" className={inputClass} value={formData.subscriptionAmount || ''} onChange={e => setFormData({...formData, subscriptionAmount: e.target.value})} /></div>
-                    <div className="space-y-1"><label className={labelClass}>شهر الاشتراك</label><input type="month" className={inputClass} value={formData.subscriptionMonth || ''} onChange={e => setFormData({...formData, subscriptionMonth: e.target.value})} /></div>
-                    <div className="space-y-1"><label className={labelClass}>تاريخ التسجيل</label><input type="date" disabled className={`${inputClass} opacity-70`} value={formData.registrationDate || ''} /></div>
-                    
-                    <div className="space-y-1 flex items-center mt-6">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-slate-300" checked={Boolean(formData.receivedKit === true || String(formData.receivedKit) === 'true')} onChange={e => setFormData({...formData, receivedKit: e.target.checked})} />
-                        <span className="font-black text-sm text-slate-800">استلم لباس</span>
-                      </label>
-                    </div>
-                    {formData.receivedKit && (
-                      <div className="space-y-1 sm:col-span-1 md:col-span-2"><label className={labelClass}>مبلغ اللباس</label><input type="number" className={inputClass} value={formData.kitAmount || ''} onChange={e => setFormData({...formData, kitAmount: e.target.value})} /></div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* القسم 4: العقود الاحترافية */}
-              {!formData.isAcademyPlayer && (
-                <>
-                  <h4 className={sectionHeader}><Wallet size={16}/> 4. العقود الاحترافية (إن وجدت)</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                    <div className="space-y-1"><label className={labelClass}>بداية العقد</label><input type="date" className={inputClass} value={formData.contractStart || ''} onChange={e => setFormData({...formData, contractStart: e.target.value})} /></div>
-                    <div className="space-y-1"><label className={labelClass}>نهاية العقد</label><input type="date" className={inputClass} value={formData.contractEnd || ''} onChange={e => setFormData({...formData, contractEnd: e.target.value})} /></div>
-                    <div className="space-y-1"><label className={labelClass}>القيمة / الراتب</label><input className={inputClass} value={formData.contractValue || ''} onChange={e => setFormData({...formData, contractValue: e.target.value})} /></div>
-                  </div>
-                </>
-              )}
+              {/* القسم 3: العقود الاحترافية */}
+              <h4 className={sectionHeader}><Wallet size={16}/> 3. العقود الاحترافية (إن وجدت)</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                <div className="space-y-1"><label className={labelClass}>بداية العقد</label><input type="date" disabled={!canEditNonMedical} className={inputClass} value={formData.contractStart || ''} onChange={e => setFormData({...formData, contractStart: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>نهاية العقد</label><input type="date" disabled={!canEditNonMedical} className={inputClass} value={formData.contractEnd || ''} onChange={e => setFormData({...formData, contractEnd: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>القيمة / الراتب</label><input disabled={!canEditNonMedical} className={inputClass} value={formData.contractValue || ''} onChange={e => setFormData({...formData, contractValue: e.target.value})} /></div>
+              </div>
 
               {/* القسم 5: الطبي والانضباط */}
               <h4 className={sectionHeader}><ShieldAlert size={16}/> 5. الحالة الطبية والسلوك</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-                <div className="space-y-1"><label className={labelClass}>السجل الطبي</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.medicalHistory || ''} onChange={e => setFormData({...formData, medicalHistory: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>الإصابات الحالية</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.injuries || ''} onChange={e => setFormData({...formData, injuries: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>العقوبات السابقة</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.penalties || ''} onChange={e => setFormData({...formData, penalties: e.target.value})} /></div>
-                <div className="space-y-1"><label className={labelClass}>ملاحظات للمدرب</label><textarea className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>السجل الطبي {!canEditMedicalFields && <span className="text-[9px] text-slate-400 font-bold">(للمعالج/المدير فقط)</span>}</label><textarea disabled={!canEditMedicalFields} className={`${inputClass} h-20 md:h-24 resize-none disabled:bg-slate-100 disabled:text-slate-500`} value={formData.medicalHistory || ''} onChange={e => setFormData({...formData, medicalHistory: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>الإصابات الحالية {!canEditMedicalFields && <span className="text-[9px] text-slate-400 font-bold">(للمعالج/المدير فقط)</span>}</label><textarea disabled={!canEditMedicalFields} className={`${inputClass} h-20 md:h-24 resize-none disabled:bg-slate-100 disabled:text-slate-500`} value={formData.injuries || ''} onChange={e => setFormData({...formData, injuries: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>العقوبات السابقة</label><textarea disabled={!canEditNonMedical} className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.penalties || ''} onChange={e => setFormData({...formData, penalties: e.target.value})} /></div>
+                <div className="space-y-1"><label className={labelClass}>ملاحظات للمدرب</label><textarea disabled={!canEditNonMedical} className={`${inputClass} h-20 md:h-24 resize-none`} value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} /></div>
               </div>
 
               <div className="pt-8 md:pt-10">
@@ -905,11 +924,6 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                         <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">الدور الوظيفي</td>
                         <td className="p-3 font-semibold">{player2.role || '-'}</td>
                       </tr>
-<tr className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.isAcademyPlayer ? 'لاعب أكاديمية' : 'لاعب نادي'}</td>
-                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">تصنيف اللاعب</td>
-                        <td className="p-3 font-semibold">{player2.isAcademyPlayer ? 'لاعب أكاديمية' : 'لاعب نادي'}</td>
-                      </tr>
                         </>
                       )}
 
@@ -1055,20 +1069,10 @@ const SquadManagement: React.FC<SquadManagementProps> = ({ state, setState, onOp
                         <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">نهاية العقد</td>
                         <td className="p-3 font-semibold">{player2.contractEnd || '-'}</td>
                       </tr>
-<tr className="border-b border-slate-100 hover:bg-slate-50">
+                      <tr className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="p-3 border-l border-slate-100 font-semibold">{player1.contractValue || '-'}</td>
                         <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">قيمة العقد</td>
                         <td className="p-3 font-semibold">{player2.contractValue || '-'}</td>
-                      </tr>
-<tr className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.subscriptionAmount || '-'}</td>
-                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">مبلغ الاشتراك</td>
-                        <td className="p-3 font-semibold">{player2.subscriptionAmount || '-'}</td>
-                      </tr>
-<tr className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 border-l border-slate-100 font-semibold">{player1.subscriptionMonth || '-'}</td>
-                        <td className="p-3 border-l border-slate-100 font-bold text-slate-500 bg-slate-50">شهر الاشتراك</td>
-                        <td className="p-3 font-semibold">{player2.subscriptionMonth || '-'}</td>
                       </tr>
 <tr className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="p-3 border-l border-slate-100 font-semibold">{player1.registrationDate || '-'}</td>
